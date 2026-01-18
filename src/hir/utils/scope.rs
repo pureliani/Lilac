@@ -7,7 +7,7 @@ use std::{
 use crate::{
     ast::{DeclarationId, Position, Span},
     compile::interner::StringId,
-    hir::cfg::basic_block::{BasicBlockId, LoopJumpTargets},
+    hir::builders::{BasicBlockId, LoopJumpTargets},
 };
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -54,6 +54,7 @@ impl Scope {
             span: Span {
                 start: start_position,
                 end: Position::default(),
+                path: self.0.borrow().span.path.clone(),
             },
             children: Vec::new(),
         })));
