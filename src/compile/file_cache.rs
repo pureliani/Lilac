@@ -1,20 +1,21 @@
 use ariadne::{Cache, Source};
 use std::collections::HashMap;
-use std::path::PathBuf;
+
+use crate::ModulePath;
 
 #[derive(Default)]
 pub struct FileCache {
-    sources: HashMap<PathBuf, Source>,
+    sources: HashMap<ModulePath, Source>,
 }
 
-impl Cache<PathBuf> for FileCache {
+impl Cache<ModulePath> for FileCache {
     type Storage = String;
 
     fn fetch(
         &mut self,
-        id: &PathBuf,
+        id: &ModulePath,
     ) -> Result<
-        &ariadne::Source<<Self as ariadne::Cache<std::path::PathBuf>>::Storage>,
+        &ariadne::Source<<Self as ariadne::Cache<ModulePath>>::Storage>,
         impl std::fmt::Debug,
     > {
         self.sources
@@ -22,15 +23,15 @@ impl Cache<PathBuf> for FileCache {
             .ok_or_else(|| Box::new("File not found") as Box<dyn std::fmt::Debug>)
     }
 
-    fn display<'a>(&self, id: &'a PathBuf) -> Option<impl std::fmt::Display + 'a> {
-        Some(id.display())
+    fn display<'a>(&self, id: &'a ModulePath) -> Option<impl std::fmt::Display + 'a> {
+        Some(id.0.display())
     }
 }
 
 impl FileCache {
     pub fn insert(
         &mut self,
-        path: PathBuf,
+        path: ModulePath,
         source: String,
     ) -> Option<self::Source<String>> {
         self.sources.insert(path, Source::from(source))

@@ -20,6 +20,7 @@ pub enum ScopeKind {
     CodeBlock,
     File,
     GenericParams, // Not used for now
+    Global,
 }
 
 #[derive(Debug)]

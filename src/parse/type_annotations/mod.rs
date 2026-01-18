@@ -171,14 +171,14 @@ impl Parser {
             TokenKind::Identifier(_) => {
                 let identifier = self.consume_identifier()?;
                 TypeAnnotation {
-                    span: identifier.span,
+                    span: identifier.span.clone(),
                     kind: TypeAnnotationKind::Identifier(identifier),
                 }
             }
             _ => {
                 return Err(ParsingError {
                     kind: ParsingErrorKind::ExpectedATypeButFound(token.clone()),
-                    span: token.span,
+                    span: token.span.clone(),
                 })
             }
         };
@@ -221,15 +221,14 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{atomic::AtomicUsize, Arc};
-
     use crate::{
         ast::{
             type_annotation::{TypeAnnotation, TypeAnnotationKind},
             Span,
         },
-        compile::interner::SharedStringInterner,
+        globals::reset_globals,
         parse::Parser,
+        ModulePath,
     };
 
     #[test]
@@ -237,6 +236,10 @@ mod tests {
         use crate::ast::Position;
         use crate::tokenize::Tokenizer;
         use pretty_assertions::assert_eq;
+
+        reset_globals();
+
+        let path = ModulePath::default();
 
         let test_cases = vec![
             (
@@ -254,6 +257,7 @@ mod tests {
                             col: 3,
                             byte_offset: 2,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -272,6 +276,7 @@ mod tests {
                             col: 4,
                             byte_offset: 3,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -290,6 +295,7 @@ mod tests {
                             col: 4,
                             byte_offset: 3,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -308,6 +314,7 @@ mod tests {
                             col: 4,
                             byte_offset: 3,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -326,6 +333,7 @@ mod tests {
                             col: 4,
                             byte_offset: 3,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -344,6 +352,7 @@ mod tests {
                             col: 4,
                             byte_offset: 3,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -362,6 +371,7 @@ mod tests {
                             col: 3,
                             byte_offset: 2,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -380,6 +390,7 @@ mod tests {
                             col: 4,
                             byte_offset: 3,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -398,6 +409,7 @@ mod tests {
                             col: 4,
                             byte_offset: 3,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -416,6 +428,7 @@ mod tests {
                             col: 4,
                             byte_offset: 3,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -434,6 +447,7 @@ mod tests {
                             col: 5,
                             byte_offset: 4,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -452,6 +466,7 @@ mod tests {
                             col: 5,
                             byte_offset: 4,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
@@ -470,21 +485,19 @@ mod tests {
                             col: 7,
                             byte_offset: 6,
                         },
+                        path: path.clone(),
                     },
                 },
             ),
         ];
 
         for (input, expected) in test_cases {
-            let interner = Arc::new(SharedStringInterner::default());
-            let decl_id_counter = Arc::new(AtomicUsize::new(0));
-            let (tokens, _) = Tokenizer::tokenize(input, interner.clone());
+            let (tokens, _) = Tokenizer::tokenize(input, path.clone());
             let mut parser = Parser {
                 offset: 0,
                 checkpoint_offset: 0,
                 tokens,
-                interner,
-                decl_id_counter,
+                path: path.clone(),
             };
             let result = parser.parse_type_annotation(0);
 

@@ -1,6 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-use crate::compile::interner::StringId;
+use crate::{compile::interner::StringId, ModulePath};
 
 pub mod decl;
 pub mod expr;
@@ -8,7 +8,7 @@ pub mod stmt;
 pub mod type_annotation;
 pub mod visitor;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct IdentifierNode {
     pub name: StringId,
     pub span: Span,
@@ -52,10 +52,11 @@ pub struct Position {
     pub byte_offset: usize,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Copy, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Span {
     pub start: Position,
     pub end: Position,
+    pub path: ModulePath,
 }
 
 impl Span {

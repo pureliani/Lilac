@@ -17,20 +17,22 @@ impl<'a> Tokenizer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use crate::{
         ast::{Position, Span},
-        compile::interner::SharedStringInterner,
+        globals::{reset_globals, STRING_INTERNER},
         tokenize::{Token, TokenKind, Tokenizer},
+        ModulePath,
     };
     use pretty_assertions::assert_eq;
 
     #[test]
     fn tokenizes_simple_identifiers() {
-        let interner = Arc::new(SharedStringInterner::default());
-        let hello_id = interner.intern("hello");
-        let (tokens, _) = Tokenizer::tokenize("hello", interner);
+        reset_globals();
+
+        let hello_id = STRING_INTERNER.intern("hello");
+        let path = ModulePath::default();
+
+        let (tokens, _) = Tokenizer::tokenize("hello", path.clone());
 
         assert_eq!(
             tokens,
@@ -46,7 +48,8 @@ mod tests {
                         line: 1,
                         col: 6,
                         byte_offset: 5
-                    }
+                    },
+                    path: path.clone()
                 }
             }]
         )
@@ -54,9 +57,12 @@ mod tests {
 
     #[test]
     fn tokenizes_sequence_as_identifier() {
-        let interner = Arc::new(SharedStringInterner::default());
-        let structhello_id = interner.intern("structhello");
-        let (tokens, _) = Tokenizer::tokenize("\nstructhello", interner);
+        reset_globals();
+
+        let structhello_id = STRING_INTERNER.intern("structhello");
+        let path = ModulePath::default();
+
+        let (tokens, _) = Tokenizer::tokenize("\nstructhello", path.clone());
 
         assert_eq!(
             tokens,
@@ -72,7 +78,8 @@ mod tests {
                         line: 2,
                         col: 12,
                         byte_offset: 12
-                    }
+                    },
+                    path: path.clone()
                 }
             }]
         )

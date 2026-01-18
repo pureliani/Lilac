@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{DeclarationId, IdentifierNode},
@@ -14,6 +11,7 @@ use crate::{
         },
         utils::scope::Scope,
     },
+    ModulePath,
 };
 
 pub mod basic_block;
@@ -30,25 +28,6 @@ pub struct ValueId(pub usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ConstantId(pub usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct LoopJumpTargets {
-    pub on_break: BasicBlockId,
-    pub on_continue: BasicBlockId,
-}
-
-pub struct Program {
-    pub modules: HashMap<PathBuf, Module>,
-    pub value_types: HashMap<ValueId, Type>,
-    pub declarations: HashMap<DeclarationId, CheckedDeclaration>,
-    pub constant_data: HashMap<ConstantId, Vec<u8>>,
-}
-
-pub struct Module {
-    pub path: PathBuf,
-    pub errors: Vec<SemanticError>,
-    pub root_scope: Scope,
-}
-
 #[derive(Debug, Clone)]
 pub struct TypePredicate {
     /// The original ValueId that was checked, could be a pointer or a value
@@ -57,6 +36,37 @@ pub struct TypePredicate {
     pub true_id: ValueId,
     /// The new ValueId to use in the false path
     pub false_id: ValueId,
+}
+
+pub struct Place {
+    /// The local variable (stack slot) this starts from
+    pub root: ValueId,
+    /// The sequence of projections (fields, index, deref)
+    pub projections: Vec<Projection>,
+}
+
+pub enum Projection {
+    Field(usize),
+    Index(ValueId),
+    Deref,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LoopJumpTargets {
+    pub on_break: BasicBlockId,
+    pub on_continue: BasicBlockId,
+}
+
+pub struct Program {
+    pub modules: HashMap<ModulePath, Module>,
+    pub value_types: HashMap<ValueId, Type>,
+    pub declarations: HashMap<DeclarationId, CheckedDeclaration>,
+    pub constant_data: HashMap<ConstantId, Vec<u8>>,
+}
+
+pub struct Module {
+    pub path: ModulePath,
+    pub root_scope: Scope,
 }
 
 #[derive(Clone)]
@@ -95,7 +105,9 @@ pub struct BasicBlock {
     pub sealed: bool,
 }
 
-pub struct Builder<'a, C> {
+pub trait BuilderContext {}
+
+pub struct Builder<'a, C: BuilderContext> {
     pub context: C,
     pub program: &'a mut Program,
 
@@ -104,18 +116,22 @@ pub struct Builder<'a, C> {
 }
 
 pub struct InGlobal;
+impl BuilderContext for InGlobal {}
 
 pub struct InModule {
-    pub path: PathBuf,
+    pub path: ModulePath,
 }
+impl BuilderContext for InModule {}
 
 pub struct InFunction {
-    pub path: PathBuf,
+    pub path: ModulePath,
     pub func_id: DeclarationId,
 }
+impl BuilderContext for InFunction {}
 
 pub struct InBlock {
-    pub path: PathBuf,
+    pub path: ModulePath,
     pub func_id: DeclarationId,
     pub block_id: BasicBlockId,
 }
+impl BuilderContext for InBlock {}

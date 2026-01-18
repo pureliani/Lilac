@@ -2,7 +2,7 @@ use crate::{
     ast::Span,
     compile::interner::TagId,
     hir::{
-        cfg::Projection,
+        builders::Projection,
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::TagType,
@@ -81,7 +81,7 @@ pub fn try_unify_types(entries: &[(Type, Span)]) -> Result<Type, SemanticError> 
     for (ty, span) in entries.iter().skip(1) {
         if !check_is_assignable(ty, first_type) {
             return Err(SemanticError {
-                span: *span,
+                span: span.clone(),
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: first_type.clone(),
                     received: ty.clone(),

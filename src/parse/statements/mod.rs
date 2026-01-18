@@ -78,7 +78,7 @@ impl Parser {
         if matches_token!(self, lookahead_index, TokenKind::Keyword(KeywordKind::Fn)) {
             let expr = self.parse_fn_expr()?;
             return Ok(Stmt {
-                span: expr.span,
+                span: expr.span.clone(),
                 kind: StmtKind::Expression(expr),
             });
         }
@@ -93,14 +93,14 @@ impl Parser {
                 kind: ParsingErrorKind::ExpectedStatementOrExpression {
                     found: invalid_token.clone(),
                 },
-                span: invalid_token.span,
+                span: invalid_token.span.clone(),
             });
         }
 
         if has_doc {
             return Err(ParsingError {
                 kind: ParsingErrorKind::DocMustBeFollowedByDeclaration,
-                span: self.tokens.get(self.offset).unwrap().span,
+                span: self.tokens.get(self.offset).unwrap().span.clone(),
             });
         }
 
@@ -127,16 +127,17 @@ impl Parser {
         {
             self.parse_assignment_stmt(lhs)
         } else {
-            let mut end_span = lhs.span;
+            let mut end_span = lhs.span.clone();
             if matches_token!(self, 0, TokenKind::Punctuation(PunctuationKind::SemiCol)) {
-                end_span = self.current().unwrap().span;
+                end_span = self.current().unwrap().span.clone();
                 self.advance();
             }
 
             Ok(Stmt {
                 span: Span {
-                    start: lhs.span.start,
+                    start: lhs.span.start.clone(),
                     end: end_span.end,
+                    path: self.path.clone(),
                 },
                 kind: StmtKind::Expression(lhs),
             })

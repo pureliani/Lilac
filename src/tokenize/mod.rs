@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use unicode_segmentation::UnicodeSegmentation;
 
 pub mod tokenize_documentation;
@@ -10,7 +8,9 @@ pub mod tokenize_string;
 
 use crate::{
     ast::{Position, Span},
-    compile::interner::{SharedStringInterner, StringId},
+    compile::interner::StringId,
+    globals::STRING_INTERNER,
+    ModulePath,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -238,6 +238,7 @@ pub struct Tokenizer<'a> {
     grapheme_offset: usize,
     line: usize,
     col: usize,
+    path: ModulePath,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -327,7 +328,7 @@ impl<'a> Tokenizer<'a> {
 
     pub fn tokenize(
         input: &'a str,
-        interner: Arc<SharedStringInterner>,
+        path: ModulePath,
     ) -> (Vec<Token>, Vec<TokenizationError>) {
         let mut state = Tokenizer {
             input,
@@ -335,6 +336,7 @@ impl<'a> Tokenizer<'a> {
             grapheme_offset: 0,
             line: 1,
             col: 1,
+            path: path.clone(),
         };
         let mut tokens: Vec<Token> = vec![];
         let mut errors: Vec<TokenizationError> = vec![];
@@ -355,7 +357,7 @@ impl<'a> Tokenizer<'a> {
                     let kind = if let Some(keyword_kind) = keyword {
                         TokenKind::Keyword(keyword_kind)
                     } else {
-                        let id = interner.intern(identifier);
+                        let id = STRING_INTERNER.intern(identifier);
                         TokenKind::Identifier(id)
                     };
                     let end_pos = Position {
@@ -368,6 +370,7 @@ impl<'a> Tokenizer<'a> {
                         span: Span {
                             start: start_pos,
                             end: end_pos,
+                            path: state.path.clone(),
                         },
                         kind,
                     });
@@ -383,6 +386,7 @@ impl<'a> Tokenizer<'a> {
                             span: Span {
                                 start: start_pos,
                                 end: end_pos,
+                                path: state.path.clone(),
                             },
                             kind: TokenKind::String(value.to_string()),
                         })
@@ -398,6 +402,7 @@ impl<'a> Tokenizer<'a> {
                             span: Span {
                                 start: start_pos,
                                 end: end_pos,
+                                path: state.path.clone(),
                             },
                         });
                         state.synchronize();
@@ -415,6 +420,7 @@ impl<'a> Tokenizer<'a> {
                             span: Span {
                                 start: start_pos,
                                 end: end_pos,
+                                path: state.path.clone(),
                             },
                         })
                     }
@@ -429,6 +435,7 @@ impl<'a> Tokenizer<'a> {
                             span: Span {
                                 start: start_pos,
                                 end: end_pos,
+                                path: state.path.clone(),
                             },
                         });
                         state.synchronize();
@@ -447,6 +454,7 @@ impl<'a> Tokenizer<'a> {
                                 span: Span {
                                     start: start_pos,
                                     end: end_pos,
+                                    path: state.path.clone(),
                                 },
                             })
                         }
@@ -461,6 +469,7 @@ impl<'a> Tokenizer<'a> {
                                 span: Span {
                                     start: start_pos,
                                     end: end_pos,
+                                    path: state.path.clone(),
                                 },
                             });
                             state.synchronize();
@@ -479,6 +488,7 @@ impl<'a> Tokenizer<'a> {
                             span: Span {
                                 start: start_pos,
                                 end: end_pos,
+                                path: state.path.clone(),
                             },
                         })
                     }
@@ -493,6 +503,7 @@ impl<'a> Tokenizer<'a> {
                             span: Span {
                                 start: start_pos,
                                 end: end_pos,
+                                path: state.path.clone(),
                             },
                         });
                         state.synchronize();
@@ -553,23 +564,26 @@ fn is_keyword(identifier: &str) -> Option<KeywordKind> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use crate::{
         ast::{Position, Span},
-        compile::interner::SharedStringInterner,
+        globals::{reset_globals, STRING_INTERNER},
         tokenize::{
             KeywordKind, NumberKind, PunctuationKind, Token, TokenKind, Tokenizer,
         },
+        ModulePath,
     };
     use pretty_assertions::assert_eq;
 
     #[test]
     fn test_skip_single_line_comment() {
+        reset_globals();
+
         let input = "// This is a comment\nlet x = 10;";
-        let interner = Arc::new(SharedStringInterner::default());
-        let x_id = interner.intern("x");
-        let (tokens, _) = Tokenizer::tokenize(input, interner);
+        let path = ModulePath::default();
+
+        let x_id = STRING_INTERNER.intern("x");
+
+        let (tokens, _) = Tokenizer::tokenize(input, path.clone());
 
         assert_eq!(
             tokens,
@@ -586,7 +600,8 @@ mod tests {
                             line: 2,
                             col: 4,
                             byte_offset: 24
-                        }
+                        },
+                        path: path.clone()
                     }
                 },
                 Token {
@@ -601,7 +616,8 @@ mod tests {
                             line: 2,
                             col: 6,
                             byte_offset: 26
-                        }
+                        },
+                        path: path.clone()
                     }
                 },
                 Token {
@@ -616,7 +632,8 @@ mod tests {
                             line: 2,
                             col: 8,
                             byte_offset: 28
-                        }
+                        },
+                        path: path.clone()
                     }
                 },
                 Token {
@@ -631,7 +648,8 @@ mod tests {
                             line: 2,
                             col: 11,
                             byte_offset: 31
-                        }
+                        },
+                        path: path.clone()
                     }
                 },
                 Token {
@@ -646,7 +664,8 @@ mod tests {
                             line: 2,
                             col: 12,
                             byte_offset: 32
-                        }
+                        },
+                        path: path.clone()
                     }
                 }
             ]
@@ -655,9 +674,12 @@ mod tests {
 
     #[test]
     fn test_skip_multiple_single_line_comments() {
+        reset_globals();
+
         let input = "// Comment 1\n// Comment 2\nlet x = 10;";
-        let interner = Arc::new(SharedStringInterner::default());
-        let (tokens, _) = Tokenizer::tokenize(input, interner);
+        let path = ModulePath::default();
+
+        let (tokens, _) = Tokenizer::tokenize(input, path);
 
         assert_eq!(tokens.len(), 5);
         assert_eq!(tokens[0].kind, TokenKind::Keyword(KeywordKind::Let));
@@ -665,9 +687,12 @@ mod tests {
 
     #[test]
     fn test_comment_at_end_of_input() {
+        reset_globals();
+
         let input = "let x = 10; // Comment at the end";
-        let interner = Arc::new(SharedStringInterner::default());
-        let (tokens, _) = Tokenizer::tokenize(input, interner);
+        let path = ModulePath::default();
+
+        let (tokens, _) = Tokenizer::tokenize(input, path);
 
         assert_eq!(tokens.len(), 5);
         assert_eq!(tokens[0].kind, TokenKind::Keyword(KeywordKind::Let));
@@ -675,9 +700,12 @@ mod tests {
 
     #[test]
     fn test_no_comments() {
+        reset_globals();
+
         let input = "let x = 10;";
-        let interner = Arc::new(SharedStringInterner::default());
-        let (tokens, _) = Tokenizer::tokenize(input, interner);
+        let path = ModulePath::default();
+
+        let (tokens, _) = Tokenizer::tokenize(input, path);
 
         assert_eq!(tokens.len(), 5);
         assert_eq!(tokens[0].kind, TokenKind::Keyword(KeywordKind::Let));
@@ -685,9 +713,12 @@ mod tests {
 
     #[test]
     fn test_only_comments() {
+        reset_globals();
+
         let input = "// Only a comment";
-        let interner = Arc::new(SharedStringInterner::default());
-        let (tokens, _) = Tokenizer::tokenize(input, interner);
+        let path = ModulePath::default();
+
+        let (tokens, _) = Tokenizer::tokenize(input, path);
         assert_eq!(tokens.len(), 0);
     }
 }

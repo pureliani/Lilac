@@ -19,7 +19,7 @@ impl Parser {
         let start_offset = self.offset;
 
         let args = self.parse_fn_call_args()?;
-        let mut span = left.span;
+        let mut span = left.span.clone();
         let end = self.get_span(start_offset, self.offset - 1)?;
         span.end = end.end;
 

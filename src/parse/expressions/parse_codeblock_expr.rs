@@ -30,7 +30,7 @@ impl Parser {
             if is_start_of_stmt(&current_token.kind) {
                 if let Some(old_expr) = final_expr.take() {
                     statements.push(Stmt {
-                        span: old_expr.span,
+                        span: old_expr.span.clone(),
                         kind: StmtKind::Expression(*old_expr),
                     })
                 }
@@ -39,7 +39,7 @@ impl Parser {
             } else if is_start_of_expr(&current_token.kind) {
                 if let Some(old_expr) = final_expr.take() {
                     statements.push(Stmt {
-                        span: old_expr.span,
+                        span: old_expr.span.clone(),
                         kind: StmtKind::Expression(*old_expr),
                     })
                 }
@@ -59,6 +59,7 @@ impl Parser {
                         span: Span {
                             start: expr.span.start,
                             end: semi_token.span.end,
+                            path: self.path.clone(),
                         },
                         kind: StmtKind::Expression(expr),
                     };
@@ -72,7 +73,7 @@ impl Parser {
                     kind: ParsingErrorKind::ExpectedStatementOrExpression {
                         found: current_token.clone(),
                     },
-                    span: current_token.span,
+                    span: current_token.span.clone(),
                 });
             }
         }

@@ -3,6 +3,7 @@ use crate::{
         decl::{FnDecl, Param},
         expr::{Expr, ExprKind},
     },
+    globals::next_declaration_id,
     parse::{Parser, ParsingError},
     tokenize::{KeywordKind, PunctuationKind, TokenKind},
 };
@@ -43,7 +44,7 @@ impl Parser {
 
         let body = self.parse_codeblock_expr()?;
 
-        let id = self.new_declaration_id();
+        let id = next_declaration_id();
 
         Ok(Expr {
             kind: ExprKind::Fn(Box::new(FnDecl {

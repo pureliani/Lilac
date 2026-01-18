@@ -1,17 +1,35 @@
-use crate::hir::{
-    builders::{BasicBlock, BasicBlockId, Builder, Function, InBlock, Module, ValueId},
-    errors::SemanticError,
+use crate::{
     globals::next_value_id,
-    instructions::{Instruction, Terminator},
-    types::{checked_declaration::CheckedDeclaration, checked_type::Type},
+    hir::{
+        builders::{
+            BasicBlock, BasicBlockId, Builder, Function, InBlock, InGlobal, Module,
+            Place, Projection, ValueId,
+        },
+        errors::SemanticError,
+        instructions::{Instruction, Terminator},
+        types::{
+            checked_declaration::CheckedDeclaration,
+            checked_type::{StructKind, Type},
+        },
+        utils::try_unify_types::narrow_type_at_path,
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn bb(&mut self) -> &mut BasicBlock {
-        self.get_bb(self.context.block_id)
+    pub fn as_program(&mut self) -> Builder<'_, InGlobal> {
+        Builder {
+            context: InGlobal,
+            program: self.program,
+            errors: self.errors,
+            current_scope: self.current_scope.clone(),
+        }
     }
 
-    pub fn get_bb(&mut self, block_id: BasicBlockId) -> &mut BasicBlock {
+    pub fn bb_mut(&mut self) -> &mut BasicBlock {
+        self.get_bb_mut(self.context.block_id)
+    }
+
+    pub fn get_bb_mut(&mut self, block_id: BasicBlockId) -> &mut BasicBlock {
         let func_id = self.context.func_id;
 
         let decl = self
@@ -27,6 +45,29 @@ impl<'a> Builder<'a, InBlock> {
 
         func.blocks
             .get_mut(&block_id)
+            .expect("INTERNAL COMPILER ERROR: Block not found in function")
+    }
+
+    pub fn bb(&self) -> &BasicBlock {
+        self.get_bb(self.context.block_id)
+    }
+
+    pub fn get_bb(&self, block_id: BasicBlockId) -> &BasicBlock {
+        let func_id = self.context.func_id;
+
+        let decl = self
+            .program
+            .declarations
+            .get(&func_id)
+            .expect("INTERNAL COMPILER ERROR: Function not found");
+
+        let func = match decl {
+            CheckedDeclaration::Function(f) => f,
+            _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
+        };
+
+        func.blocks
+            .get(&block_id)
             .expect("INTERNAL COMPILER ERROR: Block not found in function")
     }
 
@@ -47,7 +88,7 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     fn push_instruction(&mut self, instruction: Instruction) {
-        let bb = self.bb();
+        let bb = self.bb_mut();
         if bb.terminator.is_some() {
             panic!(
                 "INTERNAL COMPILER ERROR: Attempted to add instruction to a basic block \
@@ -60,7 +101,7 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     fn check_no_terminator(&mut self) {
-        let bb = self.bb();
+        let bb = self.bb_mut();
 
         if bb.terminator.is_some() {
             panic!(
@@ -70,18 +111,17 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    fn get_value_type(&mut self, id: &ValueId) -> &Type {
+    fn get_value_type(&self, id: &ValueId) -> &Type {
         self.program.value_types.get(id)
         .unwrap_or_else(|| panic!("INTERNAL COMPILER ERROR: Expected ValueId({}) to have an associated type", id.0))
     }
 
     pub fn new_value_id(&mut self, ty: Type) -> ValueId {
         let value_id = next_value_id();
-        let bb = self.bb();
-
+        let this_block_id = self.context.block_id;
         self.get_fn()
             .value_definitions
-            .insert(value_id, self.context.block_id);
+            .insert(value_id, this_block_id);
         self.program.value_types.insert(value_id, ty);
 
         value_id
@@ -125,13 +165,10 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn jmp(&mut self, target: BasicBlockId, args: Vec<ValueId>) {
         self.check_no_terminator();
-        let mut f = self.get_fn();
+        let this_block_id = self.context.block_id;
+        self.get_bb_mut(target).predecessors.insert(this_block_id);
 
-        self.get_bb(target)
-            .predecessors
-            .insert(self.context.block_id);
-
-        self.bb().terminator = Some(Terminator::Jump { target, args });
+        self.bb_mut().terminator = Some(Terminator::Jump { target, args });
     }
 
     pub fn cond_jmp(
@@ -143,15 +180,16 @@ impl<'a> Builder<'a, InBlock> {
         false_args: Vec<ValueId>,
     ) {
         self.check_no_terminator();
+        let this_block_id = self.context.block_id;
 
-        self.get_bb(true_target)
+        self.get_bb_mut(true_target)
             .predecessors
-            .insert(self.context.block_id);
-        self.get_bb(false_target)
+            .insert(this_block_id);
+        self.get_bb_mut(false_target)
             .predecessors
-            .insert(self.context.block_id);
+            .insert(this_block_id);
 
-        self.bb().terminator = Some(Terminator::CondJump {
+        self.bb_mut().terminator = Some(Terminator::CondJump {
             condition,
             true_target,
             true_args,
@@ -162,21 +200,21 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn ret(&mut self, value: Option<ValueId>) {
         self.check_no_terminator();
-        self.bb().terminator = Some(Terminator::Return { value })
+        self.bb_mut().terminator = Some(Terminator::Return { value })
     }
 
     pub fn unreachable(&mut self) {
         self.check_no_terminator();
-        self.bb().terminator = Some(Terminator::Unreachable)
+        self.bb_mut().terminator = Some(Terminator::Unreachable)
     }
 
     pub fn emit_load(&mut self, ptr: ValueId) -> ValueId {
         let ptr_ty = self.get_value_type(&ptr);
         let dest_ty = match ptr_ty {
-            Type::Pointer { narrowed_to, .. } => *narrowed_to,
+            Type::Pointer { narrowed_to, .. } => *narrowed_to.clone(),
             _ => panic!("INTERNAL ERROR: Load expected pointer"),
         };
-        let destination = self.new_value_id(*dest_ty);
+        let destination = self.new_value_id(dest_ty);
         self.push_instruction(Instruction::Load { destination, ptr });
         destination
     }
@@ -203,13 +241,8 @@ impl<'a> Builder<'a, InBlock> {
             _ => panic!("Expected pointer, found {:?}", current_ty),
         };
 
-        let prog = self.get_program();
-        let prog_borrow = prog.borrow();
-
-        let (_, field_constraint) =
-            constraint_struct.fields(&prog_borrow)[field_index].clone();
-        let (_, field_narrowed) =
-            narrowed_struct.fields(&prog_borrow)[field_index].clone();
+        let (_, field_constraint) = constraint_struct.fields()[field_index].clone();
+        let (_, field_narrowed) = narrowed_struct.fields()[field_index].clone();
 
         let destination = self.new_value_id(Type::Pointer {
             constraint: Box::new(field_constraint),
@@ -282,48 +315,52 @@ impl<'a> Builder<'a, InBlock> {
 
             let current_root = self.use_value(place.root);
             let narrowed_root_ptr = self.emit_type_cast(current_root, narrowed_root_ty);
-            self.original_to_local_valueid
+            self.bb_mut()
+                .original_to_local_valueid
                 .insert(place.root, narrowed_root_ptr);
         }
     }
 
     pub fn get_mapped_value(&self, original: ValueId) -> Option<ValueId> {
-        self.original_to_local_valueid.get(&original).copied()
+        self.bb().original_to_local_valueid.get(&original).copied()
     }
 
     pub fn map_value(&mut self, original: ValueId, local: ValueId) {
-        self.original_to_local_valueid.insert(original, local);
+        self.bb_mut()
+            .original_to_local_valueid
+            .insert(original, local);
     }
 
     pub fn use_value(&mut self, original_value_id: ValueId) -> ValueId {
-        let fn_rc = self.get_fn();
-        let fn_borrow = fn_rc.borrow();
-
         if let Some(local_id) = self.get_mapped_value(original_value_id) {
             return local_id;
         }
 
-        if let Some(def_block) = fn_borrow.value_definitions.get(&original_value_id) {
-            if *def_block == self.id {
+        let this_block_id = self.context.block_id;
+        let f = self.get_fn();
+        if let Some(def_block) = f.value_definitions.get(&original_value_id) {
+            if *def_block == this_block_id {
                 return original_value_id;
             }
         }
 
-        if !self.sealed {
+        if !self.bb().sealed {
             // We don't know all predecessors yet, so we MUST create a placeholder parameter.
             // We will fill in the terminator arguments later when we seal.
             let ty = self.get_value_type(&original_value_id);
-            let param_id = self.append_param(ty);
+            let param_id = self.append_param(ty.clone());
 
             self.map_value(original_value_id, param_id);
 
-            self.incomplete_params.push((param_id, original_value_id));
+            self.bb_mut()
+                .incomplete_params
+                .push((param_id, original_value_id));
 
             return param_id;
         }
 
         let ty = self.get_value_type(&original_value_id);
-        let param_id = self.append_param(ty);
+        let param_id = self.append_param(ty.clone());
 
         self.map_value(original_value_id, param_id);
         self.fill_predecessors(original_value_id, param_id);
@@ -333,31 +370,33 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn append_param(&mut self, ty: Type) -> ValueId {
         let id = self.new_value_id(ty);
-        self.params.push(id);
+        self.bb_mut().params.push(id);
         id
     }
 
     pub fn seal(&mut self) {
-        if self.sealed {
+        if self.bb().sealed {
             return;
         }
-        self.sealed = true;
+        self.bb_mut().sealed = true;
 
-        let params = std::mem::take(&mut self.incomplete_params);
+        let params = std::mem::take(&mut self.bb_mut().incomplete_params);
         for (param_id, original_value_id) in params {
             self.fill_predecessors(original_value_id, param_id);
         }
     }
 
     fn fill_predecessors(&mut self, original_value_id: ValueId, _param_id: ValueId) {
-        for pred_id in &self.predecessors {
-            let fn_rc = self.get_fn();
-            let mut fn_borrow = fn_rc.borrow_mut();
+        todo!();
 
-            let pred_bb = fn_borrow.get_bb(pred_id);
-            let val_in_pred = pred_bb.use_value(original_value_id);
+        for pred_id in &self.bb().predecessors {
+            // let f = self.get_fn();
 
-            fn_borrow.append_arg_to_terminator(pred_id, &self.id, val_in_pred);
+            //  How do we get predecessors basicblock builder?
+            // let pred_bb = todo!("Get predecessor's basic block builder");
+            // let val_in_pred = pred_bb.use_value(original_value_id);
+
+            // self.append_arg_to_terminator(pred_id, &self.context.block_id, val_in_pred);
         }
     }
 
@@ -366,7 +405,7 @@ impl<'a> Builder<'a, InBlock> {
         {
             let destination = self.new_value_id(Type::Pointer {
                 constraint: item_type.clone(),
-                narrowed_to: item_type,
+                narrowed_to: item_type.clone(),
             });
             self.push_instruction(Instruction::GetElementPtr {
                 destination,
@@ -389,10 +428,94 @@ impl<'a> Builder<'a, InBlock> {
         destination
     }
 
+    pub fn append_arg_to_terminator(
+        &mut self,
+        from_block: &BasicBlockId,
+        to_block: &BasicBlockId,
+        arg: ValueId,
+    ) {
+        let from_bb = self.get_bb_mut(*from_block);
+        let terminator = from_bb
+            .terminator
+            .as_mut()
+            .expect("INTERNAL COMPILER ERROR: Terminator not found");
+
+        match terminator {
+            Terminator::Jump { target, args } => {
+                if target == to_block {
+                    args.push(arg);
+                } else {
+                    panic!("INTERNAL COMPILER ERROR: Invalid 'to_block' argument")
+                }
+            }
+            Terminator::CondJump {
+                true_target,
+                true_args,
+                false_target,
+                false_args,
+                ..
+            } => {
+                if true_target == to_block {
+                    true_args.push(arg);
+                }
+                if false_target == to_block {
+                    false_args.push(arg);
+                }
+                if true_target != to_block && false_target != to_block {
+                    panic!(
+                        "INTERNAL COMPILER ERROR: Invalid 'to_block' argument, didn't \
+                         match neither 'true_target' nor 'false_target'"
+                    )
+                }
+            }
+            _ => {
+                panic!(
+                        "INTERNAL COMPILER ERROR: Invalid terminator kind for BasicBlockId({}), expected Terminator::Jump or Terminator::CondJump.", from_block.0
+                    )
+            }
+        }
+    }
+
+    fn get_terminator_arg_for_param(
+        &self,
+        from_block: BasicBlockId,
+        to_block: BasicBlockId,
+        param_index: usize,
+    ) -> ValueId {
+        let terminator = self
+            .get_bb(from_block)
+            .terminator
+            .as_ref()
+            .expect("Block must have terminator");
+
+        match terminator {
+            Terminator::Jump { target, args } => {
+                assert_eq!(target, &to_block);
+                args[param_index].clone()
+            }
+            Terminator::CondJump {
+                true_target,
+                true_args,
+                false_target,
+                false_args,
+                ..
+            } => {
+                if true_target == &to_block {
+                    true_args[param_index].clone()
+                } else if false_target == &to_block {
+                    false_args[param_index].clone()
+                } else {
+                    panic!("Inconsistent CFG: target block not found in CondJump")
+                }
+            }
+            _ => panic!("Terminator type does not support block arguments"),
+        }
+    }
+
     /// Records a semantic error and returns a new "poison" Value of type Unknown
     /// The caller is responsible for immediately returning the poison Value
     pub fn report_error_and_get_poison(&mut self, error: SemanticError) -> ValueId {
-        self.get_module().borrow_mut().errors.push(error);
+        self.as_program().errors.push(error);
         self.new_value_id(Type::Unknown)
     }
 }

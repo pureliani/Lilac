@@ -19,6 +19,7 @@ impl Parser {
             span: Span {
                 start: lhs.span.start,
                 end: span_end.end,
+                path: self.path.clone(),
             },
             kind: StmtKind::Assignment { target: lhs, value },
         })

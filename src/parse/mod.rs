@@ -14,24 +14,18 @@ pub struct Parser {
     pub offset: usize,
     pub tokens: Vec<Token>,
     pub checkpoint_offset: usize,
-    pub interner: Arc<SharedStringInterner>,
-    pub decl_id_counter: Arc<AtomicUsize>,
+    pub path: ModulePath,
 }
-
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
 
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
     ast::{
-        stmt::Stmt, type_annotation::TypeAnnotation, DeclarationId, IdentifierNode,
-        Position, Span, StringNode,
+        stmt::Stmt, type_annotation::TypeAnnotation, IdentifierNode, Position, Span,
+        StringNode,
     },
-    compile::interner::SharedStringInterner,
     tokenize::{KeywordKind, NumberKind, PunctuationKind, Token, TokenKind},
+    ModulePath,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -119,17 +113,19 @@ impl Parser {
                 col: 1,
                 byte_offset: 0,
             },
+            path: self.path.clone(),
         };
 
         let last_token_span = self
             .tokens
             .last()
             .map(|t| &t.span)
-            .unwrap_or(&first_token_span);
+            .unwrap_or(&first_token_span)
+            .clone();
 
         ParsingError {
             kind: ParsingErrorKind::UnexpectedEndOfInput,
-            span: *last_token_span,
+            span: last_token_span,
         }
     }
 
@@ -151,6 +147,7 @@ impl Parser {
         Ok(Span {
             start: start.span.start,
             end: end.span.end,
+            path: self.path.clone(),
         })
     }
 
@@ -164,7 +161,7 @@ impl Parser {
 
     pub fn consume_string(&mut self) -> Result<StringNode, ParsingError> {
         if let Some(t) = self.current() {
-            let span = t.span;
+            let span = t.span.clone();
             match &t.kind {
                 TokenKind::String(value) => {
                     let len = value.graphemes(true).count();
@@ -179,7 +176,7 @@ impl Parser {
                 }
                 _ => Err(ParsingError {
                     kind: ParsingErrorKind::ExpectedAStringValue,
-                    span: t.span,
+                    span,
                 }),
             }
         } else {
@@ -199,7 +196,7 @@ impl Parser {
                 }
                 _ => Err(ParsingError {
                     kind: ParsingErrorKind::ExpectedAPunctuationMark(expected),
-                    span: token.span,
+                    span: token.span.clone(),
                 }),
             }
         } else {
@@ -217,7 +214,7 @@ impl Parser {
                 _ => {
                     return Err(ParsingError {
                         kind: ParsingErrorKind::ExpectedANumericValue,
-                        span: token.span,
+                        span: token.span.clone(),
                     })
                 }
             }
@@ -231,7 +228,7 @@ impl Parser {
         expected: KeywordKind,
     ) -> Result<Span, ParsingError> {
         if let Some(token) = self.current() {
-            let span = token.span;
+            let span = token.span.clone();
             match token.kind {
                 TokenKind::Keyword(keyword_kind) if keyword_kind == expected => {
                     self.advance();
@@ -251,13 +248,13 @@ impl Parser {
         if let Some(token) = self.current() {
             match token.kind {
                 TokenKind::Identifier(name) => {
-                    let span = token.span;
+                    let span = token.span.clone();
                     self.advance();
                     Ok(IdentifierNode { name, span })
                 }
                 _ => Err(ParsingError {
                     kind: ParsingErrorKind::ExpectedAnIdentifier,
-                    span: token.span,
+                    span: token.span.clone(),
                 }),
             }
         } else {
@@ -272,7 +269,7 @@ impl Parser {
         }) = self.current()
         {
             Some(DocAnnotation {
-                span: *span,
+                span: span.clone(),
                 message: doc.clone(),
             })
         } else {
@@ -322,21 +319,12 @@ impl Parser {
         Ok(items)
     }
 
-    fn new_declaration_id(&self) -> DeclarationId {
-        DeclarationId(self.decl_id_counter.fetch_add(1, Ordering::SeqCst))
-    }
-
-    pub fn parse(
-        tokens: Vec<Token>,
-        interner: Arc<SharedStringInterner>,
-        decl_id_counter: Arc<AtomicUsize>,
-    ) -> (Vec<Stmt>, Vec<ParsingError>) {
+    pub fn parse(tokens: Vec<Token>, path: ModulePath) -> (Vec<Stmt>, Vec<ParsingError>) {
         let mut state = Parser {
             offset: 0,
             checkpoint_offset: 0,
             tokens,
-            interner,
-            decl_id_counter,
+            path,
         };
 
         let mut statements: Vec<Stmt> = vec![];

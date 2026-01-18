@@ -14,6 +14,7 @@ use crate::{
         type_annotation::TypeAnnotationKind,
         Span,
     },
+    globals::STRING_INTERNER,
     tokenize::{KeywordKind, PunctuationKind, TokenKind},
 };
 
@@ -88,7 +89,7 @@ impl Parser {
     pub fn parse_expr(&mut self, min_prec: u8) -> Result<Expr, ParsingError> {
         let token = self.current().ok_or(self.unexpected_end_of_input())?;
 
-        let token_span = token.span;
+        let token_span = token.span.clone();
 
         let mut lhs = match token.kind {
             TokenKind::Identifier(_) => {
@@ -127,7 +128,7 @@ impl Parser {
                         self.goto_checkpoint();
                         self.parse_codeblock_expr()
                             .map(|codeblock| Expr {
-                                span: codeblock.span,
+                                span: codeblock.span.clone(),
                                 kind: ExprKind::CodeBlock(codeblock),
                             })
                             .map_err(|codeblock_parsing_error| {
@@ -194,14 +195,14 @@ impl Parser {
             TokenKind::String(_) => {
                 let value = self.consume_string()?;
                 Expr {
-                    span: value.span,
+                    span: value.span.clone(),
                     kind: ExprKind::String(value),
                 }
             }
             _ => {
                 return Err(ParsingError {
                     kind: ParsingErrorKind::ExpectedAnExpressionButFound(token.clone()),
-                    span: token.span,
+                    span: token_span,
                 })
             }
         };
@@ -231,7 +232,7 @@ impl Parser {
                         let start_offset = self.offset;
                         self.consume_punctuation(PunctuationKind::DoubleCol)?;
                         let field = self.consume_identifier()?;
-                        let field_name = self.interner.resolve(field.name);
+                        let field_name = STRING_INTERNER.resolve(field.name);
 
                         let new_lhs = if field_name == "is" {
                             // lhs::is(#A | #B)
@@ -303,7 +304,7 @@ impl Parser {
                     }
                     _ => {
                         return Err(ParsingError {
-                            span: op.span,
+                            span: op.span.clone(),
                             kind: ParsingErrorKind::InvalidSuffixOperator(op.clone()),
                         })
                     }
@@ -403,6 +404,7 @@ impl Parser {
                     span: Span {
                         start: start_pos,
                         end: end_pos,
+                        path: self.path.clone(),
                     },
                 };
 

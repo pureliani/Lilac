@@ -1,9 +1,10 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::collections::HashSet;
 
 use crate::{
     ast::{IdentifierNode, Span},
     compile::interner::StringId,
     hir::types::checked_type::Type,
+    ModulePath,
 };
 
 #[derive(Debug, Clone)]
@@ -15,7 +16,7 @@ pub enum SemanticErrorKind {
     DuplicateUnionVariant(IdentifierNode),
     CannotIndex(Type),
     FromStatementMustBeDeclaredAtTopLevel,
-    ModuleNotFound(PathBuf),
+    ModuleNotFound(ModulePath),
     CannotDeclareGlobalVariable,
     DuplicateStructFieldInitializer(IdentifierNode),
     UnknownStructFieldInitializer(IdentifierNode),
@@ -70,7 +71,7 @@ pub enum SemanticErrorKind {
         target_type: Type,
     },
     SymbolNotExported {
-        module_path: PathBuf,
+        module_path: ModulePath,
         symbol: IdentifierNode,
     },
     ClosuresNotSupportedYet,

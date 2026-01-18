@@ -1,7 +1,8 @@
 use lazy_static::lazy_static;
 
+use crate::ast::DeclarationId;
 use crate::compile::interner::{SharedStringInterner, SharedTagInterner, StringId};
-use crate::hir::builders::{BasicBlockId, ValueId};
+use crate::hir::builders::{BasicBlockId, ConstantId, ValueId};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct CommonIdentifiers {
@@ -39,15 +40,15 @@ pub fn next_block_id() -> BasicBlockId {
     BasicBlockId(BLOCK_COUNTER.fetch_add(1, Ordering::SeqCst))
 }
 
-pub fn next_constant_id() -> BasicBlockId {
-    BasicBlockId(CONSTANT_COUNTER.fetch_add(1, Ordering::SeqCst))
+pub fn next_constant_id() -> ConstantId {
+    ConstantId(CONSTANT_COUNTER.fetch_add(1, Ordering::SeqCst))
 }
 
-pub fn next_declaration_id() -> BasicBlockId {
-    BasicBlockId(DECLARATION_COUNTER.fetch_add(1, Ordering::SeqCst))
+pub fn next_declaration_id() -> DeclarationId {
+    DeclarationId(DECLARATION_COUNTER.fetch_add(1, Ordering::SeqCst))
 }
 
-pub fn reset_counters() {
+pub fn reset_globals() {
     VALUE_COUNTER.store(0, Ordering::SeqCst);
     BLOCK_COUNTER.store(0, Ordering::SeqCst);
     CONSTANT_COUNTER.store(0, Ordering::SeqCst);

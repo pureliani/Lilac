@@ -1,7 +1,7 @@
 use ariadne::{Color, Label, Report};
 
 use crate::{
-    compile::{CompilationError, Compiler},
+    compile::{Compiler, CompilerErrorKind},
     hir::{
         errors::SemanticErrorKind,
         utils::type_to_string::{token_kind_to_string, type_to_string},
@@ -16,7 +16,7 @@ impl Compiler {
 
         for error in &self.errors {
             match error {
-                CompilationError::Tokenization { path, errors } => {
+                CompilerErrorKind::Tokenization { path, errors } => {
                     errors.iter().for_each(|e| {
                         let span = e.span.start.byte_offset..e.span.end.byte_offset;
                         let report = Report::build(
@@ -78,7 +78,7 @@ impl Compiler {
                         let _ = final_report.finish().print(&mut *cache);
                     });
                 }
-                CompilationError::Parsing { path, errors } => {
+                CompilerErrorKind::Parsing { path, errors } => {
                     errors.iter().for_each(|e| {
                         let span = e.span.start.byte_offset..e.span.end.byte_offset;
                         let report = Report::build(
@@ -224,7 +224,7 @@ impl Compiler {
                         let _ = final_report.finish().print(&mut *cache);
                     });
                 }
-                CompilationError::Semantic { path, errors } => {
+                CompilerErrorKind::Semantic { path, errors } => {
                     errors.iter().for_each(|e| {
                         let span = e.span.start.byte_offset..e.span.end.byte_offset;
                         let report = Report::build(
@@ -561,7 +561,7 @@ impl Compiler {
                                 .with_message("Module not found")
                                 .with_label(label.with_message(format!(
                                     "Could not find module at path \"{}\"",
-                                    path_buf.display()
+                                    path_buf.0.display()
                                 ))),
                             SemanticErrorKind::CannotDeclareGlobalVariable => report
                                 .with_message("Global variables not allowed")
@@ -609,7 +609,7 @@ impl Compiler {
                                         "Symbol \"{}\" is not exported from module \
                                          \"{}\"",
                                         name,
-                                        module_path.display()
+                                        module_path.0.display()
                                     )),
                                 )
                             }
@@ -633,14 +633,14 @@ impl Compiler {
                         let _ = final_report.finish().print(&mut *cache);
                     });
                 }
-                CompilationError::CouldNotReadFile { path, error } => {
+                CompilerErrorKind::CouldNotReadFile { path, error } => {
                     println!(
                         "Could not read file at path \"{}\", error {}",
                         path.display(),
                         error
                     )
                 }
-                CompilationError::ModuleNotFound {
+                CompilerErrorKind::ModuleNotFound {
                     importing_module,
                     target_path,
                     error,

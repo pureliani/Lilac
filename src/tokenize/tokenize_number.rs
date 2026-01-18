@@ -114,17 +114,19 @@ fn parse_number(full_number_str: &str) -> Result<NumberKind, TokenizationErrorKi
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use crate::{
         ast::{Position, Span},
-        compile::interner::SharedStringInterner,
+        globals::reset_globals,
         tokenize::{NumberKind, Token, TokenKind, Tokenizer},
+        ModulePath,
     };
     use pretty_assertions::assert_eq;
 
     #[test]
     fn tokenizes_numbers_with_suffixes() {
+        reset_globals();
+        let path = ModulePath::default();
+
         let test_cases = vec![
             (
                 "1.",
@@ -140,6 +142,7 @@ mod tests {
                         col: 3,
                         byte_offset: 2,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -156,6 +159,7 @@ mod tests {
                         col: 4,
                         byte_offset: 3,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -172,6 +176,7 @@ mod tests {
                         col: 2,
                         byte_offset: 1,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -188,6 +193,7 @@ mod tests {
                         col: 7,
                         byte_offset: 6,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -204,6 +210,7 @@ mod tests {
                         col: 7,
                         byte_offset: 6,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -220,6 +227,7 @@ mod tests {
                         col: 5,
                         byte_offset: 4,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -236,6 +244,7 @@ mod tests {
                         col: 5,
                         byte_offset: 4,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -252,6 +261,7 @@ mod tests {
                         col: 4,
                         byte_offset: 3,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -268,6 +278,7 @@ mod tests {
                         col: 5,
                         byte_offset: 4,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -284,6 +295,7 @@ mod tests {
                         col: 5,
                         byte_offset: 4,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -300,6 +312,7 @@ mod tests {
                         col: 5,
                         byte_offset: 4,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -316,6 +329,7 @@ mod tests {
                         col: 4,
                         byte_offset: 3,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -332,6 +346,7 @@ mod tests {
                         col: 5,
                         byte_offset: 4,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -348,6 +363,7 @@ mod tests {
                         col: 5,
                         byte_offset: 4,
                     },
+                    path: path.clone(),
                 },
             ),
             (
@@ -364,13 +380,13 @@ mod tests {
                         col: 5,
                         byte_offset: 4,
                     },
+                    path: path.clone(),
                 },
             ),
         ];
 
         for (input, expected_kind, span) in test_cases {
-            let interner = Arc::new(SharedStringInterner::default());
-            let (tokens, errors) = Tokenizer::tokenize(input, interner);
+            let (tokens, errors) = Tokenizer::tokenize(input, path.clone());
 
             assert_eq!(errors, vec![]);
 
