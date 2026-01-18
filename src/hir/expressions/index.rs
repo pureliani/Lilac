@@ -85,7 +85,7 @@ impl FunctionBuilder {
         };
 
         let len_field_id = IdentifierNode {
-            name: ctx.program_builder.common_identifiers.len,
+            name: COMMON_IDENTIFIERS.len,
             span: left_span,
         };
 
@@ -127,7 +127,7 @@ impl FunctionBuilder {
         self.use_basic_block(success_block);
 
         let ptr_field_id = IdentifierNode {
-            name: ctx.program_builder.common_identifiers.ptr,
+            name: COMMON_IDENTIFIERS.ptr,
             span: left_span,
         };
         let internal_ptr_ptr = self
@@ -144,7 +144,7 @@ impl FunctionBuilder {
         let some_ptr = self.emit_stack_alloc(ctx, some_struct_type.clone(), 1);
 
         let id_field = IdentifierNode {
-            name: ctx.program_builder.common_identifiers.id,
+            name: COMMON_IDENTIFIERS.id,
             span: left_span,
         };
         let some_id_ptr = self.emit_get_field_ptr(ctx, some_ptr, id_field).unwrap();
@@ -156,7 +156,7 @@ impl FunctionBuilder {
         );
 
         let val_field = IdentifierNode {
-            name: ctx.program_builder.common_identifiers.value,
+            name: COMMON_IDENTIFIERS.value,
             span: left_span,
         };
         let some_val_ptr = self.emit_get_field_ptr(ctx, some_ptr, val_field).unwrap();

@@ -1,9 +1,5 @@
 use std::{
-    borrow::Borrow,
-    collections::HashMap,
-    hash::Hash,
-    marker::PhantomData,
-    sync::{Arc, RwLock},
+    borrow::Borrow, collections::HashMap, hash::Hash, marker::PhantomData, sync::RwLock,
 };
 
 pub trait Id: Copy + Eq + Hash {
@@ -114,6 +110,11 @@ where
             )
         })
     }
+
+    pub fn clear(&mut self) {
+        self.forward.clear();
+        self.backward.clear();
+    }
 }
 
 pub struct SharedInterner<T, I>
@@ -164,13 +165,12 @@ where
         let reader = self.interner.read().unwrap();
         reader.resolve(key).to_owned()
     }
+
+    pub fn clear(&self) {
+        let mut writer = self.interner.write().unwrap();
+        writer.clear();
+    }
 }
 
 pub type SharedStringInterner = SharedInterner<String, StringId>;
 pub type SharedTagInterner = SharedInterner<StringId, TagId>;
-
-#[derive(Clone)]
-pub struct Interners {
-    pub string_interner: Arc<SharedStringInterner>,
-    pub tag_interner: Arc<SharedTagInterner>,
-}

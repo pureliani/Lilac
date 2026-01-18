@@ -62,7 +62,7 @@ impl FunctionBuilder {
 
         self.use_basic_block(body_block);
 
-        ctx.module_builder.enter_scope(ScopeKind::While {
+        ctx.module_builder.enter_scope(ScopeKind::WhileBody {
             break_target: exit_block,
             continue_target: header_block,
         });

@@ -4,6 +4,7 @@ use crate::{
     ast::{DeclarationId, IdentifierNode, Span},
     compile::interner::TagId,
     hir::{
+        builders::Function,
         cfg::{ControlFlowGraph, ValueId},
         types::checked_type::Type,
     },
@@ -67,16 +68,6 @@ impl Hash for CheckedTypeAliasDecl {
 }
 
 #[derive(Clone, Debug)]
-pub struct CheckedFnDecl {
-    pub id: DeclarationId,
-    pub identifier: IdentifierNode,
-    pub params: Vec<CheckedParam>,
-    pub return_type: Type,
-    pub body: Option<ControlFlowGraph>,
-    pub is_exported: bool,
-}
-
-#[derive(Clone, Debug)]
 pub struct CheckedVarDecl {
     pub id: DeclarationId,
     /// ptr is a ValueId which holds a pointer to the actual data
@@ -89,7 +80,7 @@ pub struct CheckedVarDecl {
 #[derive(Clone, Debug)]
 pub enum CheckedDeclaration {
     TypeAlias(CheckedTypeAliasDecl),
-    Function(CheckedFnDecl),
+    Function(Function),
     Var(CheckedVarDecl),
     // This is for detecting the Temporal Dead Zone
     UninitializedVar {

@@ -1,100 +1,88 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    rc::{Rc, Weak},
-};
-
 use crate::hir::{
-    cfg::{instructions::Instruction, Place, Projection, Terminator, ValueId},
-    counters::next_value_id,
+    builders::{BasicBlock, BasicBlockId, Builder, Function, InBlock, Module, ValueId},
     errors::SemanticError,
-    types::checked_type::{StructKind, Type},
-    utils::try_unify_types::narrow_type_at_path,
-    FunctionBuilder, ModuleBuilder, ProgramBuilder,
+    globals::next_value_id,
+    instructions::{Instruction, Terminator},
+    types::{checked_declaration::CheckedDeclaration, checked_type::Type},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct BasicBlockId(pub usize);
-
-#[derive(Clone, Debug)]
-pub struct BasicBlock {
-    pub parent_fn: Weak<RefCell<FunctionBuilder>>,
-
-    pub id: BasicBlockId,
-    pub instructions: Vec<Instruction>,
-    pub terminator: Option<Terminator>,
-    pub predecessors: HashSet<BasicBlockId>,
-    pub params: Vec<ValueId>,
-
-    // list of (placeholder valueid, original valueid)
-    pub incomplete_params: Vec<(ValueId, ValueId)>,
-
-    // Map original valueid -> block-local valueid
-    pub original_to_local_valueid: HashMap<ValueId, ValueId>,
-
-    pub sealed: bool,
-}
-
-impl BasicBlock {
-    pub fn get_fn(&self) -> Rc<RefCell<FunctionBuilder>> {
-        self.parent_fn
-            .upgrade()
-            .expect("INTERNAL COMPILER ERROR: Parent FunctionBuilder was dropped")
+impl<'a> Builder<'a, InBlock> {
+    pub fn bb(&mut self) -> &mut BasicBlock {
+        self.get_bb(self.context.block_id)
     }
 
-    pub fn get_module(&self) -> Rc<RefCell<ModuleBuilder>> {
-        let f = self.get_fn();
-        let weak_parent = f.borrow().parent_module.clone();
+    pub fn get_bb(&mut self, block_id: BasicBlockId) -> &mut BasicBlock {
+        let func_id = self.context.func_id;
 
-        weak_parent
-            .upgrade()
-            .expect("INTERNAL COMPILER ERROR: Parent ModuleBuilder was dropped")
+        let decl = self
+            .program
+            .declarations
+            .get_mut(&func_id)
+            .expect("INTERNAL COMPILER ERROR: Function not found");
+
+        let func = match decl {
+            CheckedDeclaration::Function(f) => f,
+            _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
+        };
+
+        func.blocks
+            .get_mut(&block_id)
+            .expect("INTERNAL COMPILER ERROR: Block not found in function")
     }
 
-    pub fn get_program(&self) -> Rc<RefCell<ProgramBuilder>> {
-        let m = self.get_module();
-        let weak_program = m.borrow().program_builder.clone();
+    pub fn get_fn(&mut self) -> &mut Function {
+        let func_id = self.context.func_id;
 
-        weak_program
-            .upgrade()
-            .expect("INTERNAL COMPILER ERROR: Root ProgramBuilder was dropped")
+        match self.program.declarations.get_mut(&func_id).unwrap() {
+            CheckedDeclaration::Function(f) => f,
+            _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
+        }
+    }
+
+    pub fn get_module(&mut self) -> &mut Module {
+        self.program
+            .modules
+            .get_mut(&self.context.path)
+            .expect("INTERNAL COMPILER ERROR: Module not found")
     }
 
     fn push_instruction(&mut self, instruction: Instruction) {
-        if self.terminator.is_some() {
+        let bb = self.bb();
+        if bb.terminator.is_some() {
             panic!(
                 "INTERNAL COMPILER ERROR: Attempted to add instruction to a basic block \
                  (ID: {}) that has already been terminated",
-                self.id.0
+                bb.id.0
             );
         }
 
-        self.instructions.push(instruction);
+        bb.instructions.push(instruction);
     }
 
     fn check_no_terminator(&mut self) {
-        if self.terminator.is_some() {
+        let bb = self.bb();
+
+        if bb.terminator.is_some() {
             panic!(
                 "INTERNAL COMPILER ERROR: Tried to re-set terminator for basic block (ID: {})",
-                self.id.0
+                bb.id.0
             );
         }
     }
 
-    fn get_value_type(&mut self, id: &ValueId) -> Type {
-        self.get_program().borrow().get_value_type(id)
+    fn get_value_type(&mut self, id: &ValueId) -> &Type {
+        self.program.value_types.get(id)
+        .unwrap_or_else(|| panic!("INTERNAL COMPILER ERROR: Expected ValueId({}) to have an associated type", id.0))
     }
 
     pub fn new_value_id(&mut self, ty: Type) -> ValueId {
         let value_id = next_value_id();
-        self.get_program()
-            .borrow_mut()
-            .value_types
-            .insert(value_id, ty);
+        let bb = self.bb();
+
         self.get_fn()
-            .borrow_mut()
             .value_definitions
-            .insert(value_id, self.id);
+            .insert(value_id, self.context.block_id);
+        self.program.value_types.insert(value_id, ty);
 
         value_id
     }
@@ -137,11 +125,13 @@ impl BasicBlock {
 
     pub fn jmp(&mut self, target: BasicBlockId, args: Vec<ValueId>) {
         self.check_no_terminator();
-        let fn_rc = self.get_fn();
-        let mut fn_borrow = fn_rc.borrow_mut();
-        fn_borrow.get_bb(&target).predecessors.insert(self.id);
+        let mut f = self.get_fn();
 
-        self.terminator = Some(Terminator::Jump { target, args });
+        self.get_bb(target)
+            .predecessors
+            .insert(self.context.block_id);
+
+        self.bb().terminator = Some(Terminator::Jump { target, args });
     }
 
     pub fn cond_jmp(
@@ -154,12 +144,14 @@ impl BasicBlock {
     ) {
         self.check_no_terminator();
 
-        let fn_rc = self.get_fn();
-        let mut fn_borrow = fn_rc.borrow_mut();
-        fn_borrow.get_bb(&true_target).predecessors.insert(self.id);
-        fn_borrow.get_bb(&false_target).predecessors.insert(self.id);
+        self.get_bb(true_target)
+            .predecessors
+            .insert(self.context.block_id);
+        self.get_bb(false_target)
+            .predecessors
+            .insert(self.context.block_id);
 
-        self.terminator = Some(Terminator::CondJump {
+        self.bb().terminator = Some(Terminator::CondJump {
             condition,
             true_target,
             true_args,
@@ -170,12 +162,12 @@ impl BasicBlock {
 
     pub fn ret(&mut self, value: Option<ValueId>) {
         self.check_no_terminator();
-        self.terminator = Some(Terminator::Return { value })
+        self.bb().terminator = Some(Terminator::Return { value })
     }
 
     pub fn unreachable(&mut self) {
         self.check_no_terminator();
-        self.terminator = Some(Terminator::Unreachable)
+        self.bb().terminator = Some(Terminator::Unreachable)
     }
 
     pub fn emit_load(&mut self, ptr: ValueId) -> ValueId {
@@ -184,7 +176,7 @@ impl BasicBlock {
             Type::Pointer { narrowed_to, .. } => *narrowed_to,
             _ => panic!("INTERNAL ERROR: Load expected pointer"),
         };
-        let destination = self.new_value_id(dest_ty);
+        let destination = self.new_value_id(*dest_ty);
         self.push_instruction(Instruction::Load { destination, ptr });
         destination
     }

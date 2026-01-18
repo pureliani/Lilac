@@ -1,9 +1,9 @@
 use crate::{
     compile::interner::StringId,
+    globals::COMMON_IDENTIFIERS,
     hir::{
         types::checked_declaration::{CheckedParam, FnType, TagType},
         utils::layout::get_layout_of,
-        ProgramBuilder,
     },
 };
 use std::hash::Hash;
@@ -28,7 +28,7 @@ pub enum StructKind {
 }
 
 impl StructKind {
-    pub fn fields(&self, ctx: &ProgramBuilder) -> Vec<(StringId, Type)> {
+    pub fn fields(&self) -> Vec<(StringId, Type)> {
         match self {
             StructKind::UserDefined(params) => params
                 .iter()
@@ -36,10 +36,10 @@ impl StructKind {
                 .collect(),
 
             StructKind::List(elem_ty) => vec![
-                (ctx.common_identifiers.capacity, Type::USize),
-                (ctx.common_identifiers.len, Type::USize),
+                (COMMON_IDENTIFIERS.capacity, Type::USize),
+                (COMMON_IDENTIFIERS.len, Type::USize),
                 (
-                    ctx.common_identifiers.ptr,
+                    COMMON_IDENTIFIERS.ptr,
                     Type::Pointer {
                         constraint: elem_ty.clone(),
                         narrowed_to: elem_ty.clone(),
@@ -48,10 +48,10 @@ impl StructKind {
             ],
 
             StructKind::String => vec![
-                (ctx.common_identifiers.is_heap_allocated, Type::Bool),
-                (ctx.common_identifiers.len, Type::USize),
+                (COMMON_IDENTIFIERS.is_heap_allocated, Type::Bool),
+                (COMMON_IDENTIFIERS.len, Type::USize),
                 (
-                    ctx.common_identifiers.ptr,
+                    COMMON_IDENTIFIERS.ptr,
                     Type::Pointer {
                         constraint: Box::new(Type::U8),
                         narrowed_to: Box::new(Type::U8),
@@ -60,9 +60,9 @@ impl StructKind {
             ],
 
             StructKind::Tag(tag) => {
-                let mut fields = vec![(ctx.common_identifiers.id, Type::U16)];
+                let mut fields = vec![(COMMON_IDENTIFIERS.id, Type::U16)];
                 if let Some(val) = &tag.value_type {
-                    fields.push((ctx.common_identifiers.value, *val.clone()));
+                    fields.push((COMMON_IDENTIFIERS.value, *val.clone()));
                 }
                 fields
             }
@@ -73,16 +73,16 @@ impl StructKind {
 
                 for tag_type in variants {
                     if let Some(val_ty) = &tag_type.value_type {
-                        let layout = get_layout_of(val_ty, ctx);
+                        let layout = get_layout_of(val_ty);
                         max_size = std::cmp::max(max_size, layout.size);
                         max_align = std::cmp::max(max_align, layout.alignment);
                     }
                 }
 
                 vec![
-                    (ctx.common_identifiers.id, Type::U16),
+                    (COMMON_IDENTIFIERS.id, Type::U16),
                     (
-                        ctx.common_identifiers.value,
+                        COMMON_IDENTIFIERS.value,
                         Type::Buffer {
                             size: max_size,
                             alignment: max_align,
@@ -94,12 +94,8 @@ impl StructKind {
     }
 
     /// Maps a Field Name -> (Index, Type).
-    pub fn get_field(
-        &self,
-        ctx: &ProgramBuilder,
-        name: StringId,
-    ) -> Option<(usize, Type)> {
-        self.fields(ctx)
+    pub fn get_field(&self, name: StringId) -> Option<(usize, Type)> {
+        self.fields()
             .into_iter()
             .enumerate()
             .find(|(_, (field_name, _))| *field_name == name)

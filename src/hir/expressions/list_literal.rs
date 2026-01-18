@@ -16,9 +16,9 @@ impl FunctionBuilder {
         items: Vec<Expr>,
         expr_span: Span,
     ) -> Value {
-        let identifier_capacity = ctx.program_builder.common_identifiers.capacity;
-        let identifier_ptr = ctx.program_builder.common_identifiers.ptr;
-        let identifier_len = ctx.program_builder.common_identifiers.len;
+        let identifier_capacity = COMMON_IDENTIFIERS.capacity;
+        let identifier_ptr = COMMON_IDENTIFIERS.ptr;
+        let identifier_len = COMMON_IDENTIFIERS.len;
 
         let mut item_values = Vec::with_capacity(items.len());
         let mut type_entries = Vec::with_capacity(items.len());

@@ -1,6 +1,6 @@
 use crate::hir::{
     cfg::{
-        basic_blocks::{BasicBlock, BasicBlockId},
+        basic_block::{BasicBlock, BasicBlockId},
         Terminator, ValueId,
     },
     FunctionBuilder,

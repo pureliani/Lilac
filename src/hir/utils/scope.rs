@@ -1,23 +1,19 @@
 use std::{
+    cell::RefCell,
     collections::{hash_map::Entry, HashMap},
-    sync::Arc,
+    rc::{Rc, Weak},
 };
 
 use crate::{
-    ast::{DeclarationId, IdentifierNode},
-    compile::interner::{SharedStringInterner, StringId},
-    hir::{
-        cfg::basic_blocks::BasicBlockId,
-        errors::{SemanticError, SemanticErrorKind},
-        types::checked_declaration::CheckedDeclaration,
-        ModuleBuilder, ProgramBuilder,
-    },
+    ast::{DeclarationId, Position, Span},
+    compile::interner::StringId,
+    hir::cfg::basic_block::{BasicBlockId, LoopJumpTargets},
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ScopeKind {
-    Function,
-    While {
+    FunctionBody,
+    WhileBody {
         break_target: BasicBlockId,
         continue_target: BasicBlockId,
     },
@@ -27,170 +23,134 @@ pub enum ScopeKind {
 }
 
 #[derive(Debug)]
-pub struct Scope {
-    pub kind: ScopeKind,
+struct ScopeData {
+    kind: ScopeKind,
     symbols: HashMap<StringId, DeclarationId>,
+    parent: Option<Weak<RefCell<ScopeData>>>,
+    children: Vec<Scope>,
+    span: Span,
 }
+
+#[derive(Debug, Clone)]
+pub struct Scope(Rc<RefCell<ScopeData>>);
 
 impl Scope {
-    pub fn new(kind: ScopeKind) -> Scope {
-        Scope {
-            symbols: HashMap::new(),
+    pub fn new_root(kind: ScopeKind, span: Span) -> Self {
+        Self(Rc::new(RefCell::new(ScopeData {
             kind,
+            symbols: HashMap::new(),
+            parent: None,
+            children: Vec::new(),
+            span,
+        })))
+    }
+
+    pub fn enter(&self, kind: ScopeKind, start_position: Position) -> Scope {
+        let child = Scope(Rc::new(RefCell::new(ScopeData {
+            kind,
+            symbols: HashMap::new(),
+            parent: Some(Rc::downgrade(&self.0)),
+            span: Span {
+                start: start_position,
+                end: Position::default(),
+            },
+            children: Vec::new(),
+        })));
+
+        self.0.borrow_mut().children.push(child.clone());
+
+        child
+    }
+
+    pub fn exit(&self, exit_position: Position) -> Option<Scope> {
+        {
+            let mut data = self.0.borrow_mut();
+            data.span.end = exit_position;
         }
-    }
-}
-
-impl ModuleBuilder {
-    pub fn enter_scope(&mut self, kind: ScopeKind) {
-        self.scopes.push(Scope::new(kind));
+        self.parent()
     }
 
-    pub fn exit_scope(&mut self) -> Scope {
-        self.scopes
-            .pop()
-            .expect("INTERNAL COMPILER ERROR: Expected to be able to pop the last scope")
+    pub fn parent(&self) -> Option<Scope> {
+        self.0.borrow().parent.as_ref()?.upgrade().map(Scope)
     }
 
-    pub fn last_scope(&self) -> &Scope {
-        self.scopes
-            .last()
-            .expect("INTERNAL COMPILER ERROR: Expected to find the last scope")
+    pub fn lookup(&self, name: StringId) -> Option<DeclarationId> {
+        if let Some(id) = self.0.borrow().symbols.get(&name) {
+            return Some(*id);
+        }
+
+        self.parent()?.lookup(name)
     }
 
-    pub fn last_scope_mut(&mut self) -> &mut Scope {
-        self.scopes
-            .last_mut()
-            .expect("INTERNAL COMPILER ERROR: Expected to find the last mutable scope")
-    }
-
-    pub fn scope_insert(
-        &mut self,
-        program_builder: &mut ProgramBuilder,
-        id: IdentifierNode,
-        declaration: CheckedDeclaration,
-    ) {
-        let decl_id = match &declaration {
-            CheckedDeclaration::Var(decl) => decl.id,
-            CheckedDeclaration::TypeAlias(decl) => decl.id,
-            CheckedDeclaration::Function(decl) => decl.id,
-            CheckedDeclaration::UninitializedVar { id, .. } => *id,
-        };
-
-        program_builder.declarations.insert(decl_id, declaration);
-
-        let last_scope = self.last_scope_mut();
-        if let Entry::Vacant(e) = last_scope.symbols.entry(id.name) {
-            e.insert(decl_id);
+    pub fn map_name_to_decl(&self, name: StringId, id: DeclarationId) {
+        let mut data = self.0.borrow_mut();
+        if let Entry::Vacant(e) = data.symbols.entry(name) {
+            e.insert(id);
         } else {
-            self.errors.push(SemanticError {
-                kind: SemanticErrorKind::DuplicateIdentifier(id),
-                span: id.span,
-            });
+            panic!("INTERNAL COMPILER ERROR: tried to re-map identifier to declaration, this should have been avoided at declaration site");
         }
     }
 
-    pub fn scope_replace(
-        &mut self,
-        program_builder: &mut ProgramBuilder,
-        id: IdentifierNode,
-        new_declaration: CheckedDeclaration,
-        string_interner: Arc<SharedStringInterner>,
-    ) {
-        let last_scope = self.last_scope_mut();
+    pub fn within_function_body(&self) -> bool {
+        let kind = self.0.borrow().kind;
 
-        let existing_decl_id = last_scope.symbols.get(&id.name).unwrap_or_else(|| {
-            let name = string_interner.resolve(id.name);
-            panic!(
-                "INTERNAL COMPILER ERROR: Expected to find uninitialized variable '{}' \
-                 in scope for replacement",
-                name
-            )
-        });
-
-        let existing_decl = program_builder.get_declaration_mut(*existing_decl_id);
-        if !matches!(
-            existing_decl,
-            &mut CheckedDeclaration::UninitializedVar { .. }
-        ) {
-            let name = string_interner.resolve(id.name);
-            panic!(
-                "INTERNAL COMPILER ERROR: Attempted to replace a variable '{}' that was \
-                 not in an uninitialized state",
-                name
-            );
+        if let ScopeKind::FunctionBody = kind {
+            return true;
         }
 
-        if !matches!(&new_declaration, &CheckedDeclaration::Var { .. }) {
-            let name = string_interner.resolve(id.name);
-            panic!(
-                "INTERNAL COMPILER ERROR: Attempted to replace an uninitialized \
-                 variable '{}' with something other than initialized variable",
-                name
-            );
-        }
-
-        *existing_decl = new_declaration;
-    }
-
-    pub fn scope_lookup(&self, key: StringId) -> Option<DeclarationId> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(id) = scope.symbols.get(&key) {
-                return Some(*id);
-            }
-        }
-        None
-    }
-
-    pub fn within_function_scope(&self) -> bool {
-        for scope in self.scopes.iter().rev() {
-            if matches!(scope.kind, ScopeKind::Function) {
-                return true;
-            }
+        if matches!(kind, ScopeKind::CodeBlock | ScopeKind::WhileBody { .. }) {
+            return self
+                .parent()
+                .map_or(false, |parent| parent.within_function_body());
         }
 
         false
     }
 
-    pub fn within_loop_scope(&self) -> Option<(BasicBlockId, BasicBlockId)> {
-        for scope in self.scopes.iter().rev() {
-            match scope.kind {
-                ScopeKind::CodeBlock => {}
-                ScopeKind::While {
-                    continue_target,
-                    break_target,
-                } => return Some((continue_target, break_target)),
-                _ => return None,
-            }
+    pub fn within_loop_body(&self) -> Option<LoopJumpTargets> {
+        let kind = self.0.borrow().kind;
+        if let ScopeKind::WhileBody {
+            break_target,
+            continue_target,
+        } = kind
+        {
+            return Some(LoopJumpTargets {
+                on_break: break_target,
+                on_continue: continue_target,
+            });
+        }
+
+        if let ScopeKind::CodeBlock = kind {
+            return self
+                .parent()
+                .map_or(None, |parent| parent.within_loop_body());
         }
 
         None
     }
 
     pub fn is_file_scope(&self) -> bool {
-        matches!(self.last_scope().kind, ScopeKind::File)
+        matches!(self.kind(), ScopeKind::File)
     }
 
-    pub fn scope_map(&mut self, id: IdentifierNode, decl_id: DeclarationId) {
-        let last_scope = self.last_scope_mut();
-
-        if let Entry::Vacant(e) = last_scope.symbols.entry(id.name) {
-            e.insert(decl_id);
-        } else {
-            self.errors.push(SemanticError {
-                kind: SemanticErrorKind::DuplicateIdentifier(id),
-                span: id.span,
-            });
-        }
+    pub fn kind(&self) -> ScopeKind {
+        self.0.borrow().kind
     }
 
-    pub fn resolve_export(&self, name: StringId) -> Option<DeclarationId> {
-        if !self.module.exports.contains(&name) {
+    pub fn find_innermost_at(&self, byte_offset: usize) -> Option<Scope> {
+        let data = self.0.borrow();
+
+        if !data.span.contains(byte_offset) {
             return None;
         }
 
-        self.scopes
-            .first()
-            .and_then(|s| s.symbols.get(&name).copied())
+        for child in &data.children {
+            if let Some(inner) = child.find_innermost_at(byte_offset) {
+                return Some(inner);
+            }
+        }
+
+        drop(data);
+        Some(self.clone())
     }
 }

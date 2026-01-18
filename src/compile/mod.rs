@@ -122,7 +122,6 @@ impl Compiler {
         let mut program_builder = ProgramBuilder::new(
             self.interners.string_interner.clone(),
             self.interners.tag_interner.clone(),
-            self.decl_id_counter.clone(),
         );
 
         program_builder.build(modules_to_compile);

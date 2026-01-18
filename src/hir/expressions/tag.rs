@@ -19,8 +19,8 @@ impl FunctionBuilder {
         value: Option<Box<Expr>>,
         span: Span,
     ) -> Value {
-        let identifier_value = ctx.program_builder.common_identifiers.value;
-        let identifier_id = ctx.program_builder.common_identifiers.id;
+        let identifier_value = COMMON_IDENTIFIERS.value;
+        let identifier_id = COMMON_IDENTIFIERS.id;
 
         let tag_id = ctx.program_builder.tag_interner.intern(&name.name);
 

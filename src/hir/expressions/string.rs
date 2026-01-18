@@ -30,7 +30,7 @@ impl FunctionBuilder {
             .expect("INTERNAL COMPILER ERROR: Failed to allocate string header");
 
         let is_heap_id = IdentifierNode {
-            name: ctx.program_builder.common_identifiers.is_heap_allocated,
+            name: COMMON_IDENTIFIERS.is_heap_allocated,
             span: node.span,
         };
         let is_heap_ptr = self
@@ -40,7 +40,7 @@ impl FunctionBuilder {
         self.emit_store(ctx, is_heap_ptr, Value::BoolLiteral(false), Span::default());
 
         let len_id = IdentifierNode {
-            name: ctx.program_builder.common_identifiers.len,
+            name: COMMON_IDENTIFIERS.len,
             span: node.span,
         };
         let len_ptr = self.emit_get_field_ptr(ctx, struct_ptr, len_id).unwrap();
@@ -52,7 +52,7 @@ impl FunctionBuilder {
         );
 
         let ptr_id = IdentifierNode {
-            name: ctx.program_builder.common_identifiers.ptr,
+            name: COMMON_IDENTIFIERS.ptr,
             span: node.span,
         };
         let data_ptr_field = self.emit_get_field_ptr(ctx, struct_ptr, ptr_id).unwrap();

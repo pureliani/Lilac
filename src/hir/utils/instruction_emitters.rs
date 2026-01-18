@@ -7,8 +7,8 @@ use crate::{
             BasicBlock, BinaryOperationKind, ConstantId, Instruction, UnaryOperationKind,
             Value, ValueId,
         },
-        counters::next_value_id,
         errors::{SemanticError, SemanticErrorKind},
+        globals::next_value_id,
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::{
             check_is_assignable::check_is_assignable,
@@ -19,8 +19,6 @@ use crate::{
 };
 
 impl FunctionBuilder {
-    /// Returns ValueId which holds pointer: Type::Pointer { kind: PointerKind::Raw, to: Box<Type> }
-
     pub fn emit_store(
         &mut self,
         ctx: &mut HIRContext,

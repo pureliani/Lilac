@@ -1,19 +1,9 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, rc::Rc};
 
-use crate::hir::{cfg::BasicBlock, counters::next_block_id, FunctionBuilder};
+use crate::hir::{cfg::basic_block::BasicBlock, FunctionBuilder};
 
 impl FunctionBuilder {
     pub fn new_basic_block(&mut self) -> &mut BasicBlock {
-        let id = next_block_id();
-        self.cfg.blocks.entry(id).or_insert(BasicBlock {
-            id,
-            original_to_local_valueid: HashMap::new(),
-            predecessors: vec![],
-            instructions: vec![],
-            terminator: None,
-            params: vec![],
-            incomplete_params: vec![],
-            sealed: false,
-        })
+        BasicBlock::new(&Rc::new(RefCell::new(self)))
     }
 }

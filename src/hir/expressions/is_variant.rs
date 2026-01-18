@@ -57,7 +57,7 @@ impl FunctionBuilder {
         };
 
         let id_field = IdentifierNode {
-            name: ctx.program_builder.common_identifiers.id,
+            name: COMMON_IDENTIFIERS.id,
             span: left_span,
         };
         let id_ptr = match self.emit_get_field_ptr(ctx, union_ptr, id_field) {

@@ -76,7 +76,7 @@ impl FunctionBuilder {
         inner_builder.sealed_blocks.insert(entry_block_id);
 
         ctx.module_builder
-            .enter_scope(crate::hir::utils::scope::ScopeKind::Function);
+            .enter_scope(crate::hir::utils::scope::ScopeKind::FunctionBody);
 
         for param in &checked_params {
             let arg_ssa_val =

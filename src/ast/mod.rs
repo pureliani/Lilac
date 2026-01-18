@@ -58,5 +58,11 @@ pub struct Span {
     pub end: Position,
 }
 
+impl Span {
+    pub fn contains(&self, byte_offset: usize) -> bool {
+        byte_offset >= self.start.byte_offset && byte_offset <= self.end.byte_offset
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DeclarationId(pub usize);
