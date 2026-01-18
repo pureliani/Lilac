@@ -125,7 +125,7 @@ pub trait ASTVisitor<'ast>: Sized {
 
     fn visit_struct_init_expr(&mut self, fields: &'ast [(IdentifierNode, Expr)]) {
         for (id, expr) in fields {
-            self.visit_ident_label(*id);
+            self.visit_ident_label(id.clone());
             self.visit_expr(expr);
         }
     }
@@ -210,9 +210,9 @@ pub trait ASTVisitor<'ast>: Sized {
     }
 
     fn visit_fn_decl(&mut self, decl: &'ast FnDecl) {
-        self.visit_ident_decl(decl.identifier);
+        self.visit_ident_decl(decl.identifier.clone());
         for param in &decl.params {
-            self.visit_ident_decl(param.identifier);
+            self.visit_ident_decl(param.identifier.clone());
             self.visit_type(&param.constraint);
         }
         self.visit_type(&decl.return_type);
@@ -220,7 +220,7 @@ pub trait ASTVisitor<'ast>: Sized {
     }
 
     fn visit_var_decl(&mut self, decl: &'ast VarDecl) {
-        self.visit_ident_decl(decl.identifier);
+        self.visit_ident_decl(decl.identifier.clone());
         if let Some(constraint) = &decl.constraint {
             self.visit_type(constraint);
         }
@@ -228,7 +228,7 @@ pub trait ASTVisitor<'ast>: Sized {
     }
 
     fn visit_type_alias_decl(&mut self, decl: &'ast TypeAliasDecl) {
-        self.visit_ident_decl(decl.identifier);
+        self.visit_ident_decl(decl.identifier.clone());
         self.visit_type(&decl.value);
     }
 
@@ -236,11 +236,11 @@ pub trait ASTVisitor<'ast>: Sized {
         for pattern in &arm.pattern {
             match pattern {
                 MatchPattern::VariantWithValue(v, b) => {
-                    self.visit_ident_label(*v);
-                    self.visit_ident_decl(*b);
+                    self.visit_ident_label(v.clone());
+                    self.visit_ident_decl(b.clone());
                 }
                 MatchPattern::Variant(v) => {
-                    self.visit_ident_label(*v);
+                    self.visit_ident_label(v.clone());
                 }
             }
         }
@@ -277,7 +277,7 @@ pub fn walk_stmt<'ast, V: ASTVisitor<'ast>>(v: &mut V, stmt: &'ast Stmt) {
 
 pub fn walk_expr<'ast, V: ASTVisitor<'ast>>(v: &mut V, expr: &'ast Expr) {
     match &expr.kind {
-        ExprKind::Identifier(id) => v.visit_identifier_expr(*id),
+        ExprKind::Identifier(id) => v.visit_identifier_expr(id.clone()),
         ExprKind::Not { right } => v.visit_not_expr(right),
         ExprKind::Neg { right } => v.visit_neg_expr(right),
         ExprKind::Add { left, right } => v.visit_add_expr(left, right),
@@ -294,12 +294,12 @@ pub fn walk_expr<'ast, V: ASTVisitor<'ast>>(v: &mut V, expr: &'ast Expr) {
         ExprKind::And { left, right } => v.visit_and_expr(left, right),
         ExprKind::Or { left, right } => v.visit_or_expr(left, right),
         ExprKind::Struct(fields) => v.visit_struct_init_expr(fields),
-        ExprKind::Access { left, field } => v.visit_access_expr(left, *field),
+        ExprKind::Access { left, field } => v.visit_access_expr(left, field.clone()),
         ExprKind::StaticAccess { left, field } => {
-            v.visit_static_access_expr(left, *field)
+            v.visit_static_access_expr(left, field.clone())
         }
         ExprKind::TypeCast { left, target } => v.visit_type_cast_expr(left, target),
-        ExprKind::Tag { name, value } => v.visit_tag_expr(*name, value.as_deref()),
+        ExprKind::Tag { name, value } => v.visit_tag_expr(name.clone(), value.as_deref()),
         ExprKind::FnCall { left, args } => v.visit_fn_call_expr(left, args),
         ExprKind::BoolLiteral(b) => v.visit_bool_literal(*b),
         ExprKind::Number(n) => v.visit_number_literal(*n),
@@ -328,22 +328,22 @@ pub fn walk_block<'ast, V: ASTVisitor<'ast>>(v: &mut V, block: &'ast BlockConten
 
 pub fn walk_type<'ast, V: ASTVisitor<'ast>>(v: &mut V, ty: &'ast TypeAnnotation) {
     match &ty.kind {
-        TypeAnnotationKind::Identifier(id) => v.visit_ident_type(*id),
+        TypeAnnotationKind::Identifier(id) => v.visit_ident_type(id.clone()),
         TypeAnnotationKind::Struct(fields) => {
             for f in fields {
-                v.visit_ident_label(f.identifier);
+                v.visit_ident_label(f.identifier.clone());
                 v.visit_type(&f.constraint);
             }
         }
         TypeAnnotationKind::Tag(tag) => {
-            v.visit_ident_label(tag.identifier);
+            v.visit_ident_label(tag.identifier.clone());
             if let Some(val) = &tag.value_type {
                 v.visit_type(val);
             }
         }
         TypeAnnotationKind::Union(tags) => {
             for tag in tags {
-                v.visit_ident_label(tag.identifier);
+                v.visit_ident_label(tag.identifier.clone());
                 if let Some(val) = &tag.value_type {
                     v.visit_type(val);
                 }
@@ -355,7 +355,7 @@ pub fn walk_type<'ast, V: ASTVisitor<'ast>>(v: &mut V, ty: &'ast TypeAnnotation)
             return_type,
         } => {
             for param in params {
-                v.visit_ident_label(param.identifier);
+                v.visit_ident_label(param.identifier.clone());
                 v.visit_type(&param.constraint);
             }
             v.visit_type(return_type);
