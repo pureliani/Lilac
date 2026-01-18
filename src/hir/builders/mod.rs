@@ -69,7 +69,7 @@ pub struct Module {
     pub root_scope: Scope,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Function {
     // Signature
     pub id: DeclarationId,
@@ -88,7 +88,7 @@ pub struct Function {
     pub predicates: HashMap<ValueId, TypePredicate>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BasicBlockId,
     pub instructions: Vec<Instruction>,

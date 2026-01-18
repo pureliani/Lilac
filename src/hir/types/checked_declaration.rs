@@ -4,8 +4,7 @@ use crate::{
     ast::{DeclarationId, IdentifierNode, Span},
     compile::interner::TagId,
     hir::{
-        builders::Function,
-        cfg::{ControlFlowGraph, ValueId},
+        builders::{Function, ValueId},
         types::checked_type::Type,
     },
     parse::DocAnnotation,
