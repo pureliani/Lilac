@@ -247,6 +247,10 @@ impl<'a> Builder<'a, InBlock> {
         id
     }
 
+    pub fn use_basic_block(&mut self, block_id: BasicBlockId) {
+        self.context.block_id = block_id;
+    }
+
     pub fn seal(&mut self) {
         if self.bb().sealed {
             return;
@@ -257,6 +261,13 @@ impl<'a> Builder<'a, InBlock> {
         for (param_id, original_value_id) in params {
             self.fill_predecessors(original_value_id, param_id);
         }
+    }
+
+    pub fn seal_block(&mut self, block_id: BasicBlockId) {
+        let old_block = self.context.block_id;
+        self.context.block_id = block_id;
+        self.seal();
+        self.context.block_id = old_block;
     }
 
     fn fill_predecessors(&mut self, original_value_id: ValueId, param_id: ValueId) {
@@ -279,6 +290,16 @@ impl<'a> Builder<'a, InBlock> {
                 val_in_pred,
             );
         }
+    }
+
+    pub fn append_param_to_block(&mut self, block_id: BasicBlockId, ty: Type) -> ValueId {
+        let old_block = self.context.block_id;
+        self.context.block_id = block_id;
+
+        let id = self.append_param(ty);
+
+        self.context.block_id = old_block;
+        id
     }
 
     pub fn append_arg_to_terminator(

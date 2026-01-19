@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{IdentifierNode, Span},
+    ast::{DeclarationId, IdentifierNode, Span},
     hir::{
         builders::{BasicBlockId, Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, Terminator},
-        types::checked_type::{StructKind, Type},
+        types::{
+            checked_declaration::CheckedDeclaration,
+            checked_type::{StructKind, Type},
+        },
         utils::{
             check_binary_numeric_op::check_binary_numeric_operation,
             check_is_assignable::check_is_assignable,
@@ -42,7 +45,22 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     // Constants
-    pub fn emit_const_int(&mut self, val: NumberKind, ty: Type) -> ValueId {
+    pub fn emit_const_int(&mut self, val: NumberKind) -> ValueId {
+        let ty = match val {
+            NumberKind::I64(_) => Type::I64,
+            NumberKind::I32(_) => Type::I32,
+            NumberKind::I16(_) => Type::I16,
+            NumberKind::I8(_) => Type::I8,
+            NumberKind::F32(_) => Type::F32,
+            NumberKind::F64(_) => Type::F64,
+            NumberKind::U64(_) => Type::U64,
+            NumberKind::U32(_) => Type::U32,
+            NumberKind::U16(_) => Type::U16,
+            NumberKind::U8(_) => Type::U8,
+            NumberKind::ISize(_) => Type::ISize,
+            NumberKind::USize(_) => Type::USize,
+        };
+
         let dest = self.new_value_id(ty);
         self.push_instruction(Instruction::ConstInt { dest, val });
         dest
@@ -57,6 +75,30 @@ impl<'a> Builder<'a, InBlock> {
     pub fn emit_const_void(&mut self) -> ValueId {
         let dest = self.new_value_id(Type::Void);
         self.push_instruction(Instruction::ConstVoid { dest });
+        dest
+    }
+
+    pub fn emit_const_fn(&mut self, decl_id: DeclarationId) -> ValueId {
+        let decl = self
+            .program
+            .declarations
+            .get(&decl_id)
+            .expect("INTERNAL COMPILER ERROR: Function declaration not found");
+
+        let (params, return_type) = match decl {
+            CheckedDeclaration::Function(f) => {
+                (f.params.clone(), Box::new(f.return_type.clone()))
+            }
+            _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
+        };
+
+        let ty = Type::Fn(crate::hir::types::checked_declaration::FnType {
+            params,
+            return_type,
+        });
+
+        let dest = self.new_value_id(ty);
+        self.push_instruction(Instruction::ConstFn { dest, decl_id });
         dest
     }
 
