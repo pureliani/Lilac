@@ -6,11 +6,8 @@ use crate::{
             Place, Projection, ValueId,
         },
         errors::SemanticError,
-        instructions::{Instruction, Terminator},
-        types::{
-            checked_declaration::CheckedDeclaration,
-            checked_type::{StructKind, Type},
-        },
+        instructions::Terminator,
+        types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::try_unify_types::narrow_type_at_path,
     },
 };
@@ -87,31 +84,7 @@ impl<'a> Builder<'a, InBlock> {
             .expect("INTERNAL COMPILER ERROR: Module not found")
     }
 
-    fn push_instruction(&mut self, instruction: Instruction) {
-        let bb = self.bb_mut();
-        if bb.terminator.is_some() {
-            panic!(
-                "INTERNAL COMPILER ERROR: Attempted to add instruction to a basic block \
-                 (ID: {}) that has already been terminated",
-                bb.id.0
-            );
-        }
-
-        bb.instructions.push(instruction);
-    }
-
-    fn check_no_terminator(&mut self) {
-        let bb = self.bb_mut();
-
-        if bb.terminator.is_some() {
-            panic!(
-                "INTERNAL COMPILER ERROR: Tried to re-set terminator for basic block (ID: {})",
-                bb.id.0
-            );
-        }
-    }
-
-    fn get_value_type(&self, id: &ValueId) -> &Type {
+    pub fn get_value_type(&self, id: &ValueId) -> &Type {
         self.program.value_types.get(id)
         .unwrap_or_else(|| panic!("INTERNAL COMPILER ERROR: Expected ValueId({}) to have an associated type", id.0))
     }
@@ -125,137 +98,6 @@ impl<'a> Builder<'a, InBlock> {
         self.program.value_types.insert(value_id, ty);
 
         value_id
-    }
-
-    pub fn emit_stack_alloc(&mut self, ty: Type, count: usize) -> ValueId {
-        let destination = self.new_value_id(Type::Pointer {
-            constraint: Box::new(ty.clone()),
-            narrowed_to: Box::new(ty),
-        });
-        self.push_instruction(Instruction::StackAlloc { destination, count });
-
-        destination
-    }
-
-    pub fn emit_heap_alloc(&mut self, ty: Type, count: ValueId) -> ValueId {
-        // let count_type = ctx.program_builder.get_value_type(&count);
-        // let expected_count_type = Type::USize;
-        // if !check_is_assignable(&count_type, &expected_count_type) {
-        //     return Err(SemanticError {
-        //         span: Span::default(), // TODO: Fix span propagation
-        //         kind: SemanticErrorKind::TypeMismatch {
-        //             expected: expected_count_type,
-        //             received: count_type,
-        //         },
-        //     });
-        // }
-
-        let destination = self.new_value_id(Type::Pointer {
-            constraint: Box::new(ty.clone()),
-            narrowed_to: Box::new(ty),
-        });
-        self.push_instruction(Instruction::HeapAlloc { destination, count });
-
-        destination
-    }
-
-    pub fn emit_refine(&mut self, target: ValueId, new_type: Type) {
-        unimplemented!()
-    }
-
-    pub fn emit_jmp(&mut self, target: BasicBlockId, args: Vec<ValueId>) {
-        self.check_no_terminator();
-        let this_block_id = self.context.block_id;
-        self.get_bb_mut(target).predecessors.insert(this_block_id);
-
-        self.bb_mut().terminator = Some(Terminator::Jump { target, args });
-    }
-
-    pub fn emit_cond_jmp(
-        &mut self,
-        condition: ValueId,
-        true_target: BasicBlockId,
-        true_args: Vec<ValueId>,
-        false_target: BasicBlockId,
-        false_args: Vec<ValueId>,
-    ) {
-        self.check_no_terminator();
-        let this_block_id = self.context.block_id;
-
-        self.get_bb_mut(true_target)
-            .predecessors
-            .insert(this_block_id);
-        self.get_bb_mut(false_target)
-            .predecessors
-            .insert(this_block_id);
-
-        self.bb_mut().terminator = Some(Terminator::CondJump {
-            condition,
-            true_target,
-            true_args,
-            false_target,
-            false_args,
-        });
-    }
-
-    pub fn emit_return(&mut self, value: Option<ValueId>) {
-        self.check_no_terminator();
-        self.bb_mut().terminator = Some(Terminator::Return { value })
-    }
-
-    pub fn unreachable(&mut self) {
-        self.check_no_terminator();
-        self.bb_mut().terminator = Some(Terminator::Unreachable)
-    }
-
-    pub fn emit_load(&mut self, ptr: ValueId) -> ValueId {
-        let ptr_ty = self.get_value_type(&ptr);
-        let dest_ty = match ptr_ty {
-            Type::Pointer { narrowed_to, .. } => *narrowed_to.clone(),
-            _ => panic!("INTERNAL ERROR: Load expected pointer"),
-        };
-        let destination = self.new_value_id(dest_ty);
-        self.push_instruction(Instruction::Load { destination, ptr });
-        destination
-    }
-
-    pub fn emit_store(&mut self, ptr: ValueId, value: ValueId) {
-        self.push_instruction(Instruction::Store { ptr, value });
-    }
-
-    pub fn emit_get_field_ptr_by_index(
-        &mut self,
-        base_ptr: ValueId,
-        field_index: usize,
-    ) -> ValueId {
-        let current_ty = self.get_value_type(&base_ptr);
-
-        let (constraint_struct, narrowed_struct) = match &current_ty {
-            Type::Pointer {
-                constraint,
-                narrowed_to,
-            } => match (&**constraint, &**narrowed_to) {
-                (Type::Struct(c), Type::Struct(n)) => (c, n),
-                _ => panic!("Expected pointer to struct, found {:?}", current_ty),
-            },
-            _ => panic!("Expected pointer, found {:?}", current_ty),
-        };
-
-        let (_, field_constraint) = constraint_struct.fields()[field_index].clone();
-        let (_, field_narrowed) = narrowed_struct.fields()[field_index].clone();
-
-        let destination = self.new_value_id(Type::Pointer {
-            constraint: Box::new(field_constraint),
-            narrowed_to: Box::new(field_narrowed),
-        });
-
-        self.push_instruction(Instruction::GetFieldPtr {
-            destination,
-            base_ptr,
-            field_index,
-        });
-
-        destination
     }
 
     pub fn read_place(&mut self, place: Place) -> ValueId {
@@ -402,34 +244,6 @@ impl<'a> Builder<'a, InBlock> {
 
             self.append_arg_to_terminator(&pred_id, &this_block_id, val_in_pred);
         }
-    }
-
-    pub fn emit_get_element_ptr(&mut self, base_ptr: ValueId, index: ValueId) -> ValueId {
-        if let Type::Struct(StructKind::List(item_type)) = self.get_value_type(&base_ptr)
-        {
-            let destination = self.new_value_id(Type::Pointer {
-                constraint: item_type.clone(),
-                narrowed_to: item_type.clone(),
-            });
-            self.push_instruction(Instruction::GetElementPtr {
-                destination,
-                base_ptr,
-                index,
-            });
-            destination
-        } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use emit_get_element_ptr on non-list type")
-        }
-    }
-
-    pub fn emit_type_cast(&mut self, operand: ValueId, target_type: Type) -> ValueId {
-        let destination = self.new_value_id(target_type.clone());
-        self.push_instruction(Instruction::TypeCast {
-            destination,
-            operand,
-            target_type,
-        });
-        destination
     }
 
     pub fn append_arg_to_terminator(

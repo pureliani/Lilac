@@ -64,6 +64,11 @@ pub enum Instruction {
         lhs: ValueId,
         rhs: ValueId,
     },
+    FRem {
+        dest: ValueId,
+        lhs: ValueId,
+        rhs: ValueId,
+    },
     FAdd {
         dest: ValueId,
         lhs: ValueId,
@@ -242,6 +247,12 @@ pub enum Instruction {
         destination: ValueId,
         operand: ValueId,
         target_type: Type,
+    },
+    // Other
+    RefineType {
+        dest: ValueId,
+        src: ValueId,
+        new_type: Type,
     },
     Nop,
 }

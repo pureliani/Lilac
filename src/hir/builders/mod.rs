@@ -15,6 +15,7 @@ use crate::{
 };
 
 pub mod basic_block;
+pub mod emitters;
 pub mod function;
 pub mod module;
 pub mod program;
