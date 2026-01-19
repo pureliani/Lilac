@@ -163,7 +163,7 @@ impl<'a> Builder<'a, InBlock> {
         unimplemented!()
     }
 
-    pub fn jmp(&mut self, target: BasicBlockId, args: Vec<ValueId>) {
+    pub fn emit_jmp(&mut self, target: BasicBlockId, args: Vec<ValueId>) {
         self.check_no_terminator();
         let this_block_id = self.context.block_id;
         self.get_bb_mut(target).predecessors.insert(this_block_id);
@@ -171,7 +171,7 @@ impl<'a> Builder<'a, InBlock> {
         self.bb_mut().terminator = Some(Terminator::Jump { target, args });
     }
 
-    pub fn cond_jmp(
+    pub fn emit_cond_jmp(
         &mut self,
         condition: ValueId,
         true_target: BasicBlockId,
@@ -198,7 +198,7 @@ impl<'a> Builder<'a, InBlock> {
         });
     }
 
-    pub fn ret(&mut self, value: Option<ValueId>) {
+    pub fn emit_return(&mut self, value: Option<ValueId>) {
         self.check_no_terminator();
         self.bb_mut().terminator = Some(Terminator::Return { value })
     }
@@ -387,16 +387,20 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     fn fill_predecessors(&mut self, original_value_id: ValueId, _param_id: ValueId) {
-        todo!();
+        let predecessors: Vec<BasicBlockId> =
+            self.bb().predecessors.iter().cloned().collect();
+        let this_block_id = self.context.block_id;
 
-        for pred_id in &self.bb().predecessors {
-            // let f = self.get_fn();
+        for pred_id in predecessors {
+            let old_block_id = self.context.block_id;
+            self.context.block_id = pred_id.clone();
 
-            //  How do we get predecessors basicblock builder?
-            // let pred_bb = todo!("Get predecessor's basic block builder");
-            // let val_in_pred = pred_bb.use_value(original_value_id);
+            let val_in_pred = self.use_value(original_value_id);
 
-            // self.append_arg_to_terminator(pred_id, &self.context.block_id, val_in_pred);
+            // Move the cursor back to the current block
+            self.context.block_id = old_block_id;
+
+            self.append_arg_to_terminator(&pred_id, &this_block_id, val_in_pred);
         }
     }
 
