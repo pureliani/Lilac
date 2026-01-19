@@ -21,11 +21,10 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{
     ast::{
-        stmt::Stmt, type_annotation::TypeAnnotation, IdentifierNode, Position, Span,
-        StringNode,
+        stmt::Stmt, type_annotation::TypeAnnotation, IdentifierNode, ModulePath,
+        Position, Span, StringNode,
     },
     tokenize::{KeywordKind, NumberKind, PunctuationKind, Token, TokenKind},
-    ModulePath,
 };
 
 #[derive(Debug, Clone, PartialEq)]

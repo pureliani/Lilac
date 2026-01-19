@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{DeclarationId, IdentifierNode, Span},
+    ast::{DeclarationId, IdentifierNode, ModulePath, Span},
     hir::{
         errors::SemanticError,
         instructions::{Instruction, Terminator},
@@ -11,7 +11,6 @@ use crate::{
         },
         utils::scope::Scope,
     },
-    ModulePath,
 };
 
 #[macro_export]

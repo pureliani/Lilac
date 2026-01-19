@@ -1,7 +1,7 @@
 use ariadne::{Cache, Source};
 use std::collections::HashMap;
 
-use crate::ModulePath;
+use crate::ast::ModulePath;
 
 #[derive(Default)]
 pub struct FileCache {

@@ -14,7 +14,7 @@ use crate::{
         decl::Declaration,
         expr::{Expr, ExprKind},
         stmt::{Stmt, StmtKind},
-        Span,
+        ModulePath, Span,
     },
     compile::file_cache::FileCache,
     hir::{
@@ -24,7 +24,6 @@ use crate::{
     },
     parse::{Parser, ParsingError},
     tokenize::{TokenizationError, Tokenizer},
-    ModulePath,
 };
 
 #[derive(Debug)]

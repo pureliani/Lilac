@@ -224,11 +224,10 @@ mod tests {
     use crate::{
         ast::{
             type_annotation::{TypeAnnotation, TypeAnnotationKind},
-            Span,
+            ModulePath, Span,
         },
         globals::reset_globals,
         parse::Parser,
-        ModulePath,
     };
 
     #[test]

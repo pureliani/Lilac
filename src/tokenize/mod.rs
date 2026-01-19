@@ -7,10 +7,9 @@ pub mod tokenize_punctuation;
 pub mod tokenize_string;
 
 use crate::{
-    ast::{Position, Span},
+    ast::{ModulePath, Position, Span},
     compile::interner::StringId,
     globals::STRING_INTERNER,
-    ModulePath,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -565,12 +564,11 @@ fn is_keyword(identifier: &str) -> Option<KeywordKind> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        ast::{Position, Span},
+        ast::{ModulePath, Position, Span},
         globals::{reset_globals, STRING_INTERNER},
         tokenize::{
             KeywordKind, NumberKind, PunctuationKind, Token, TokenKind, Tokenizer,
         },
-        ModulePath,
     };
     use pretty_assertions::assert_eq;
 

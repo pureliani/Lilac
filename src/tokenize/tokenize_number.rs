@@ -115,10 +115,9 @@ fn parse_number(full_number_str: &str) -> Result<NumberKind, TokenizationErrorKi
 #[cfg(test)]
 mod tests {
     use crate::{
-        ast::{Position, Span},
+        ast::{ModulePath, Position, Span},
         globals::reset_globals,
         tokenize::{NumberKind, Token, TokenKind, Tokenizer},
-        ModulePath,
     };
     use pretty_assertions::assert_eq;
 

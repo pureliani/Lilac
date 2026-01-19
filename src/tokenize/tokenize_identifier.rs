@@ -18,10 +18,9 @@ impl<'a> Tokenizer<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        ast::{Position, Span},
+        ast::{ModulePath, Position, Span},
         globals::{reset_globals, STRING_INTERNER},
         tokenize::{Token, TokenKind, Tokenizer},
-        ModulePath,
     };
     use pretty_assertions::assert_eq;
 

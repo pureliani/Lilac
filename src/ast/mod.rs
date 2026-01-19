@@ -1,6 +1,10 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    path::PathBuf,
+    sync::Arc,
+};
 
-use crate::{compile::interner::StringId, ModulePath};
+use crate::compile::interner::StringId;
 
 pub mod decl;
 pub mod expr;
@@ -42,6 +46,15 @@ impl PartialEq for StringNode {
 impl Hash for StringNode {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.value.hash(state);
+    }
+}
+
+#[derive(Default, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ModulePath(pub Arc<PathBuf>);
+
+impl From<ModulePath> for PathBuf {
+    fn from(value: ModulePath) -> Self {
+        value.0.to_path_buf()
     }
 }
 

@@ -1,7 +1,7 @@
 use ariadne::{Color, Label, Report};
 
 use crate::{
-    ast::Span,
+    ast::{ModulePath, Span},
     compile::{Compiler, CompilerErrorKind},
     globals::STRING_INTERNER,
     hir::{
@@ -10,7 +10,6 @@ use crate::{
     },
     parse::ParsingErrorKind,
     tokenize::TokenizationErrorKind,
-    ModulePath,
 };
 
 /// Generates a sort key: (Rank, Path, Offset)
@@ -600,7 +599,6 @@ impl Compiler {
         }
     }
 
-    /// Helper to convert our Span into Ariadne's expected format
     fn extract_span(&self, span: &Span) -> (ModulePath, std::ops::Range<usize>) {
         (
             span.path.clone(),

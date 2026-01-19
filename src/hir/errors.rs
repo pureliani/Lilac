@@ -1,10 +1,9 @@
 use std::collections::HashSet;
 
 use crate::{
-    ast::{IdentifierNode, Span},
+    ast::{IdentifierNode, ModulePath, Span},
     compile::interner::StringId,
     hir::types::checked_type::Type,
-    ModulePath,
 };
 
 #[derive(Debug, Clone)]
