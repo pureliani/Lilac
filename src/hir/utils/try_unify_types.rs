@@ -46,6 +46,7 @@ pub fn narrow_type_at_path(base: &Type, path: &[Projection], leaf_type: &Type) -
                 narrow_type_at_path(&fields[idx].ty, &path[1..], leaf_type);
             Type::Struct(StructKind::UserDefined(new_fields))
         }
+        (Projection::Index(..), _) => base.clone(),
         _ => base.clone(),
     }
 }

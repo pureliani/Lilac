@@ -1,4 +1,5 @@
 use crate::{
+    ast::Span,
     globals::next_value_id,
     hir::{
         builders::{
@@ -103,23 +104,33 @@ impl<'a> Builder<'a, InBlock> {
     pub fn read_place(&mut self, place: Place) -> ValueId {
         let mut current = self.use_value(place.root);
 
-        for proj in &place.projections {
+        for proj in place.projections {
             match proj {
                 Projection::Deref => {
-                    current = self.emit_load(current);
+                    current = match self.load(current, Span::default()) {
+                        Ok(val) => val,
+                        Err(e) => return self.report_error_and_get_poison(e),
+                    };
                 }
                 Projection::Field(field_name) => {
-                    current = self.get_field_ptr(current, field_name).expect(
-                        "INTERNAL COMPILER ERROR: Invalid field in Place projection",
-                    );
+                    current = match self.get_field_ptr(current, &field_name) {
+                        Ok(val) => val,
+                        Err(e) => return self.report_error_and_get_poison(e),
+                    };
                 }
-                Projection::Index(idx_val, _) => {
-                    current = self.emit_get_element_ptr(current, *idx_val);
+                Projection::Index(idx_val, span) => {
+                    current = match self.get_element_ptr(current, idx_val, span) {
+                        Ok(val) => val,
+                        Err(e) => return self.report_error_and_get_poison(e),
+                    };
                 }
             }
         }
 
-        self.emit_load(current)
+        match self.load(current, Span::default()) {
+            Ok(val) => val,
+            Err(e) => self.report_error_and_get_poison(e),
+        }
     }
 
     pub fn write_place(&mut self, place: Place, value: ValueId) {
@@ -128,25 +139,45 @@ impl<'a> Builder<'a, InBlock> {
         for proj in &place.projections {
             match proj {
                 Projection::Deref => {
-                    current = self.emit_load(current);
+                    current = match self.load(current, Span::default()) {
+                        Ok(val) => val,
+                        Err(e) => {
+                            self.as_program().errors.push(e);
+                            return;
+                        }
+                    };
                 }
                 Projection::Field(field_name) => {
-                    current = self.get_field_ptr(current, field_name).expect(
-                        "INTERNAL COMPILER ERROR: Invalid field in Place projection",
-                    );
+                    current = match self.get_field_ptr(current, field_name) {
+                        Ok(val) => val,
+                        Err(e) => {
+                            self.as_program().errors.push(e);
+                            return;
+                        }
+                    };
                 }
-                Projection::Index(idx_val, _) => {
-                    current = self.emit_get_element_ptr(current, *idx_val);
+                Projection::Index(idx_val, span) => {
+                    current = match self.get_element_ptr(current, *idx_val, span.clone())
+                    {
+                        Ok(val) => val,
+                        Err(e) => {
+                            self.as_program().errors.push(e);
+                            return;
+                        }
+                    };
                 }
             }
         }
 
-        self.emit_store(current, value);
+        if let Err(e) = self.store(current, value, Span::default()) {
+            self.as_program().errors.push(e);
+        }
 
+        // for now we skip narrowing if Index is involved as it's hard to track
         let is_narrowable = !place
             .projections
             .iter()
-            .any(|p| matches!(p, Projection::Index(_, _)));
+            .any(|p| matches!(p, Projection::Index(..)));
 
         if is_narrowable {
             let source_ty = self.get_value_type(&value);
