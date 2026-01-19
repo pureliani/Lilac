@@ -1,43 +1,42 @@
-use crate::hir::{
-    builders::{BasicBlockId, Builder, Function, InBlock, InFunction, InModule},
-    types::checked_declaration::CheckedDeclaration,
+use std::collections::{HashMap, HashSet};
+
+use crate::{
+    globals::next_block_id,
+    hir::{
+        builders::{BasicBlock, BasicBlockId, Builder, InFunction},
+        types::checked_declaration::CheckedDeclaration,
+    },
 };
 
 impl<'a> Builder<'a, InFunction> {
-    pub fn at_block(self, block_id: BasicBlockId) -> Builder<'a, InBlock> {
-        Builder {
-            program: self.program,
-            errors: self.errors,
-            current_scope: self.current_scope,
-            context: InBlock {
-                path: self.context.path,
-                func_id: self.context.func_id,
-                block_id,
-            },
-        }
-    }
+    pub fn new_bb(&mut self) -> BasicBlockId {
+        let id = next_block_id();
 
-    pub fn as_module(&'a mut self) -> Builder<'a, InModule> {
-        Builder {
-            program: self.program,
-            errors: self.errors,
-            current_scope: self.current_scope.clone(),
-            context: InModule {
-                path: self.context.path.clone(),
-            },
-        }
-    }
+        let bb = BasicBlock {
+            id,
+            incomplete_params: vec![],
+            instructions: vec![],
+            params: vec![],
+            sealed: false,
+            terminator: None,
+            original_to_local_valueid: HashMap::new(),
+            predecessors: HashSet::new(),
+        };
 
-    pub fn get_function(&mut self) -> &mut Function {
-        let decl = self
-            .program
+        let decl = self.program
             .declarations
             .get_mut(&self.context.func_id)
-            .unwrap();
+            .unwrap_or_else(|| {
+                panic!("INTERNAL COMPILER ERROR: Expected function with DeclarationId({}) to exist.", self.context.func_id.0)
+            });
 
-        match decl {
+        let func = match decl {
             CheckedDeclaration::Function(f) => f,
-            _ => panic!("INTERNAL COMPILER ERROR: Expected function declaration"),
-        }
+            _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
+        };
+
+        func.blocks.insert(id, bb);
+
+        id
     }
 }

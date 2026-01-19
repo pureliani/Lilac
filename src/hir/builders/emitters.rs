@@ -505,11 +505,7 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn emit_jmp_terminator(
-        &mut self,
-        target: BasicBlockId,
-        args: HashMap<ValueId, ValueId>,
-    ) {
+    pub fn jmp(&mut self, target: BasicBlockId, args: HashMap<ValueId, ValueId>) {
         self.check_no_terminator();
         let this_block_id = self.context.block_id;
         self.get_bb_mut(target).predecessors.insert(this_block_id);
@@ -518,7 +514,7 @@ impl<'a> Builder<'a, InBlock> {
         self.bb_mut().terminator = Some(Terminator::Jump { target, args });
     }
 
-    pub fn emit_cond_jmp_terminator(
+    pub fn cond_jmp(
         &mut self,
         condition: ValueId,
         true_target: BasicBlockId,
@@ -890,19 +886,14 @@ impl<'a> Builder<'a, InBlock> {
         Ok(self.emit_load(ptr))
     }
 
-    pub fn store(
-        &mut self,
-        ptr: ValueId,
-        value: ValueId,
-        span: Span,
-    ) -> Result<(), SemanticError> {
-        let ptr_ty = self.get_value_type(&ptr);
-        let val_ty = self.get_value_type(&value);
+    pub fn store(&mut self, ptr: ValueId, value: ValueId, span: Span) {
+        let ptr_ty = self.get_value_type(&ptr).clone();
+        let val_ty = self.get_value_type(&value).clone();
 
         match ptr_ty {
             Type::Pointer { narrowed_to, .. } => {
-                if !check_is_assignable(val_ty, narrowed_to) {
-                    return Err(SemanticError {
+                if !check_is_assignable(&val_ty, &narrowed_to) {
+                    self.as_program().errors.push(SemanticError {
                         kind: SemanticErrorKind::TypeMismatch {
                             expected: *narrowed_to.clone(),
                             received: val_ty.clone(),
@@ -911,19 +902,20 @@ impl<'a> Builder<'a, InBlock> {
                     });
                 }
                 self.emit_store(ptr, value);
-                Ok(())
             }
-            _ => Err(SemanticError {
-                kind: SemanticErrorKind::TypeMismatch {
-                    expected: Type::Pointer {
-                        constraint: Box::new(Type::Unknown),
-                        narrowed_to: Box::new(Type::Unknown),
+            _ => {
+                self.as_program().errors.push(SemanticError {
+                    kind: SemanticErrorKind::TypeMismatch {
+                        expected: Type::Pointer {
+                            constraint: Box::new(Type::Unknown),
+                            narrowed_to: Box::new(Type::Unknown),
+                        },
+                        received: ptr_ty.clone(),
                     },
-                    received: ptr_ty.clone(),
-                },
-                span,
-            }),
-        }
+                    span,
+                });
+            }
+        };
     }
 
     pub fn get_element_ptr(

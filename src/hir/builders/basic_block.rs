@@ -3,8 +3,8 @@ use crate::{
     globals::next_value_id,
     hir::{
         builders::{
-            BasicBlock, BasicBlockId, Builder, Function, InBlock, InGlobal, Module,
-            Place, Projection, ValueId,
+            BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
+            Module, Place, Projection, ValueId,
         },
         errors::SemanticError,
         instructions::Terminator,
@@ -17,6 +17,18 @@ impl<'a> Builder<'a, InBlock> {
     pub fn as_program(&mut self) -> Builder<'_, InGlobal> {
         Builder {
             context: InGlobal,
+            program: self.program,
+            errors: self.errors,
+            current_scope: self.current_scope.clone(),
+        }
+    }
+
+    pub fn as_fn(&mut self) -> Builder<'_, InFunction> {
+        Builder {
+            context: InFunction {
+                path: self.context.path.clone(),
+                func_id: self.context.func_id,
+            },
             program: self.program,
             errors: self.errors,
             current_scope: self.current_scope.clone(),
@@ -169,9 +181,7 @@ impl<'a> Builder<'a, InBlock> {
             }
         }
 
-        if let Err(e) = self.store(current, value, Span::default()) {
-            self.as_program().errors.push(e);
-        }
+        self.store(current, value, Span::default());
 
         // for now we skip narrowing if Index is involved as it's hard to track
         let is_narrowable = !place

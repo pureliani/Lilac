@@ -1,5 +1,8 @@
 use crate::{
-    ast::{expr::Expr, expr::ExprKind},
+    ast::{
+        expr::{Expr, ExprKind},
+        IdentifierNode,
+    },
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
@@ -8,18 +11,13 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_identifier_expr(&mut self, expr: Expr) -> ValueId {
-        let identifier = match &expr.kind {
-            ExprKind::Identifier(id) => id.clone(),
-            _ => panic!("INTERNAL COMPILER ERROR: Expected Identifier expression"),
-        };
-
+    pub fn build_identifier_expr(&mut self, identifier: IdentifierNode) -> ValueId {
         let decl_id = match self.current_scope.lookup(identifier.name) {
             Some(id) => id,
             None => {
                 return self.report_error_and_get_poison(SemanticError {
+                    span: identifier.span.clone(),
                     kind: SemanticErrorKind::UndeclaredIdentifier(identifier),
-                    span: expr.span,
                 });
             }
         };
@@ -30,15 +28,20 @@ impl<'a> Builder<'a, InBlock> {
             .get(&decl_id)
             .expect("INTERNAL COMPILER ERROR: Declaration not found");
 
+        let expr_for_place = Expr {
+            kind: ExprKind::Identifier(identifier.clone()),
+            span: identifier.span.clone(),
+        };
+
         match decl {
-            CheckedDeclaration::Var(_) => match self.build_place(expr) {
+            CheckedDeclaration::Var(_) => match self.build_place(expr_for_place) {
                 Ok(place) => self.read_place(place),
                 Err(e) => self.report_error_and_get_poison(e),
             },
             CheckedDeclaration::UninitializedVar { .. } => self
                 .report_error_and_get_poison(SemanticError {
+                    span: identifier.span.clone(),
                     kind: SemanticErrorKind::UseOfUninitializedVariable(identifier),
-                    span: expr.span,
                 }),
             CheckedDeclaration::Function(func) => self.emit_const_fn(func.id),
             CheckedDeclaration::TypeAlias(alias) => {

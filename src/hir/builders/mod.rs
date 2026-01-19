@@ -14,6 +14,16 @@ use crate::{
     ModulePath,
 };
 
+#[macro_export]
+macro_rules! unwrap_or_poison {
+    ($builder:expr, $result:expr) => {
+        match $result {
+            Ok(val) => val,
+            Err(e) => $builder.report_error_and_get_poison(e),
+        }
+    };
+}
+
 pub mod basic_block;
 pub mod emitters;
 pub mod function;
