@@ -89,6 +89,16 @@ pub enum Instruction {
         lhs: ValueId,
         rhs: ValueId,
     },
+    FExt {
+        dest: ValueId,
+        src: ValueId,
+        target_ty: Type,
+    },
+    FTrunc {
+        dest: ValueId,
+        src: ValueId,
+        target_ty: Type,
+    },
     IEq {
         dest: ValueId,
         lhs: ValueId,
@@ -242,11 +252,6 @@ pub enum Instruction {
         destination: Option<ValueId>,
         func: ValueId,
         args: Vec<ValueId>,
-    },
-    TypeCast {
-        destination: ValueId,
-        operand: ValueId,
-        target_type: Type,
     },
     // Other
     RefineType {

@@ -32,10 +32,18 @@ pub fn narrow_type_at_path(base: &Type, path: &[Projection], leaf_type: &Type) -
                 leaf_type,
             )),
         },
-        (Projection::Field(idx), Type::Struct(StructKind::UserDefined(fields))) => {
+        (
+            Projection::Field(field_node),
+            Type::Struct(StructKind::UserDefined(fields)),
+        ) => {
+            let idx = fields
+                .iter()
+                .position(|f| f.identifier.name == field_node.name)
+                .expect("INTERNAL COMPILER ERROR: Field not found during narrowing");
+
             let mut new_fields = fields.clone();
-            new_fields[*idx].ty =
-                narrow_type_at_path(&fields[*idx].ty, &path[1..], leaf_type);
+            new_fields[idx].ty =
+                narrow_type_at_path(&fields[idx].ty, &path[1..], leaf_type);
             Type::Struct(StructKind::UserDefined(new_fields))
         }
         _ => base.clone(),

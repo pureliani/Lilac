@@ -1,14 +1,14 @@
 use crate::{
-    ast::Span,
+    ast::{IdentifierNode, Span},
     hir::{
         builders::{BasicBlockId, Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, Terminator},
-        types::checked_type::Type,
+        types::checked_type::{StructKind, Type},
         utils::{
             check_binary_numeric_op::check_binary_numeric_operation,
             check_is_assignable::check_is_assignable,
-            numeric::{is_float, is_signed},
+            numeric::{get_numeric_type_rank, is_float, is_integer, is_signed},
         },
     },
     tokenize::NumberKind,
@@ -143,6 +143,26 @@ impl<'a> Builder<'a, InBlock> {
         let ty = self.get_value_type(&lhs).clone();
         let dest = self.new_value_id(ty);
         self.push_instruction(Instruction::FDiv { dest, lhs, rhs });
+        dest
+    }
+
+    pub fn emit_fext(&mut self, src: ValueId, target_ty: Type) -> ValueId {
+        let dest = self.new_value_id(target_ty.clone());
+        self.push_instruction(Instruction::FExt {
+            dest,
+            src,
+            target_ty,
+        });
+        dest
+    }
+
+    pub fn emit_ftrunc(&mut self, src: ValueId, target_ty: Type) -> ValueId {
+        let dest = self.new_value_id(target_ty.clone());
+        self.push_instruction(Instruction::FTrunc {
+            dest,
+            src,
+            target_ty,
+        });
         dest
     }
 
@@ -359,45 +379,8 @@ impl<'a> Builder<'a, InBlock> {
         self.push_instruction(Instruction::Store { ptr, value });
     }
 
-    pub fn emit_get_field_ptr_by_index(
-        &mut self,
-        base_ptr: ValueId,
-        field_index: usize,
-    ) -> ValueId {
-        let current_ty = self.get_value_type(&base_ptr);
-
-        let (constraint_struct, narrowed_struct) = match &current_ty {
-            Type::Pointer {
-                constraint,
-                narrowed_to,
-            } => match (&**constraint, &**narrowed_to) {
-                (Type::Struct(c), Type::Struct(n)) => (c, n),
-                _ => panic!("Expected pointer to struct, found {:?}", current_ty),
-            },
-            _ => panic!("Expected pointer, found {:?}", current_ty),
-        };
-
-        let (_, field_constraint) = constraint_struct.fields()[field_index].clone();
-        let (_, field_narrowed) = narrowed_struct.fields()[field_index].clone();
-
-        let destination = self.new_value_id(Type::Pointer {
-            constraint: Box::new(field_constraint),
-            narrowed_to: Box::new(field_narrowed),
-        });
-
-        self.push_instruction(Instruction::GetFieldPtr {
-            destination,
-            base_ptr,
-            field_index,
-        });
-
-        destination
-    }
-
     pub fn emit_get_element_ptr(&mut self, base_ptr: ValueId, index: ValueId) -> ValueId {
-        if let Type::Struct(crate::hir::types::checked_type::StructKind::List(
-            item_type,
-        )) = self.get_value_type(&base_ptr)
+        if let Type::Struct(StructKind::List(item_type)) = self.get_value_type(&base_ptr)
         {
             let destination = self.new_value_id(Type::Pointer {
                 constraint: item_type.clone(),
@@ -412,16 +395,6 @@ impl<'a> Builder<'a, InBlock> {
         } else {
             panic!("INTERNAL COMPILER ERROR: Cannot use emit_get_element_ptr on non-list type")
         }
-    }
-
-    pub fn emit_type_cast(&mut self, operand: ValueId, target_type: Type) -> ValueId {
-        let destination = self.new_value_id(target_type.clone());
-        self.push_instruction(Instruction::TypeCast {
-            destination,
-            operand,
-            target_type,
-        });
-        destination
     }
 
     pub fn emit_refine_type(&mut self, src: ValueId, new_type: Type) -> ValueId {
@@ -813,5 +786,221 @@ impl<'a> Builder<'a, InBlock> {
                 span,
             }),
         }
+    }
+
+    pub fn load(&mut self, ptr: ValueId, span: Span) -> Result<ValueId, SemanticError> {
+        let ptr_ty = self.get_value_type(&ptr);
+
+        if !matches!(ptr_ty, Type::Pointer { .. }) {
+            return Err(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: Type::Pointer {
+                        constraint: Box::new(Type::Unknown),
+                        narrowed_to: Box::new(Type::Unknown),
+                    },
+                    received: ptr_ty.clone(),
+                },
+                span,
+            });
+        }
+
+        Ok(self.emit_load(ptr))
+    }
+
+    pub fn store(
+        &mut self,
+        ptr: ValueId,
+        value: ValueId,
+        span: Span,
+    ) -> Result<(), SemanticError> {
+        let ptr_ty = self.get_value_type(&ptr);
+        let val_ty = self.get_value_type(&value);
+
+        match ptr_ty {
+            Type::Pointer { narrowed_to, .. } => {
+                if !check_is_assignable(val_ty, narrowed_to) {
+                    return Err(SemanticError {
+                        kind: SemanticErrorKind::TypeMismatch {
+                            expected: *narrowed_to.clone(),
+                            received: val_ty.clone(),
+                        },
+                        span,
+                    });
+                }
+                self.emit_store(ptr, value);
+                Ok(())
+            }
+            _ => Err(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: Type::Pointer {
+                        constraint: Box::new(Type::Unknown),
+                        narrowed_to: Box::new(Type::Unknown),
+                    },
+                    received: ptr_ty.clone(),
+                },
+                span,
+            }),
+        }
+    }
+
+    pub fn get_element_ptr(
+        &mut self,
+        base_ptr: ValueId,
+        index: ValueId,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let base_ty = self.get_value_type(&base_ptr);
+        let index_ty = self.get_value_type(&index);
+
+        if !is_integer(index_ty) {
+            return Err(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: Type::USize,
+                    received: index_ty.clone(),
+                },
+                span,
+            });
+        }
+
+        match base_ty {
+            Type::Pointer { narrowed_to, .. } => match &**narrowed_to {
+                Type::Struct(StructKind::List(_)) => {
+                    Ok(self.emit_get_element_ptr(base_ptr, index))
+                }
+                _ => Err(SemanticError {
+                    kind: SemanticErrorKind::CannotIndex(*narrowed_to.clone()),
+                    span,
+                }),
+            },
+            _ => Err(SemanticError {
+                kind: SemanticErrorKind::CannotIndex(base_ty.clone()),
+                span,
+            }),
+        }
+    }
+
+    pub fn get_field_ptr(
+        &mut self,
+        base_ptr: ValueId,
+        field_name: &IdentifierNode,
+    ) -> Result<ValueId, SemanticError> {
+        let current_ty = self.get_value_type(&base_ptr);
+
+        let (constraint_struct, narrowed_struct) = match &current_ty {
+            Type::Pointer {
+                constraint,
+                narrowed_to,
+            } => match (&**constraint, &**narrowed_to) {
+                (Type::Struct(c), Type::Struct(n)) => (c, n),
+                _ => panic!("Expected pointer to struct, found {:?}", current_ty),
+            },
+            _ => panic!("Expected pointer, found {:?}", current_ty),
+        };
+
+        let field_index = match constraint_struct.get_field(&field_name.name) {
+            Some((idx, _)) => idx,
+            None => {
+                return Err(SemanticError {
+                    span: field_name.span.clone(),
+                    kind: SemanticErrorKind::AccessToUndefinedField(field_name.clone()),
+                });
+            }
+        };
+
+        let (_, field_constraint) = constraint_struct.fields()[field_index].clone();
+        let (_, field_narrowed) = narrowed_struct.fields()[field_index].clone();
+
+        let destination = self.new_value_id(Type::Pointer {
+            constraint: Box::new(field_constraint),
+            narrowed_to: Box::new(field_narrowed),
+        });
+
+        self.push_instruction(Instruction::GetFieldPtr {
+            destination,
+            base_ptr,
+            field_index,
+        });
+
+        Ok(destination)
+    }
+
+    pub fn cast(
+        &mut self,
+        src: ValueId,
+        target_ty: Type,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let src_ty = self.get_value_type(&src);
+
+        let err = SemanticError {
+            kind: SemanticErrorKind::CannotCastType {
+                source_type: src_ty.clone(),
+                target_type: target_ty.clone(),
+            },
+            span: span.clone(),
+        };
+
+        match (src_ty, &target_ty) {
+            (s, t) if is_integer(s) && is_integer(t) => {
+                let src_rank = get_numeric_type_rank(s);
+                let target_rank = get_numeric_type_rank(t);
+
+                if target_rank > src_rank {
+                    if is_signed(s) {
+                        Ok(self.emit_sext(src, target_ty))
+                    } else {
+                        Ok(self.emit_zext(src, target_ty))
+                    }
+                } else if target_rank < src_rank {
+                    Ok(self.emit_trunc(src, target_ty))
+                } else {
+                    return Err(err);
+                }
+            }
+
+            (s, t) if is_integer(s) && is_float(t) => Ok(self.emit_itof(src, target_ty)),
+
+            (s, t) if is_float(s) && is_integer(t) => Ok(self.emit_ftoi(src, target_ty)),
+
+            (s, t) if is_float(s) && is_float(t) => {
+                let src_rank = get_numeric_type_rank(s);
+                let target_rank = get_numeric_type_rank(t);
+
+                if target_rank > src_rank {
+                    Ok(self.emit_fext(src, target_ty))
+                } else if target_rank < src_rank {
+                    Ok(self.emit_ftrunc(src, target_ty))
+                } else {
+                    return Err(err);
+                }
+            }
+
+            (Type::Pointer { .. }, Type::USize) | (Type::USize, Type::Pointer { .. }) => {
+                Ok(self.emit_refine_type(src, target_ty))
+            }
+
+            _ => Err(err),
+        }
+    }
+
+    pub fn refine(
+        &mut self,
+        src: ValueId,
+        new_type: Type,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let src_ty = self.get_value_type(&src);
+
+        if !check_is_assignable(&new_type, src_ty) {
+            return Err(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: src_ty.clone(),
+                    received: new_type,
+                },
+                span,
+            });
+        }
+
+        Ok(self.emit_refine_type(src, new_type))
     }
 }

@@ -103,16 +103,18 @@ impl<'a> Builder<'a, InBlock> {
     pub fn read_place(&mut self, place: Place) -> ValueId {
         let mut current = self.use_value(place.root);
 
-        for proj in place.projections {
+        for proj in &place.projections {
             match proj {
                 Projection::Deref => {
                     current = self.emit_load(current);
                 }
-                Projection::Field(idx) => {
-                    current = self.emit_get_field_ptr_by_index(current, idx);
+                Projection::Field(field_name) => {
+                    current = self.get_field_ptr(current, field_name).expect(
+                        "INTERNAL COMPILER ERROR: Invalid field in Place projection",
+                    );
                 }
                 Projection::Index(idx_val) => {
-                    current = self.emit_get_element_ptr(current, idx_val);
+                    current = self.emit_get_element_ptr(current, *idx_val);
                 }
             }
         }
@@ -123,14 +125,15 @@ impl<'a> Builder<'a, InBlock> {
     pub fn write_place(&mut self, place: Place, value: ValueId) {
         let mut current = self.use_value(place.root);
 
-        // 1. Traverse to the target location
         for proj in &place.projections {
             match proj {
                 Projection::Deref => {
                     current = self.emit_load(current);
                 }
-                Projection::Field(idx) => {
-                    current = self.emit_get_field_ptr_by_index(current, *idx);
+                Projection::Field(field_name) => {
+                    current = self.get_field_ptr(current, field_name).expect(
+                        "INTERNAL COMPILER ERROR: Invalid field in Place projection",
+                    );
                 }
                 Projection::Index(idx_val) => {
                     current = self.emit_get_element_ptr(current, *idx_val);
@@ -138,11 +141,8 @@ impl<'a> Builder<'a, InBlock> {
             }
         }
 
-        // 2. Physical Store
         self.emit_store(current, value);
 
-        // 3. Narrowing
-        // We only narrow if the path doesn't contain Index (which is hard to track)
         let is_narrowable = !place
             .projections
             .iter()
@@ -156,7 +156,7 @@ impl<'a> Builder<'a, InBlock> {
                 narrow_type_at_path(&root_ty, &place.projections, &source_ty);
 
             let current_root = self.use_value(place.root);
-            let narrowed_root_ptr = self.emit_type_cast(current_root, narrowed_root_ty);
+            let narrowed_root_ptr = self.emit_refine_type(current_root, narrowed_root_ty);
             self.bb_mut()
                 .original_to_local_valueid
                 .insert(place.root, narrowed_root_ptr);
@@ -239,7 +239,6 @@ impl<'a> Builder<'a, InBlock> {
 
             let val_in_pred = self.use_value(original_value_id);
 
-            // Move the cursor back to the current block
             self.context.block_id = old_block_id;
 
             self.append_arg_to_terminator(&pred_id, &this_block_id, val_in_pred);

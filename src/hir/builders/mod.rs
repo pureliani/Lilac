@@ -47,7 +47,7 @@ pub struct Place {
 }
 
 pub enum Projection {
-    Field(usize),
+    Field(IdentifierNode),
     Index(ValueId),
     Deref,
 }

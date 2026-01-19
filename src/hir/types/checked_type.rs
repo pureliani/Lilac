@@ -94,11 +94,11 @@ impl StructKind {
     }
 
     /// Maps a Field Name -> (Index, Type).
-    pub fn get_field(&self, name: StringId) -> Option<(usize, Type)> {
+    pub fn get_field(&self, name: &StringId) -> Option<(usize, Type)> {
         self.fields()
             .into_iter()
             .enumerate()
-            .find(|(_, (field_name, _))| *field_name == name)
+            .find(|(_, (field_name, _))| field_name == name)
             .map(|(index, (_, ty))| (index, ty))
     }
 }
