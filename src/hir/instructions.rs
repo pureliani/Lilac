@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     ast::DeclarationId,
     hir::{
@@ -266,14 +268,15 @@ pub enum Instruction {
 pub enum Terminator {
     Jump {
         target: BasicBlockId,
-        args: Vec<ValueId>,
+        // param id -> argument id
+        args: HashMap<ValueId, ValueId>,
     },
     CondJump {
         condition: ValueId,
         true_target: BasicBlockId,
-        true_args: Vec<ValueId>,
+        true_args: HashMap<ValueId, ValueId>,
         false_target: BasicBlockId,
-        false_args: Vec<ValueId>,
+        false_args: HashMap<ValueId, ValueId>,
     },
     Return {
         value: Option<ValueId>,

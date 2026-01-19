@@ -228,7 +228,7 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    fn fill_predecessors(&mut self, original_value_id: ValueId, _param_id: ValueId) {
+    fn fill_predecessors(&mut self, original_value_id: ValueId, param_id: ValueId) {
         let predecessors: Vec<BasicBlockId> =
             self.bb().predecessors.iter().cloned().collect();
         let this_block_id = self.context.block_id;
@@ -241,7 +241,12 @@ impl<'a> Builder<'a, InBlock> {
 
             self.context.block_id = old_block_id;
 
-            self.append_arg_to_terminator(&pred_id, &this_block_id, val_in_pred);
+            self.append_arg_to_terminator(
+                &pred_id,
+                &this_block_id,
+                param_id,
+                val_in_pred,
+            );
         }
     }
 
@@ -249,6 +254,7 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         from_block: &BasicBlockId,
         to_block: &BasicBlockId,
+        param_id: ValueId,
         arg: ValueId,
     ) {
         let from_bb = self.get_bb_mut(*from_block);
@@ -260,7 +266,7 @@ impl<'a> Builder<'a, InBlock> {
         match terminator {
             Terminator::Jump { target, args } => {
                 if target == to_block {
-                    args.push(arg);
+                    args.insert(param_id, arg);
                 } else {
                     panic!("INTERNAL COMPILER ERROR: Invalid 'to_block' argument")
                 }
@@ -272,13 +278,16 @@ impl<'a> Builder<'a, InBlock> {
                 false_args,
                 ..
             } => {
+                let mut matched = false;
                 if true_target == to_block {
-                    true_args.push(arg);
+                    true_args.insert(param_id, arg);
+                    matched = true;
                 }
                 if false_target == to_block {
-                    false_args.push(arg);
+                    false_args.insert(param_id, arg);
+                    matched = true;
                 }
-                if true_target != to_block && false_target != to_block {
+                if !matched {
                     panic!(
                         "INTERNAL COMPILER ERROR: Invalid 'to_block' argument, didn't \
                          match neither 'true_target' nor 'false_target'"
@@ -297,7 +306,7 @@ impl<'a> Builder<'a, InBlock> {
         &self,
         from_block: BasicBlockId,
         to_block: BasicBlockId,
-        param_index: usize,
+        param_id: ValueId,
     ) -> ValueId {
         let terminator = self
             .get_bb(from_block)
@@ -308,7 +317,9 @@ impl<'a> Builder<'a, InBlock> {
         match terminator {
             Terminator::Jump { target, args } => {
                 assert_eq!(target, &to_block);
-                args[param_index].clone()
+                *args
+                    .get(&param_id)
+                    .expect("INTERNAL COMPILER ERROR: Missing argument for parameter")
             }
             Terminator::CondJump {
                 true_target,
@@ -318,14 +329,14 @@ impl<'a> Builder<'a, InBlock> {
                 ..
             } => {
                 if true_target == &to_block {
-                    true_args[param_index].clone()
+                    *true_args.get(&param_id).expect("INTERNAL COMPILER ERROR: Missing argument for parameter in true branch")
                 } else if false_target == &to_block {
-                    false_args[param_index].clone()
+                    *false_args.get(&param_id).expect("INTERNAL COMPILER ERROR: Missing argument for parameter in false branch")
                 } else {
-                    panic!("Inconsistent CFG: target block not found in CondJump")
+                    panic!("INTERNAL COMPILER ERROR: Inconsistent CFG, target block not found in CondJump")
                 }
             }
-            _ => panic!("Terminator type does not support block arguments"),
+            _ => panic!("INTERNAL COMPILER ERROR: Terminator type does not support block arguments"),
         }
     }
 

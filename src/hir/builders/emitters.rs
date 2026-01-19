@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     ast::{IdentifierNode, Span},
     hir::{
@@ -430,11 +432,47 @@ impl<'a> Builder<'a, InBlock> {
         destination
     }
 
-    pub fn emit_jmp_terminator(&mut self, target: BasicBlockId, args: Vec<ValueId>) {
+    fn validate_terminator_args(
+        &self,
+        target: BasicBlockId,
+        args: &HashMap<ValueId, ValueId>,
+    ) {
+        let target_bb = self.get_bb(target);
+        let args_len = args.len();
+        let params_len = target_bb.params.len();
+
+        if args_len != params_len {
+            let s = if params_len > 1 { "s" } else { "" };
+            panic!(
+                "INTERNAL COMPILER ERROR: Argument count mismatch for jump from BasicBlockId({}) to BasicBlockId({}). Expected {} argument{}, got {}",
+                self.context.block_id.0,
+                target.0,
+                s,
+                params_len,
+                args_len
+            );
+        }
+
+        for param_id in &target_bb.params {
+            if !args.contains_key(param_id) {
+                panic!(
+                    "INTERNAL COMPILER ERROR: Jump from BasicBlockId({}) to BasicBlockId({}) is missing argument for parameter ValueId({})",
+                    self.context.block_id.0, target.0, param_id.0
+                );
+            }
+        }
+    }
+
+    pub fn emit_jmp_terminator(
+        &mut self,
+        target: BasicBlockId,
+        args: HashMap<ValueId, ValueId>,
+    ) {
         self.check_no_terminator();
         let this_block_id = self.context.block_id;
         self.get_bb_mut(target).predecessors.insert(this_block_id);
 
+        self.validate_terminator_args(target, &args);
         self.bb_mut().terminator = Some(Terminator::Jump { target, args });
     }
 
@@ -442,9 +480,9 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         condition: ValueId,
         true_target: BasicBlockId,
-        true_args: Vec<ValueId>,
+        true_args: HashMap<ValueId, ValueId>,
         false_target: BasicBlockId,
-        false_args: Vec<ValueId>,
+        false_args: HashMap<ValueId, ValueId>,
     ) {
         self.check_no_terminator();
         let this_block_id = self.context.block_id;
@@ -455,6 +493,9 @@ impl<'a> Builder<'a, InBlock> {
         self.get_bb_mut(false_target)
             .predecessors
             .insert(this_block_id);
+
+        self.validate_terminator_args(true_target, &true_args);
+        self.validate_terminator_args(false_target, &false_args);
 
         self.bb_mut().terminator = Some(Terminator::CondJump {
             condition,
