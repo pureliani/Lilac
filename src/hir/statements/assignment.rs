@@ -15,11 +15,12 @@ impl<'a> Builder<'a, InBlock> {
     pub fn build_place(&mut self, expr: Expr) -> Result<Place, SemanticError> {
         match expr.kind {
             ExprKind::Identifier(ident) => {
-                let decl_id =
-                    self.current_scope.lookup(ident.name).ok_or(SemanticError {
-                        kind: SemanticErrorKind::UndeclaredIdentifier(ident),
-                        span: expr.span,
-                    })?;
+                let decl_id = self.current_scope.lookup(ident.name.clone()).ok_or(
+                    SemanticError {
+                        span: expr.span.clone(),
+                        kind: SemanticErrorKind::UndeclaredIdentifier(ident.clone()),
+                    },
+                )?;
 
                 let decl = self
                     .program
@@ -33,8 +34,8 @@ impl<'a> Builder<'a, InBlock> {
                         projections: vec![],
                     }),
                     CheckedDeclaration::UninitializedVar { .. } => Err(SemanticError {
+                        span: expr.span.clone(),
                         kind: SemanticErrorKind::UseOfUninitializedVariable(ident),
-                        span: expr.span,
                     }),
                     _ => Err(SemanticError {
                         kind: SemanticErrorKind::InvalidLValue,
@@ -64,11 +65,11 @@ impl<'a> Builder<'a, InBlock> {
                         place.projections.push(Projection::Deref);
                     }
                 }
-
+                let index_span = index.span.clone();
                 let index_val = self.build_expr(*index);
                 place
                     .projections
-                    .push(Projection::Index(index_val, index.span));
+                    .push(Projection::Index(index_val, index_span));
                 Ok(place)
             }
             _ => Err(SemanticError {
@@ -79,7 +80,6 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn build_assignment_stmt(&mut self, target: Expr, value: Expr) {
-        let value_span = value.span;
         let source_val = self.build_expr(value);
 
         let place = match self.build_place(target) {
