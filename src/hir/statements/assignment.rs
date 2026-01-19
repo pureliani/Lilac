@@ -1,47 +1,75 @@
 use crate::{
     ast::expr::{Expr, ExprKind},
     hir::{
-        cfg::{Value, ValueId},
+        builders::{Builder, InBlock, Place, Projection},
         errors::{SemanticError, SemanticErrorKind},
-        types::{checked_declaration::CheckedDeclaration, checked_type::Type},
-        FunctionBuilder, HIRContext,
+        types::{
+            checked_declaration::CheckedDeclaration,
+            checked_type::{StructKind, Type},
+        },
     },
 };
 
-impl FunctionBuilder {
-    pub fn build_lvalue_expr(
-        &mut self,
-        ctx: &mut HIRContext,
-        expr: Expr,
-    ) -> Result<(ValueId, ValueId), SemanticError> {
+impl<'a> Builder<'a, InBlock> {
+    /// Handles implicit dereferencing for struct fields and array indices
+    pub fn build_place(&mut self, expr: Expr) -> Result<Place, SemanticError> {
         match expr.kind {
-            ExprKind::Identifier(identifier) => {
-                let id = ctx.module_builder.scope_lookup(identifier.name);
-                let declaration = id.map(|id| ctx.program_builder.get_declaration(id));
+            ExprKind::Identifier(ident) => {
+                let decl_id =
+                    self.current_scope.lookup(ident.name).ok_or(SemanticError {
+                        kind: SemanticErrorKind::UndeclaredIdentifier(ident),
+                        span: expr.span,
+                    })?;
 
-                let decl = match declaration {
-                    Some(CheckedDeclaration::Var(var_decl)) => Ok(var_decl.clone()),
-                    Some(_) => Err(SemanticError {
+                let decl = self
+                    .program
+                    .declarations
+                    .get(&decl_id)
+                    .expect("INTERNAL COMPILER ERROR: Declaration not found");
+
+                match decl {
+                    CheckedDeclaration::Var(var) => Ok(Place {
+                        root: var.ptr,
+                        projections: vec![],
+                    }),
+                    CheckedDeclaration::UninitializedVar { .. } => Err(SemanticError {
+                        kind: SemanticErrorKind::UseOfUninitializedVariable(ident),
+                        span: expr.span,
+                    }),
+                    _ => Err(SemanticError {
                         kind: SemanticErrorKind::InvalidLValue,
                         span: expr.span,
                     }),
-                    None => Err(SemanticError {
-                        kind: SemanticErrorKind::UndeclaredIdentifier(identifier),
-                        span: expr.span,
-                    }),
-                }?;
-
-                let ptr_in_block =
-                    self.use_value_in_block(ctx, self.current_block_id, decl.ptr);
-
-                Ok((ptr_in_block, decl.ptr))
+                }
             }
             ExprKind::Access { left, field } => {
-                let (base_ptr_id, _) = self.build_lvalue_expr(ctx, *left)?;
+                let mut place = self.build_place(*left)?;
 
-                let field_ptr = self.emit_get_field_ptr(ctx, base_ptr_id, field)?;
+                let ty = self.get_place_type(&place)?;
+                if let Type::Pointer { narrowed_to, .. } = ty {
+                    if matches!(*narrowed_to, Type::Pointer { .. }) {
+                        place.projections.push(Projection::Deref);
+                    }
+                }
 
-                Ok((field_ptr, field_ptr))
+                place.projections.push(Projection::Field(field));
+                Ok(place)
+            }
+            ExprKind::Index { left, index } => {
+                let mut place = self.build_place(*left)?;
+
+                let ty = self.get_place_type(&place)?;
+                if let Type::Pointer { narrowed_to, .. } = ty {
+                    if matches!(*narrowed_to, Type::Pointer { .. }) {
+                        place.projections.push(Projection::Deref);
+                    }
+                }
+
+                let index_val = self.build_expr(*index);
+                place
+                    .projections
+                    .push(Projection::Index(index_val, index.span));
+                Ok(place)
             }
             _ => Err(SemanticError {
                 kind: SemanticErrorKind::InvalidLValue,
@@ -50,43 +78,97 @@ impl FunctionBuilder {
         }
     }
 
-    pub fn build_assignment_stmt(
-        &mut self,
-        ctx: &mut HIRContext,
-        target: Expr,
-        value: Expr,
-    ) {
+    pub fn build_assignment_stmt(&mut self, target: Expr, value: Expr) {
         let value_span = value.span;
-        let source_val = self.build_expr(ctx, value);
-        let source_type = ctx.program_builder.get_value_type(&source_val);
+        let source_val = self.build_expr(value);
 
-        let (destination_ptr, root_id) = match self.build_lvalue_expr(ctx, target.clone())
-        {
-            Ok(ids) => ids,
+        let place = match self.build_place(target) {
+            Ok(p) => p,
             Err(e) => {
-                ctx.module_builder.errors.push(e);
+                self.errors.push(e);
                 return;
             }
         };
 
-        self.emit_store(ctx, destination_ptr, source_val, value_span);
+        self.write_place(place, source_val);
+    }
 
-        let dest_ptr_ty = ctx.program_builder.get_value_id_type(&destination_ptr);
-
-        if let Type::Pointer { constraint, .. } = dest_ptr_ty {
-            let narrowed_ptr_ty = Type::Pointer {
-                constraint,
-                narrowed_to: Box::new(source_type),
+    fn get_place_type(&self, place: &Place) -> Result<Type, SemanticError> {
+        let root_val_id =
+            if let Some(mapped) = self.bb().original_to_local_valueid.get(&place.root) {
+                *mapped
+            } else {
+                place.root
             };
 
-            let narrowed_ptr = self.emit_type_cast(
-                ctx,
-                Value::Use(destination_ptr),
-                value_span,
-                narrowed_ptr_ty,
-            );
+        let mut ty = self.get_value_type(&root_val_id).clone();
 
-            self.map_value(self.current_block_id, root_id, narrowed_ptr);
+        for proj in &place.projections {
+            match proj {
+                Projection::Deref => {
+                    if let Type::Pointer { narrowed_to, .. } = ty {
+                        ty = *narrowed_to;
+                    } else {
+                        panic!("INTERNAL COMPILER ERROR: Cannot dereference non-pointer type {:?}", ty);
+                    }
+                }
+                Projection::Field(field_node) => {
+                    if let Type::Pointer { narrowed_to, .. } = &ty {
+                        if let Type::Struct(kind) = &**narrowed_to {
+                            if let Some((_, field_ty)) = kind.get_field(&field_node.name)
+                            {
+                                ty = Type::Pointer {
+                                    constraint: Box::new(field_ty.clone()),
+                                    narrowed_to: Box::new(field_ty),
+                                };
+                            } else {
+                                return Err(SemanticError {
+                                    kind: SemanticErrorKind::AccessToUndefinedField(
+                                        field_node.clone(),
+                                    ),
+                                    span: field_node.span.clone(),
+                                });
+                            }
+                        } else {
+                            return Err(SemanticError {
+                                kind: SemanticErrorKind::CannotAccess(
+                                    *narrowed_to.clone(),
+                                ),
+                                span: field_node.span.clone(),
+                            });
+                        }
+                    } else {
+                        return Err(SemanticError {
+                            kind: SemanticErrorKind::CannotAccess(ty.clone()),
+                            span: field_node.span.clone(),
+                        });
+                    }
+                }
+                Projection::Index(_, span) => {
+                    if let Type::Pointer { narrowed_to, .. } = &ty {
+                        if let Type::Struct(StructKind::List(elem_ty)) = &**narrowed_to {
+                            ty = Type::Pointer {
+                                constraint: elem_ty.clone(),
+                                narrowed_to: elem_ty.clone(),
+                            };
+                        } else {
+                            return Err(SemanticError {
+                                kind: SemanticErrorKind::CannotIndex(
+                                    *narrowed_to.clone(),
+                                ),
+                                span: span.clone(),
+                            });
+                        }
+                    } else {
+                        return Err(SemanticError {
+                            kind: SemanticErrorKind::CannotIndex(ty.clone()),
+                            span: span.clone(),
+                        });
+                    }
+                }
+            }
         }
+
+        Ok(ty)
     }
 }

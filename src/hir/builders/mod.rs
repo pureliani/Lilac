@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{DeclarationId, IdentifierNode},
+    ast::{DeclarationId, IdentifierNode, Span},
     hir::{
         errors::SemanticError,
         instructions::{Instruction, Terminator},
@@ -48,7 +48,7 @@ pub struct Place {
 
 pub enum Projection {
     Field(IdentifierNode),
-    Index(ValueId),
+    Index(ValueId, Span),
     Deref,
 }
 

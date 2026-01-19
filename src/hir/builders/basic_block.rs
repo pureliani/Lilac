@@ -113,7 +113,7 @@ impl<'a> Builder<'a, InBlock> {
                         "INTERNAL COMPILER ERROR: Invalid field in Place projection",
                     );
                 }
-                Projection::Index(idx_val) => {
+                Projection::Index(idx_val, _) => {
                     current = self.emit_get_element_ptr(current, *idx_val);
                 }
             }
@@ -135,7 +135,7 @@ impl<'a> Builder<'a, InBlock> {
                         "INTERNAL COMPILER ERROR: Invalid field in Place projection",
                     );
                 }
-                Projection::Index(idx_val) => {
+                Projection::Index(idx_val, _) => {
                     current = self.emit_get_element_ptr(current, *idx_val);
                 }
             }
@@ -146,7 +146,7 @@ impl<'a> Builder<'a, InBlock> {
         let is_narrowable = !place
             .projections
             .iter()
-            .any(|p| matches!(p, Projection::Index(_)));
+            .any(|p| matches!(p, Projection::Index(_, _)));
 
         if is_narrowable {
             let source_ty = self.get_value_type(&value);
