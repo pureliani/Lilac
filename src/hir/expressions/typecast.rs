@@ -1,20 +1,30 @@
 use crate::{
     ast::{expr::Expr, type_annotation::TypeAnnotation},
     hir::{
-        cfg::Value, utils::check_type::check_type_annotation, FunctionBuilder, HIRContext,
+        builders::{Builder, InBlock, ValueId},
+        utils::check_type::{check_type_annotation, TypeCheckerContext},
     },
 };
 
-impl FunctionBuilder {
+impl<'a> Builder<'a, InBlock> {
     pub fn build_typecast_expr(
         &mut self,
-        ctx: &mut HIRContext,
         left: Box<Expr>,
         target: TypeAnnotation,
-    ) -> Value {
-        let value_span = left.span;
-        let value = self.build_expr(ctx, *left);
-        let target_type = check_type_annotation(ctx, &target);
-        Value::Use(self.emit_type_cast(ctx, value, value_span, target_type))
+    ) -> ValueId {
+        let value_span = left.span.clone();
+        let src_id = self.build_expr(*left);
+
+        let mut type_ctx = TypeCheckerContext {
+            scope: self.current_scope.clone(),
+            declarations: &self.program.declarations,
+            errors: self.errors,
+        };
+        let target_type = check_type_annotation(&mut type_ctx, &target);
+
+        match self.cast(src_id, target_type, value_span) {
+            Ok(id) => id,
+            Err(e) => self.report_error_and_get_poison(e),
+        }
     }
 }

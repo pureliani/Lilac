@@ -1,15 +1,14 @@
 use crate::{
     ast::{expr::Expr, IdentifierNode},
-    hir::{cfg::Value, FunctionBuilder, HIRContext},
+    hir::builders::{Builder, InBlock, ValueId},
 };
 
-impl FunctionBuilder {
+impl<'a> Builder<'a, InBlock> {
     pub fn build_static_access_expr(
         &mut self,
-        ctx: &mut HIRContext,
         left: Box<Expr>,
         field: IdentifierNode,
-    ) -> Value {
+    ) -> ValueId {
         todo!("Implement static access expression builder")
     }
 }

@@ -1,15 +1,14 @@
 use crate::{
     ast::expr::{Expr, MatchArm},
-    hir::{cfg::Value, FunctionBuilder, HIRContext},
+    hir::builders::{Builder, InBlock, ValueId},
 };
 
-impl FunctionBuilder {
+impl<'a> Builder<'a, InBlock> {
     pub fn build_match_expr(
         &mut self,
-        ctx: &mut HIRContext,
         conditions: Vec<Expr>,
         arms: Vec<MatchArm>,
-    ) -> Value {
+    ) -> ValueId {
         todo!("Implement match expression builder")
     }
 }

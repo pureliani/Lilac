@@ -1,41 +1,35 @@
 use crate::{
     ast::expr::Expr,
-    hir::{
-        cfg::{UnaryOperationKind, Value},
-        FunctionBuilder, HIRContext, TypePredicate,
-    },
+    hir::builders::{Builder, InBlock, TypePredicate, ValueId},
+    unwrap_or_poison,
 };
 
-impl FunctionBuilder {
-    pub fn build_unary_op_expr(
-        &mut self,
-        ctx: &mut HIRContext,
-        op_kind: UnaryOperationKind,
-        expr: Box<Expr>,
-    ) -> Value {
-        let value = self.build_expr(ctx, *expr);
-        let destination = match self.emit_unary_op(ctx, op_kind.clone(), value.clone()) {
-            Ok(destination_id) => destination_id,
-            Err(error) => {
-                return Value::Use(self.report_error_and_get_poison(ctx, error));
-            }
-        };
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_not_expr(&mut self, expr: Box<Expr>) -> ValueId {
+        let span = expr.span.clone();
+        let operand_id = self.build_expr(*expr);
 
-        if matches!(op_kind, UnaryOperationKind::Not) {
-            if let Value::Use(operand_id) = value {
-                if let Some(pred) = self.predicates.get(&operand_id).cloned() {
-                    self.predicates.insert(
-                        destination,
-                        TypePredicate {
-                            source: pred.source,
-                            true_id: pred.false_id,
-                            false_id: pred.true_id,
-                        },
-                    );
-                }
-            }
+        let result_id = unwrap_or_poison!(self, self.not(operand_id, span));
+
+        let predicate = self.get_fn().predicates.get(&operand_id).cloned();
+        if let Some(pred) = predicate {
+            self.get_fn().predicates.insert(
+                result_id,
+                TypePredicate {
+                    source: pred.source,
+                    true_id: pred.false_id,
+                    false_id: pred.true_id,
+                },
+            );
         }
 
-        Value::Use(destination)
+        result_id
+    }
+
+    pub fn build_neg_expr(&mut self, expr: Box<Expr>) -> ValueId {
+        let span = expr.span.clone();
+        let operand_id = self.build_expr(*expr);
+
+        unwrap_or_poison!(self, self.neg(operand_id, span))
     }
 }
