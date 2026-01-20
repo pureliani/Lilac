@@ -20,9 +20,9 @@ pub static CONSTANT_COUNTER: LazyLock<AtomicUsize> =
 pub static DECLARATION_COUNTER: LazyLock<AtomicUsize> =
     LazyLock::new(|| AtomicUsize::new(0));
 pub static TAG_INTERNER: LazyLock<SharedTagInterner> =
-    LazyLock::new(|| SharedTagInterner::default());
+    LazyLock::new(SharedTagInterner::default);
 pub static STRING_INTERNER: LazyLock<SharedStringInterner> =
-    LazyLock::new(|| SharedStringInterner::default());
+    LazyLock::new(SharedStringInterner::default);
 pub static COMMON_IDENTIFIERS: LazyLock<CommonIdentifiers> =
     LazyLock::new(|| CommonIdentifiers {
         id: STRING_INTERNER.intern("id"),

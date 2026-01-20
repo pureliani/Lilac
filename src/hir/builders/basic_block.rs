@@ -230,7 +230,7 @@ impl<'a> Builder<'a, InBlock> {
             let root_ty = self.get_value_type(&place.root);
 
             let narrowed_root_ty =
-                narrow_type_at_path(&root_ty, &place.projections, &source_ty);
+                narrow_type_at_path(root_ty, &place.projections, source_ty);
 
             let current_root = self.use_value(place.root);
             let narrowed_root_ptr = self.emit_refine_type(current_root, narrowed_root_ty);
@@ -321,7 +321,7 @@ impl<'a> Builder<'a, InBlock> {
 
         for pred_id in predecessors {
             let old_block_id = self.context.block_id;
-            self.context.block_id = pred_id.clone();
+            self.context.block_id = pred_id;
 
             let val_in_pred = self.use_value(original_value_id);
 

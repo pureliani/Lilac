@@ -15,12 +15,11 @@ impl<'a> Builder<'a, InBlock> {
     pub fn build_place(&mut self, expr: Expr) -> Result<Place, SemanticError> {
         match expr.kind {
             ExprKind::Identifier(ident) => {
-                let decl_id = self.current_scope.lookup(ident.name.clone()).ok_or(
-                    SemanticError {
+                let decl_id =
+                    self.current_scope.lookup(ident.name).ok_or(SemanticError {
                         span: expr.span.clone(),
                         kind: SemanticErrorKind::UndeclaredIdentifier(ident.clone()),
-                    },
-                )?;
+                    })?;
 
                 let decl = self
                     .program

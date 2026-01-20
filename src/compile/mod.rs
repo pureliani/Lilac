@@ -72,9 +72,7 @@ impl Compiler {
 
         for m in parsed_modules {
             match m {
-                Err(e) => {
-                    self.errors.push(e);
-                }
+                Err(e) => self.errors.push(e),
                 Ok(mut module) => {
                     let has_tokenization_errors = !module.tokenization_errors.is_empty();
                     let has_parsing_errors = !module.parsing_errors.is_empty();
@@ -82,13 +80,13 @@ impl Compiler {
                     self.errors.extend(
                         std::mem::take(&mut module.tokenization_errors)
                             .into_iter()
-                            .map(|e| CompilerErrorKind::Tokenization(e)),
+                            .map(CompilerErrorKind::Tokenization),
                     );
 
                     self.errors.extend(
                         std::mem::take(&mut module.parsing_errors)
                             .into_iter()
-                            .map(|e| CompilerErrorKind::Parsing(e)),
+                            .map(CompilerErrorKind::Parsing),
                     );
 
                     if !has_tokenization_errors && !has_parsing_errors {
@@ -110,27 +108,30 @@ impl Compiler {
             modules: HashMap::new(),
             value_types: HashMap::new(),
         };
+
+        let global_scope = Scope::new_root(ScopeKind::Global, Span::default());
+
         let mut program_builder = Builder {
             context: InGlobal,
-            current_scope: Scope::new_root(ScopeKind::Global, Span::default()),
+            current_scope: global_scope,
             errors: &mut builder_errors,
             program: &mut program,
         };
 
-        // TODO: Implement program_builder.build(modules_to_compile)
+        program_builder.build(modules_to_compile);
 
-        self.errors.extend(
-            builder_errors
-                .into_iter()
-                .map(|e| CompilerErrorKind::Semantic(e)),
-        );
+        self.errors
+            .extend(builder_errors.into_iter().map(CompilerErrorKind::Semantic));
 
         if !self.errors.is_empty() {
             self.report_errors();
             return;
         }
 
-        println!("Compilation successful (HIR generated)");
+        println!(
+            "Compilation successful: HIR generated for {} modules.",
+            program.modules.len()
+        );
     }
 
     pub fn parallel_parse_modules(

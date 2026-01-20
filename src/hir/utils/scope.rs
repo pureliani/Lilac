@@ -103,7 +103,7 @@ impl Scope {
         if matches!(kind, ScopeKind::CodeBlock | ScopeKind::WhileBody { .. }) {
             return self
                 .parent()
-                .map_or(false, |parent| parent.within_function_body());
+                .is_some_and(|parent| parent.within_function_body());
         }
 
         false
@@ -123,9 +123,7 @@ impl Scope {
         }
 
         if let ScopeKind::CodeBlock = kind {
-            return self
-                .parent()
-                .map_or(None, |parent| parent.within_loop_body());
+            return self.parent().and_then(|parent| parent.within_loop_body());
         }
 
         None

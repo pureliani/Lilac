@@ -23,48 +23,71 @@ pub mod unary_op;
 use crate::{
     ast::expr::{Expr, ExprKind},
     hir::builders::{Builder, InBlock, ValueId},
+    hir::expressions::r#if::IfContext,
 };
 
 impl<'a> Builder<'a, InBlock> {
     pub fn build_expr(&mut self, expr: Expr) -> ValueId {
+        let span = expr.span.clone();
         match expr.kind {
-            ExprKind::Not { right } => todo!(),
-            ExprKind::Neg { right } => todo!(),
-            ExprKind::Add { left, right } => todo!(),
-            ExprKind::Subtract { left, right } => todo!(),
-            ExprKind::Multiply { left, right } => todo!(),
-            ExprKind::Divide { left, right } => todo!(),
-            ExprKind::Modulo { left, right } => todo!(),
-            ExprKind::LessThan { left, right } => todo!(),
-            ExprKind::LessThanOrEqual { left, right } => todo!(),
-            ExprKind::GreaterThan { left, right } => todo!(),
-            ExprKind::GreaterThanOrEqual { left, right } => todo!(),
-            ExprKind::Equal { left, right } => todo!(),
-            ExprKind::NotEqual { left, right } => todo!(),
-            ExprKind::And { left, right } => todo!(),
-            ExprKind::Or { left, right } => todo!(),
-            ExprKind::Struct(items) => todo!(),
-            ExprKind::Access { .. } => self.build_access_expr(expr),
-            ExprKind::StaticAccess { left, field } => todo!(),
-            ExprKind::Index { left, index } => self.build_index_expr(left, index),
-            ExprKind::TypeCast { left, target } => todo!(),
-            ExprKind::IsVariant { left, variants } => todo!(),
-            ExprKind::Tag { name, value } => todo!(),
-            ExprKind::FnCall { left, args } => todo!(),
-            ExprKind::BoolLiteral(_) => todo!(),
-            ExprKind::Number(number_kind) => todo!(),
-            ExprKind::String(string_node) => todo!(),
-            ExprKind::Identifier(identifier_node) => {
-                self.build_identifier_expr(identifier_node.clone())
+            ExprKind::Not { right } => self.build_not_expr(right),
+            ExprKind::Neg { right } => self.build_neg_expr(right),
+
+            ExprKind::Add { left, right } => self.build_add_expr(left, right),
+            ExprKind::Subtract { left, right } => self.build_sub_expr(left, right),
+            ExprKind::Multiply { left, right } => self.build_mul_expr(left, right),
+            ExprKind::Divide { left, right } => self.build_div_expr(left, right),
+            ExprKind::Modulo { left, right } => self.build_mod_expr(left, right),
+            ExprKind::LessThan { left, right } => self.build_lt_expr(left, right),
+            ExprKind::LessThanOrEqual { left, right } => self.build_lte_expr(left, right),
+            ExprKind::GreaterThan { left, right } => self.build_gt_expr(left, right),
+            ExprKind::GreaterThanOrEqual { left, right } => {
+                self.build_gte_expr(left, right)
             }
-            ExprKind::Fn(fn_decl) => todo!(),
-            ExprKind::Match { conditions, arms } => todo!(),
+            ExprKind::Equal { left, right } => self.build_eq_expr(left, right),
+            ExprKind::NotEqual { left, right } => self.build_neq_expr(left, right),
+
+            ExprKind::And { left, right } => self.build_and_expr(left, right),
+            ExprKind::Or { left, right } => self.build_or_expr(left, right),
+
+            ExprKind::BoolLiteral(value) => self.build_bool_literal(value),
+            ExprKind::Number(number_kind) => self.build_number_literal(number_kind),
+            ExprKind::String(string_node) => self.build_string_literal(string_node),
+
+            ExprKind::Struct(fields) => self.build_struct_init_expr(fields),
+            ExprKind::List(items) => self.build_list_literal_expr(items, span),
+            ExprKind::Tag { name, value } => self.build_tag_expr(name, value, span),
+
+            ExprKind::Access { .. } => self.build_access_expr(Expr {
+                kind: expr.kind,
+                span,
+            }),
+            ExprKind::StaticAccess { left, field } => {
+                self.build_static_access_expr(left, field)
+            }
+            ExprKind::Index { left, index } => self.build_index_expr(left, index),
+
             ExprKind::If {
                 branches,
                 else_branch,
-            } => todo!(),
-            ExprKind::List(exprs) => todo!(),
-            ExprKind::CodeBlock(block_contents) => todo!(),
+            } => self.build_if(branches, else_branch, IfContext::Expression),
+            ExprKind::Match { conditions, arms } => {
+                self.build_match_expr(conditions, arms)
+            }
+            ExprKind::CodeBlock(block_contents) => {
+                self.build_codeblock_expr(block_contents)
+            }
+
+            ExprKind::Fn(fn_decl) => self.build_fn_expr(*fn_decl),
+            ExprKind::FnCall { left, args } => self.build_fn_call_expr(left, args, span),
+
+            ExprKind::Identifier(identifier_node) => {
+                self.build_identifier_expr(identifier_node)
+            }
+            ExprKind::TypeCast { left, target } => self.build_typecast_expr(left, target),
+            ExprKind::IsVariant { left, variants } => {
+                self.build_is_variant_expr(left, variants)
+            }
         }
     }
 }

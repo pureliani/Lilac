@@ -135,7 +135,7 @@ impl Parser {
 
             Ok(Stmt {
                 span: Span {
-                    start: lhs.span.start.clone(),
+                    start: lhs.span.start,
                     end: end_span.end,
                     path: self.path.clone(),
                 },
