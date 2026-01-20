@@ -1,26 +1,29 @@
 use crate::{
     ast::expr::BlockContents,
-    hir::{cfg::Value, utils::scope::ScopeKind, FunctionBuilder, HIRContext},
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        utils::scope::ScopeKind,
+    },
 };
 
-impl FunctionBuilder {
-    pub fn build_codeblock_expr(
-        &mut self,
-        ctx: &mut HIRContext,
-        codeblock: BlockContents,
-    ) -> Value {
-        ctx.module_builder.enter_scope(ScopeKind::CodeBlock);
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_codeblock_expr(&mut self, codeblock: BlockContents) -> ValueId {
+        self.current_scope = self
+            .current_scope
+            .enter(ScopeKind::CodeBlock, codeblock.span.start);
 
-        self.build_statements(ctx, codeblock.statements);
-
-        let result_value = if let Some(final_expr) = codeblock.final_expr {
-            self.build_expr(ctx, *final_expr)
+        self.build_statements(codeblock.statements);
+        let result_id = if let Some(final_expr) = codeblock.final_expr {
+            self.build_expr(*final_expr)
         } else {
-            Value::VoidLiteral
+            self.emit_const_void()
         };
 
-        ctx.module_builder.exit_scope();
+        self.current_scope = self
+            .current_scope
+            .exit(codeblock.span.end)
+            .expect("INTERNAL COMPILER ERROR: Scope stack mismatch in codeblock");
 
-        result_value
+        result_id
     }
 }

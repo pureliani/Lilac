@@ -136,7 +136,7 @@ impl<'a> Builder<'a, InBlock> {
         };
         let some_id_ptr =
             unwrap_or_poison!(self, self.get_field_ptr(some_ptr, &id_field));
-        let tag_id_val = self.emit_const_int(NumberKind::U16(some_tag_id.0));
+        let tag_id_val = self.emit_const_number(NumberKind::U16(some_tag_id.0));
         self.store(some_id_ptr, tag_id_val, left_span.clone());
 
         let val_field = IdentifierNode {
@@ -163,7 +163,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let none_id_ptr =
             unwrap_or_poison!(self, self.get_field_ptr(none_ptr, &id_field));
-        let none_tag_id_val = self.emit_const_int(NumberKind::U16(none_tag_id.0));
+        let none_tag_id_val = self.emit_const_number(NumberKind::U16(none_tag_id.0));
         self.store(none_id_ptr, none_tag_id_val, left_span.clone());
 
         let none_val = unwrap_or_poison!(self, self.load(none_ptr, left_span.clone()));

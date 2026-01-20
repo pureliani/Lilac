@@ -45,7 +45,7 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     // Constants
-    pub fn emit_const_int(&mut self, val: NumberKind) -> ValueId {
+    pub fn emit_const_number(&mut self, val: NumberKind) -> ValueId {
         let ty = match val {
             NumberKind::I64(_) => Type::I64,
             NumberKind::I32(_) => Type::I32,
@@ -62,7 +62,7 @@ impl<'a> Builder<'a, InBlock> {
         };
 
         let dest = self.new_value_id(ty);
-        self.push_instruction(Instruction::ConstInt { dest, val });
+        self.push_instruction(Instruction::ConstNumber { dest, val });
         dest
     }
 

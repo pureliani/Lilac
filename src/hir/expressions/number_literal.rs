@@ -1,10 +1,10 @@
 use crate::{
-    hir::{cfg::Value, FunctionBuilder},
+    hir::builders::{Builder, InBlock, ValueId},
     tokenize::NumberKind,
 };
 
-impl FunctionBuilder {
-    pub fn build_number_literal(&mut self, value: NumberKind) -> Value {
-        Value::NumberLiteral(value)
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_number_literal(&mut self, value: NumberKind) -> ValueId {
+        self.emit_const_number(value)
     }
 }

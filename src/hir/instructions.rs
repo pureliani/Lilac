@@ -12,7 +12,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub enum Instruction {
     // Constants
-    ConstInt {
+    ConstNumber {
         dest: ValueId,
         val: NumberKind,
     },
