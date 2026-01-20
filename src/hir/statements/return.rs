@@ -3,7 +3,7 @@ use crate::{
     hir::{
         builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
-        types::{checked_declaration::CheckedDeclaration, checked_type::Type},
+        types::checked_declaration::CheckedDeclaration,
         utils::check_is_assignable::check_is_assignable,
     },
 };
@@ -35,12 +35,6 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
-        let final_val = if expected_return_type == Type::Void {
-            None
-        } else {
-            Some(val_id)
-        };
-
-        self.emit_return_terminator(final_val);
+        self.emit_return_terminator(val_id);
     }
 }

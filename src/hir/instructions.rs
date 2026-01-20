@@ -279,7 +279,7 @@ pub enum Terminator {
         false_args: HashMap<ValueId, ValueId>,
     },
     Return {
-        value: Option<ValueId>,
+        value: ValueId,
     },
     Unreachable,
 }

@@ -538,7 +538,7 @@ impl<'a> Builder<'a, InBlock> {
         });
     }
 
-    pub fn emit_return_terminator(&mut self, value: Option<ValueId>) {
+    pub fn emit_return_terminator(&mut self, value: ValueId) {
         self.check_no_terminator();
         self.bb_mut().terminator = Some(Terminator::Return { value })
     }
