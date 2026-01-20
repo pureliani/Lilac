@@ -1,66 +1,86 @@
 use crate::{
-    ast::{IdentifierNode, Span, StringNode},
+    ast::{IdentifierNode, ModulePath, Span, StringNode},
     hir::{
+        builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
-        HIRContext,
+        types::checked_declaration::CheckedDeclaration,
     },
 };
+use std::path::PathBuf;
+use std::sync::Arc;
 
-pub fn build_from_stmt(
-    ctx: &mut HIRContext,
-    path: StringNode,
-    identifiers: Vec<(IdentifierNode, Option<IdentifierNode>)>,
-    span: Span,
-) {
-    if !ctx.module_builder.is_file_scope() {
-        ctx.module_builder.errors.push(SemanticError {
-            kind: SemanticErrorKind::FromStatementMustBeDeclaredAtTopLevel,
-            span,
-        });
-        return;
-    }
-
-    let mut target_path = ctx.module_builder.module.path.clone();
-    target_path.pop();
-    target_path.push(path.value);
-
-    let canonical_path = match target_path.canonicalize() {
-        Ok(p) => p,
-        Err(_) => {
-            ctx.module_builder.errors.push(SemanticError {
-                kind: SemanticErrorKind::ModuleNotFound(target_path),
-                span: path.span,
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_from_stmt(
+        &mut self,
+        path: StringNode,
+        identifiers: Vec<(IdentifierNode, Option<IdentifierNode>)>,
+        span: Span,
+    ) {
+        if !self.current_scope.is_file_scope() {
+            self.errors.push(SemanticError {
+                kind: SemanticErrorKind::FromStatementMustBeDeclaredAtTopLevel,
+                span,
             });
             return;
         }
-    };
 
-    let target_module = ctx.program_builder.modules.get(&canonical_path);
+        let mut target_path_buf = PathBuf::from(&*self.context.path.0);
+        target_path_buf.pop();
+        target_path_buf.push(&path.value);
 
-    match target_module {
-        Some(m) => {
-            for (imported_ident, alias) in identifiers {
-                if let Some(decl_id) = m.resolve_export(imported_ident.name) {
-                    let name_in_current_scope = alias.unwrap_or(imported_ident);
+        let canonical_path = match target_path_buf.canonicalize() {
+            Ok(p) => ModulePath(Arc::new(p)),
+            Err(_) => {
+                self.errors.push(SemanticError {
+                    kind: SemanticErrorKind::ModuleNotFound(ModulePath(Arc::new(
+                        target_path_buf,
+                    ))),
+                    span: path.span,
+                });
+                return;
+            }
+        };
 
-                    ctx.module_builder.scope_map(name_in_current_scope, decl_id);
+        let target_module = match self.program.modules.get(&canonical_path) {
+            Some(m) => m,
+            None => {
+                self.errors.push(SemanticError {
+                    kind: SemanticErrorKind::ModuleNotFound(canonical_path),
+                    span: path.span,
+                });
+                return;
+            }
+        };
+
+        for (imported_ident, alias) in identifiers {
+            if let Some(decl_id) = target_module.root_scope.lookup(imported_ident.name) {
+                let is_exported = match self.program.declarations.get(&decl_id) {
+                    Some(CheckedDeclaration::Function(f)) => f.is_exported,
+                    Some(CheckedDeclaration::TypeAlias(t)) => t.is_exported,
+                    _ => false,
+                };
+
+                if is_exported {
+                    let name_node = alias.unwrap_or(imported_ident);
+                    self.current_scope.map_name_to_decl(name_node.name, decl_id);
                 } else {
-                    ctx.module_builder.errors.push(SemanticError {
+                    self.errors.push(SemanticError {
+                        span: imported_ident.span.clone(),
                         kind: SemanticErrorKind::SymbolNotExported {
                             module_path: canonical_path.clone(),
                             symbol: imported_ident,
                         },
-                        span: imported_ident.span,
                     });
-                    continue;
                 }
+            } else {
+                self.errors.push(SemanticError {
+                    kind: SemanticErrorKind::SymbolNotExported {
+                        module_path: canonical_path.clone(),
+                        symbol: imported_ident.clone(),
+                    },
+                    span: imported_ident.span,
+                });
             }
-        }
-        None => {
-            ctx.module_builder.errors.push(SemanticError {
-                kind: SemanticErrorKind::ModuleNotFound(canonical_path),
-                span: path.span,
-            });
         }
     }
 }

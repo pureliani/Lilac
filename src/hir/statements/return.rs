@@ -1,35 +1,46 @@
 use crate::{
     ast::{expr::Expr, Span},
     hir::{
-        cfg::Terminator,
+        builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::Type,
+        types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::check_is_assignable::check_is_assignable,
-        FunctionBuilder, HIRContext,
     },
 };
 
-impl FunctionBuilder {
-    pub fn build_return_stmt(&mut self, ctx: &mut HIRContext, value: Expr, span: Span) {
-        let return_value = self.build_expr(ctx, value);
-        let return_type = ctx.program_builder.get_value_type(&return_value);
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_return_stmt(&mut self, value: Expr, span: Span) {
+        let func_id = self.context.func_id;
+        let expected_return_type = match self.program.declarations.get(&func_id) {
+            Some(CheckedDeclaration::Function(f)) => f.return_type.clone(),
+            _ => {
+                self.errors.push(SemanticError {
+                    kind: SemanticErrorKind::ReturnKeywordOutsideFunction,
+                    span: span.clone(),
+                });
+                return;
+            }
+        };
 
-        if !check_is_assignable(&return_type, &self.return_type) {
-            ctx.module_builder.errors.push(SemanticError {
+        let val_id = self.build_expr(value);
+        let actual_type = self.get_value_type(&val_id);
+
+        if !check_is_assignable(actual_type, &expected_return_type) {
+            self.errors.push(SemanticError {
                 kind: SemanticErrorKind::ReturnTypeMismatch {
-                    expected: self.return_type.clone(),
-                    received: return_type,
+                    expected: expected_return_type.clone(),
+                    received: actual_type.clone(),
                 },
                 span,
             });
         }
 
-        let final_value = if self.return_type == Type::Void {
+        let final_val = if expected_return_type == Type::Void {
             None
         } else {
-            Some(return_value)
+            Some(val_id)
         };
 
-        self.set_basic_block_terminator(Terminator::Return { value: final_value });
+        self.emit_return_terminator(final_val);
     }
 }
