@@ -1,92 +1,80 @@
 use crate::{
     ast::expr::Expr,
     hir::{
-        cfg::{Terminator, ValueId},
+        builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::Type,
         utils::check_is_assignable::check_is_assignable,
-        FunctionBuilder, HIRContext,
     },
 };
+use std::collections::HashMap;
 
-impl FunctionBuilder {
-    pub fn build_and_expr(
-        &mut self,
-        ctx: &mut HIRContext,
-        left: Box<Expr>,
-        right: Box<Expr>,
-    ) -> ValueId {
-        let right_entry_block = self.new_basic_block();
-        let merge_block = self.new_basic_block();
-        let result_param = merge_block.append_block_param(ctx, Type::Bool);
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_and_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        let right_entry_block = self.as_fn().new_bb();
+        let merge_block = self.as_fn().new_bb();
 
-        let left_span = left.span;
-        let left_value = self.build_expr(ctx, *left);
+        let result_param = self.append_param_to_block(merge_block, Type::Bool);
 
-        let left_type = ctx.program_builder.get_value_type(&left_value);
-        if !check_is_assignable(&left_type, &Type::Bool) {
-            return Value::Use(self.report_error_and_get_poison(
-                ctx,
-                SemanticError {
-                    kind: SemanticErrorKind::TypeMismatch {
-                        expected: Type::Bool,
-                        received: left_type,
-                    },
-                    span: left_span,
+        let left_span = left.span.clone();
+        let left_id = self.build_expr(*left);
+        let left_type = self.get_value_type(&left_id);
+
+        if !check_is_assignable(left_type, &Type::Bool) {
+            return self.report_error_and_get_poison(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: Type::Bool,
+                    received: left_type.clone(),
                 },
-            ));
+                span: left_span,
+            });
         }
 
-        if let Value::Use(left_id) = left_value {
-            if let Some(pred) = self.predicates.get(&left_id).cloned() {
-                self.map_value(right_entry_block_id, pred.source, pred.true_id);
-                self.map_value(merge_block_id, pred.source, pred.false_id);
-            }
+        if let Some(pred) = self.get_fn().predicates.get(&left_id).cloned() {
+            self.get_bb_mut(right_entry_block)
+                .original_to_local_valueid
+                .insert(pred.source, pred.true_id);
+
+            self.get_bb_mut(merge_block)
+                .original_to_local_valueid
+                .insert(pred.source, pred.false_id);
         }
 
-        self.set_basic_block_terminator(Terminator::CondJump {
-            condition: left_value,
-            true_target: right_entry_block_id,
-            true_args: vec![],
-            false_target: merge_block_id,
-            false_args: vec![Value::BoolLiteral(false)],
-        });
+        let const_false = self.emit_const_bool(false);
+        self.cond_jmp(
+            left_id,
+            right_entry_block,
+            HashMap::new(),
+            merge_block,
+            HashMap::from([(result_param, const_false)]),
+        );
 
-        self.seal_block(ctx, right_entry_block_id);
+        self.seal_block(right_entry_block);
+        self.use_basic_block(right_entry_block);
 
-        self.use_basic_block(right_entry_block_id);
-        let right_span = right.span;
-        let right_value = self.build_expr(ctx, *right);
+        let right_span = right.span.clone();
+        let right_id = self.build_expr(*right);
+        let right_type = self.get_value_type(&right_id);
 
-        let right_type = ctx.program_builder.get_value_type(&right_value);
-        if !check_is_assignable(&right_type, &Type::Bool) {
-            return Value::Use(self.report_error_and_get_poison(
-                ctx,
-                SemanticError {
-                    kind: SemanticErrorKind::TypeMismatch {
-                        expected: Type::Bool,
-                        received: right_type,
-                    },
-                    span: right_span,
+        if !check_is_assignable(right_type, &Type::Bool) {
+            return self.report_error_and_get_poison(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: Type::Bool,
+                    received: right_type.clone(),
                 },
-            ));
+                span: right_span,
+            });
         }
 
-        if let Value::Use(right_id) = right_value {
-            if let Some(pred) = self.predicates.get(&right_id).cloned() {
-                self.predicates.insert(result_param, pred);
-            }
+        if let Some(pred) = self.get_fn().predicates.get(&right_id).cloned() {
+            self.get_fn().predicates.insert(result_param, pred);
         }
 
-        self.set_basic_block_terminator(Terminator::Jump {
-            target: merge_block_id,
-            args: vec![right_value],
-        });
+        self.jmp(merge_block, HashMap::from([(result_param, right_id)]));
 
-        self.seal_block(ctx, merge_block_id);
+        self.seal_block(merge_block);
+        self.use_basic_block(merge_block);
 
-        self.use_basic_block(merge_block_id);
-
-        Value::Use(result_param)
+        result_param
     }
 }
