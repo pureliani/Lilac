@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{DeclarationId, IdentifierNode, Span},
     hir::{
-        builders::{BasicBlockId, Builder, InBlock, ValueId},
+        builders::{BasicBlockId, Builder, ConstantId, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, Terminator},
         types::{
@@ -69,6 +69,18 @@ impl<'a> Builder<'a, InBlock> {
     pub fn emit_const_bool(&mut self, val: bool) -> ValueId {
         let dest = self.new_value_id(Type::Bool);
         self.push_instruction(Instruction::ConstBool { dest, val });
+        dest
+    }
+
+    pub fn emit_const_string(&mut self, constant_id: ConstantId) -> ValueId {
+        let inner = Box::new(Type::Struct(StructKind::String));
+        let ty = Type::Pointer {
+            constraint: inner.clone(),
+            narrowed_to: inner,
+        };
+
+        let dest = self.new_value_id(ty);
+        self.push_instruction(Instruction::ConstString { dest, constant_id });
         dest
     }
 
