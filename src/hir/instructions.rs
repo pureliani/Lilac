@@ -244,7 +244,7 @@ pub enum Instruction {
         base_ptr: ValueId,
         field_index: usize,
     },
-    GetElementPtr {
+    PtrOffset {
         destination: ValueId,
         base_ptr: ValueId,
         index: ValueId,

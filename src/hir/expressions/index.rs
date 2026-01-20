@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use crate::{
-    ast::{expr::Expr, IdentifierNode},
+    ast::{expr::Expr, IdentifierNode, Span},
     globals::{COMMON_IDENTIFIERS, STRING_INTERNER, TAG_INTERNER},
     hir::{
         builders::{Builder, InBlock, ValueId},
@@ -15,6 +13,7 @@ use crate::{
     tokenize::NumberKind,
     unwrap_or_poison,
 };
+use std::collections::HashMap;
 
 impl<'a> Builder<'a, InBlock> {
     pub fn build_index_expr(
@@ -37,32 +36,30 @@ impl<'a> Builder<'a, InBlock> {
                     expected: Type::USize,
                     received: index_type,
                 },
-                span: index_span.clone(),
+                span: index_span,
             });
         }
 
         let element_type = match list_type {
-            Type::Pointer { narrowed_to, .. } => match *narrowed_to {
-                Type::Struct(StructKind::List(inner)) => *inner,
+            Type::Pointer { narrowed_to, .. } => match &*narrowed_to {
+                Type::Struct(StructKind::List(inner)) => *inner.clone(),
                 _ => {
                     return self.report_error_and_get_poison(SemanticError {
-                        kind: SemanticErrorKind::CannotIndex(*narrowed_to),
-                        span: left_span.clone(),
-                    });
+                        kind: SemanticErrorKind::CannotIndex(*narrowed_to.clone()),
+                        span: left_span,
+                    })
                 }
             },
             _ => {
                 return self.report_error_and_get_poison(SemanticError {
                     kind: SemanticErrorKind::CannotIndex(list_type),
-                    span: left_span.clone(),
-                });
+                    span: left_span,
+                })
             }
         };
 
-        let none_str_id = STRING_INTERNER.intern("none");
-        let some_str_id = STRING_INTERNER.intern("some");
-        let none_tag_id = TAG_INTERNER.intern(&none_str_id);
-        let some_tag_id = TAG_INTERNER.intern(&some_str_id);
+        let none_tag_id = TAG_INTERNER.intern(&STRING_INTERNER.intern("none"));
+        let some_tag_id = TAG_INTERNER.intern(&STRING_INTERNER.intern("some"));
 
         let none_variant = TagType {
             id: none_tag_id,
@@ -79,104 +76,101 @@ impl<'a> Builder<'a, InBlock> {
         variants.sort_by(|a, b| a.id.0.cmp(&b.id.0));
         let result_union_type = Type::Struct(StructKind::Union { variants });
 
-        let len_field_id = IdentifierNode {
+        let len_field = IdentifierNode {
             name: COMMON_IDENTIFIERS.len,
             span: left_span.clone(),
         };
-
-        let len_ptr =
-            unwrap_or_poison!(self, self.get_field_ptr(list_val, &len_field_id));
+        let len_ptr = unwrap_or_poison!(self, self.get_field_ptr(list_val, &len_field));
         let len_val = unwrap_or_poison!(self, self.load(len_ptr, left_span.clone()));
 
-        let condition_val = unwrap_or_poison!(
+        let is_in_bounds = unwrap_or_poison!(
             self,
-            self.lt(index_val, index_span.clone(), len_val, left_span.clone(),)
+            self.lt(index_val, index_span.clone(), len_val, left_span.clone())
         );
 
-        let success_block = self.as_fn().new_bb();
-        let fail_block = self.as_fn().new_bb();
-        let merge_block = self.as_fn().new_bb();
+        let success_bb = self.as_fn().new_bb();
+        let fail_bb = self.as_fn().new_bb();
+        let merge_bb = self.as_fn().new_bb();
 
         let result_param =
-            self.append_param_to_block(merge_block, result_union_type.clone());
+            self.append_param_to_block(merge_bb, result_union_type.clone());
 
         self.cond_jmp(
-            condition_val,
-            success_block,
+            is_in_bounds,
+            success_bb,
             HashMap::new(),
-            fail_block,
+            fail_bb,
             HashMap::new(),
         );
 
-        self.seal_block(success_block);
-        self.use_basic_block(success_block);
+        self.seal_block(success_bb);
+        self.use_basic_block(success_bb);
 
-        let ptr_field_id = IdentifierNode {
+        let ptr_field = IdentifierNode {
             name: COMMON_IDENTIFIERS.ptr,
             span: left_span.clone(),
         };
         let internal_ptr_ptr =
-            unwrap_or_poison!(self, self.get_field_ptr(list_val, &ptr_field_id));
+            unwrap_or_poison!(self, self.get_field_ptr(list_val, &ptr_field));
         let buffer_ptr =
             unwrap_or_poison!(self, self.load(internal_ptr_ptr, left_span.clone()));
 
-        let element_ptr = unwrap_or_poison!(
+        let elem_ptr = unwrap_or_poison!(
             self,
-            self.get_element_ptr(buffer_ptr, index_val, index_span.clone())
+            self.ptr_offset(buffer_ptr, index_val, index_span.clone())
         );
-        let element_val =
-            unwrap_or_poison!(self, self.load(element_ptr, index_span.clone()));
+        let elem_val = unwrap_or_poison!(self, self.load(elem_ptr, index_span.clone()));
 
-        let some_struct_type = Type::Struct(StructKind::Tag(some_variant));
-        let some_ptr = self.emit_stack_alloc(some_struct_type.clone(), 1);
+        let some_val = self.build_tag_from_parts(
+            some_variant,
+            Some(elem_val),
+            &result_union_type,
+            &left_span,
+        );
+        self.jmp(merge_bb, HashMap::from([(result_param, some_val)]));
+
+        self.seal_block(fail_bb);
+        self.use_basic_block(fail_bb);
+
+        let none_val =
+            self.build_tag_from_parts(none_variant, None, &result_union_type, &left_span);
+        self.jmp(merge_bb, HashMap::from([(result_param, none_val)]));
+
+        self.seal_block(merge_bb);
+        self.use_basic_block(merge_bb);
+
+        result_param
+    }
+
+    fn build_tag_from_parts(
+        &mut self,
+        tag_ty: TagType,
+        val: Option<ValueId>,
+        union_ty: &Type,
+        span: &Span,
+    ) -> ValueId {
+        let struct_ty = Type::Struct(StructKind::Tag(tag_ty.clone()));
+        let ptr = self.emit_stack_alloc(struct_ty, 1);
 
         let id_field = IdentifierNode {
             name: COMMON_IDENTIFIERS.id,
-            span: left_span.clone(),
+            span: span.clone(),
         };
-        let some_id_ptr =
-            unwrap_or_poison!(self, self.get_field_ptr(some_ptr, &id_field));
-        let tag_id_val = self.emit_const_number(NumberKind::U16(some_tag_id.0));
-        self.store(some_id_ptr, tag_id_val, left_span.clone());
+        let id_ptr = unwrap_or_poison!(self, self.get_field_ptr(ptr, &id_field));
+        let id_const = self.emit_const_number(NumberKind::U16(tag_ty.id.0));
+        self.store(id_ptr, id_const, span.clone());
 
-        let val_field = IdentifierNode {
-            name: COMMON_IDENTIFIERS.value,
-            span: left_span.clone(),
-        };
-        let some_val_ptr =
-            unwrap_or_poison!(self, self.get_field_ptr(some_ptr, &val_field));
-        self.store(some_val_ptr, element_val, left_span.clone());
+        if let Some(v) = val {
+            let val_field = IdentifierNode {
+                name: COMMON_IDENTIFIERS.value,
+                span: span.clone(),
+            };
+            let val_ptr = unwrap_or_poison!(self, self.get_field_ptr(ptr, &val_field));
+            self.store(val_ptr, v, span.clone());
+        }
 
-        let some_val = unwrap_or_poison!(self, self.load(some_ptr, left_span.clone()));
-        let cast_some = unwrap_or_poison!(
-            self,
-            self.refine(some_val, result_union_type.clone(), left_span.clone())
-        );
+        let loaded = unwrap_or_poison!(self, self.load(ptr, span.clone()));
 
-        self.jmp(merge_block, HashMap::from([(result_param, cast_some)]));
-
-        self.seal_block(fail_block);
-        self.use_basic_block(fail_block);
-
-        let none_struct_type = Type::Struct(StructKind::Tag(none_variant));
-        let none_ptr = self.emit_stack_alloc(none_struct_type.clone(), 1);
-
-        let none_id_ptr =
-            unwrap_or_poison!(self, self.get_field_ptr(none_ptr, &id_field));
-        let none_tag_id_val = self.emit_const_number(NumberKind::U16(none_tag_id.0));
-        self.store(none_id_ptr, none_tag_id_val, left_span.clone());
-
-        let none_val = unwrap_or_poison!(self, self.load(none_ptr, left_span.clone()));
-        let cast_none = unwrap_or_poison!(
-            self,
-            self.refine(none_val, result_union_type.clone(), left_span.clone())
-        );
-
-        self.jmp(merge_block, HashMap::from([(result_param, cast_none)]));
-
-        self.seal_block(merge_block);
-        self.use_basic_block(merge_block);
-
-        result_param
+        self.emit_refine_type(loaded, union_ty.clone())
     }
 }

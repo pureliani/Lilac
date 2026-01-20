@@ -1,90 +1,82 @@
 use crate::{
     ast::{expr::Expr, IdentifierNode, Span},
+    globals::COMMON_IDENTIFIERS,
     hir::{
-        cfg::Value,
+        builders::{Builder, InBlock, ValueId},
         types::checked_type::{StructKind, Type},
         utils::try_unify_types::try_unify_types,
-        FunctionBuilder, HIRContext,
     },
     tokenize::NumberKind,
+    unwrap_or_poison,
 };
 
-impl FunctionBuilder {
+impl<'a> Builder<'a, InBlock> {
     pub fn build_list_literal_expr(
         &mut self,
-        ctx: &mut HIRContext,
         items: Vec<Expr>,
         expr_span: Span,
-    ) -> Value {
-        let identifier_capacity = COMMON_IDENTIFIERS.capacity;
-        let identifier_ptr = COMMON_IDENTIFIERS.ptr;
-        let identifier_len = COMMON_IDENTIFIERS.len;
-
+    ) -> ValueId {
         let mut item_values = Vec::with_capacity(items.len());
         let mut type_entries = Vec::with_capacity(items.len());
 
         for item in items {
-            let span = item.span;
-            let val = self.build_expr(ctx, item);
-            let ty = ctx.program_builder.get_value_type(&val);
+            let span = item.span.clone();
+            let val_id = self.build_expr(item);
+            let ty = self.get_value_type(&val_id).clone();
 
-            item_values.push((val, span));
+            item_values.push(val_id);
             type_entries.push((ty, span));
         }
 
         let element_type = match try_unify_types(&type_entries) {
             Ok(ty) => ty,
-            Err(e) => {
-                return Value::Use(self.report_error_and_get_poison(ctx, e));
-            }
+            Err(e) => return self.report_error_and_get_poison(e),
         };
 
         let capacity = item_values.len();
-        let capacity_val = Value::NumberLiteral(NumberKind::USize(capacity));
+        let capacity_val = self.emit_const_number(NumberKind::USize(capacity));
 
-        let buffer_ptr =
-            match self.emit_heap_alloc(ctx, element_type.clone(), capacity_val.clone()) {
-                Ok(id) => id,
-                Err(e) => return Value::Use(self.report_error_and_get_poison(ctx, e)),
+        let buffer_ptr = unwrap_or_poison!(
+            self,
+            self.emit_heap_alloc(element_type.clone(), capacity_val)
+        );
+
+        let list_header_type =
+            Type::Struct(StructKind::List(Box::new(element_type.clone())));
+        let const_one = self.emit_const_number(NumberKind::USize(1));
+
+        let list_header_ptr =
+            unwrap_or_poison!(self, self.emit_heap_alloc(list_header_type, const_one));
+
+        let set_header_field =
+            |builder: &mut Builder<'_, InBlock>, name, val, span: &Span| {
+                let field_node = IdentifierNode {
+                    name,
+                    span: span.clone(),
+                };
+                let field_ptr = unwrap_or_poison!(
+                    builder,
+                    builder.get_field_ptr(list_header_ptr, &field_node)
+                );
+                builder.store(field_ptr, val, span.clone());
             };
 
-        let list_type = Type::Struct(StructKind::List(Box::new(element_type)));
-        let header_ptr = match self.emit_heap_alloc(
-            ctx,
-            list_type.clone(),
-            Value::NumberLiteral(NumberKind::USize(1)),
-        ) {
-            Ok(id) => id,
-            Err(e) => return Value::Use(self.report_error_and_get_poison(ctx, e)),
-        };
+        set_header_field(self, COMMON_IDENTIFIERS.capacity, capacity_val, &expr_span);
+        set_header_field(self, COMMON_IDENTIFIERS.len, capacity_val, &expr_span);
+        set_header_field(self, COMMON_IDENTIFIERS.ptr, buffer_ptr, &expr_span);
 
-        let mut set_field = |name, val| {
-            let field_id = IdentifierNode {
-                name,
-                span: expr_span,
-            };
+        for (i, val_id) in item_values.into_iter().enumerate() {
+            let index_val = self.emit_const_number(NumberKind::USize(i));
+            let item_span = type_entries[i].1.clone();
 
-            let ptr = self
-                .emit_get_field_ptr(ctx, header_ptr, field_id)
-                .expect("INTERNAL COMPILER ERROR: Failed to set field on List literal");
+            let elem_ptr = unwrap_or_poison!(
+                self,
+                self.ptr_offset(buffer_ptr, index_val, item_span.clone())
+            );
 
-            self.emit_store(ctx, ptr, val, expr_span);
-        };
-
-        set_field(identifier_capacity, capacity_val.clone());
-        set_field(identifier_len, capacity_val);
-        set_field(identifier_ptr, Value::Use(buffer_ptr));
-
-        for (i, (val, item_span)) in item_values.into_iter().enumerate() {
-            let index_val = Value::NumberLiteral(NumberKind::USize(i));
-
-            let elem_ptr = self
-                .emit_get_element_ptr(ctx, buffer_ptr, index_val)
-                .unwrap();
-
-            self.emit_store(ctx, elem_ptr, val, item_span);
+            self.store(elem_ptr, val_id, item_span);
         }
 
-        Value::Use(header_ptr)
+        list_header_ptr
     }
 }

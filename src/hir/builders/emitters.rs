@@ -435,24 +435,6 @@ impl<'a> Builder<'a, InBlock> {
         self.push_instruction(Instruction::Store { ptr, value });
     }
 
-    pub fn emit_get_element_ptr(&mut self, base_ptr: ValueId, index: ValueId) -> ValueId {
-        if let Type::Struct(StructKind::List(item_type)) = self.get_value_type(&base_ptr)
-        {
-            let destination = self.new_value_id(Type::Pointer {
-                constraint: item_type.clone(),
-                narrowed_to: item_type.clone(),
-            });
-            self.push_instruction(Instruction::GetElementPtr {
-                destination,
-                base_ptr,
-                index,
-            });
-            destination
-        } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use emit_get_element_ptr on non-list type")
-        }
-    }
-
     pub fn emit_refine_type(&mut self, src: ValueId, new_type: Type) -> ValueId {
         let dest = self.new_value_id(new_type.clone());
 
@@ -930,16 +912,16 @@ impl<'a> Builder<'a, InBlock> {
         };
     }
 
-    pub fn get_element_ptr(
+    pub fn ptr_offset(
         &mut self,
         base_ptr: ValueId,
         index: ValueId,
         span: Span,
     ) -> Result<ValueId, SemanticError> {
-        let base_ty = self.get_value_type(&base_ptr);
+        let ptr_ty = self.get_value_type(&base_ptr).clone();
         let index_ty = self.get_value_type(&index);
 
-        if !is_integer(index_ty) {
+        if !check_is_assignable(index_ty, &Type::USize) {
             return Err(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::USize,
@@ -949,18 +931,27 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
-        match base_ty {
-            Type::Pointer { narrowed_to, .. } => match &**narrowed_to {
-                Type::Struct(StructKind::List(_)) => {
-                    Ok(self.emit_get_element_ptr(base_ptr, index))
-                }
-                _ => Err(SemanticError {
-                    kind: SemanticErrorKind::CannotIndex(*narrowed_to.clone()),
-                    span,
-                }),
-            },
+        match ptr_ty {
+            Type::Pointer {
+                constraint,
+                narrowed_to,
+            } => {
+                let dest_ty = Type::Pointer {
+                    constraint,
+                    narrowed_to,
+                };
+                let destination = self.new_value_id(dest_ty);
+
+                self.push_instruction(Instruction::PtrOffset {
+                    destination,
+                    base_ptr,
+                    index,
+                });
+
+                Ok(destination)
+            }
             _ => Err(SemanticError {
-                kind: SemanticErrorKind::CannotIndex(base_ty.clone()),
+                kind: SemanticErrorKind::CannotIndex(ptr_ty),
                 span,
             }),
         }

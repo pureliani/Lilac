@@ -1,6 +1,6 @@
 use crate::{
-    ast::Span,
-    globals::next_value_id,
+    ast::{IdentifierNode, Span},
+    globals::{next_value_id, COMMON_IDENTIFIERS},
     hir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
@@ -124,15 +124,31 @@ impl<'a> Builder<'a, InBlock> {
                         Err(e) => return self.report_error_and_get_poison(e),
                     };
                 }
-                Projection::Field(field_name) => {
-                    current = match self.get_field_ptr(current, &field_name) {
+                Projection::Field(field_node) => {
+                    current = match self.get_field_ptr(current, &field_node) {
                         Ok(val) => val,
                         Err(e) => return self.report_error_and_get_poison(e),
                     };
                 }
                 Projection::Index(idx_val, span) => {
-                    current = match self.get_element_ptr(current, idx_val, span) {
-                        Ok(val) => val,
+                    let ptr_field_node = IdentifierNode {
+                        name: COMMON_IDENTIFIERS.ptr,
+                        span: span.clone(),
+                    };
+
+                    let internal_ptr_ptr =
+                        match self.get_field_ptr(current, &ptr_field_node) {
+                            Ok(p) => p,
+                            Err(e) => return self.report_error_and_get_poison(e),
+                        };
+
+                    let buffer_ptr = match self.load(internal_ptr_ptr, span.clone()) {
+                        Ok(p) => p,
+                        Err(e) => return self.report_error_and_get_poison(e),
+                    };
+
+                    current = match self.ptr_offset(buffer_ptr, idx_val, span) {
+                        Ok(p) => p,
                         Err(e) => return self.report_error_and_get_poison(e),
                     };
                 }
@@ -154,26 +170,46 @@ impl<'a> Builder<'a, InBlock> {
                     current = match self.load(current, Span::default()) {
                         Ok(val) => val,
                         Err(e) => {
-                            self.as_program().errors.push(e);
+                            self.errors.push(e);
                             return;
                         }
                     };
                 }
-                Projection::Field(field_name) => {
-                    current = match self.get_field_ptr(current, field_name) {
+                Projection::Field(field_node) => {
+                    current = match self.get_field_ptr(current, field_node) {
                         Ok(val) => val,
                         Err(e) => {
-                            self.as_program().errors.push(e);
+                            self.errors.push(e);
                             return;
                         }
                     };
                 }
                 Projection::Index(idx_val, span) => {
-                    current = match self.get_element_ptr(current, *idx_val, span.clone())
-                    {
-                        Ok(val) => val,
+                    let ptr_field_node = IdentifierNode {
+                        name: COMMON_IDENTIFIERS.ptr,
+                        span: span.clone(),
+                    };
+                    let internal_ptr_ptr =
+                        match self.get_field_ptr(current, &ptr_field_node) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                self.errors.push(e);
+                                return;
+                            }
+                        };
+
+                    let buffer_ptr = match self.load(internal_ptr_ptr, span.clone()) {
+                        Ok(p) => p,
                         Err(e) => {
-                            self.as_program().errors.push(e);
+                            self.errors.push(e);
+                            return;
+                        }
+                    };
+
+                    current = match self.ptr_offset(buffer_ptr, *idx_val, span.clone()) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            self.errors.push(e);
                             return;
                         }
                     };
