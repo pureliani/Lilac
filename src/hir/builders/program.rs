@@ -28,8 +28,7 @@ impl<'a> Builder<'a, InGlobal> {
             for decl in &m.declarations {
                 match decl {
                     Declaration::TypeAlias(alias) => {
-                        let mut dummy_builder = module_builder.as_dummy_block();
-                        dummy_builder.build_type_alias_decl(
+                        module_builder.build_type_alias_decl(
                             alias.clone(),
                             alias.identifier.span.clone(),
                         );
@@ -47,13 +46,11 @@ impl<'a> Builder<'a, InGlobal> {
             for stmt in m.statements {
                 match stmt.kind {
                     StmtKind::From { path, identifiers } => {
-                        let mut dummy_builder = module_builder.as_dummy_block();
-                        dummy_builder.build_from_stmt(path, identifiers, stmt.span);
+                        module_builder.build_from_stmt(path, identifiers, stmt.span);
                     }
                     StmtKind::Expression(expr) => {
                         if let ExprKind::Fn(f) = expr.kind {
-                            let mut dummy_builder = module_builder.as_dummy_block();
-                            dummy_builder.build_fn_expr(*f);
+                            module_builder.build_fn_body(*f);
                         }
                     }
                     _ => {}

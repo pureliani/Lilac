@@ -4,7 +4,7 @@ use crate::{
     ast::decl::FnDecl,
     globals::{next_block_id, next_declaration_id},
     hir::{
-        builders::{BasicBlock, Builder, Function, InBlock, ValueId},
+        builders::{BasicBlock, Builder, Function, InBlock, InModule, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
         utils::{
@@ -15,13 +15,14 @@ use crate::{
     },
 };
 
-impl<'a> Builder<'a, InBlock> {
-    pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> ValueId {
+impl<'a> Builder<'a, InModule> {
+    pub fn build_fn_body(&mut self, fn_decl: FnDecl) {
         if !self.current_scope.is_file_scope() {
-            return self.report_error_and_get_poison(SemanticError {
+            self.errors.push(SemanticError {
                 kind: SemanticErrorKind::ClosuresNotSupportedYet,
                 span: fn_decl.identifier.span.clone(),
             });
+            return;
         }
 
         let FnDecl {
@@ -127,7 +128,13 @@ impl<'a> Builder<'a, InBlock> {
         } else if fn_builder.bb().terminator.is_none() {
             fn_builder.emit_return_terminator(final_value);
         }
+    }
+}
 
-        self.emit_const_fn(decl_id)
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> ValueId {
+        let id = fn_decl.id;
+        self.as_module().build_fn_body(fn_decl);
+        self.emit_const_fn(id)
     }
 }

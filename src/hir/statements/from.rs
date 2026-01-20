@@ -1,7 +1,7 @@
 use crate::{
     ast::{IdentifierNode, ModulePath, Span, StringNode},
     hir::{
-        builders::{Builder, InBlock},
+        builders::{Builder, InModule},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::CheckedDeclaration,
     },
@@ -9,7 +9,7 @@ use crate::{
 use std::path::PathBuf;
 use std::sync::Arc;
 
-impl<'a> Builder<'a, InBlock> {
+impl<'a> Builder<'a, InModule> {
     pub fn build_from_stmt(
         &mut self,
         path: StringNode,

@@ -44,20 +44,15 @@ fn check_is_assignable_recursive<'a>(
 
         (
             Type::Pointer {
-                constraint: source_constraint,
-                ..
+                constraint: _,
+                narrowed_to: source_narrowed_to,
             },
             Type::Pointer {
                 constraint: target_constraint,
                 ..
             },
         ) => {
-            check_is_assignable_recursive(source_constraint, target_constraint, visited)
-                && check_is_assignable_recursive(
-                    target_constraint,
-                    source_constraint,
-                    visited,
-                )
+            check_is_assignable_recursive(source_narrowed_to, target_constraint, visited)
         }
         (Struct(source), Struct(target)) => match (source, target) {
             (

@@ -4,7 +4,7 @@ use crate::{
     hir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
-            Module, Place, Projection, ValueId,
+            InModule, Module, Place, Projection, ValueId,
         },
         errors::SemanticError,
         instructions::Terminator,
@@ -17,6 +17,17 @@ impl<'a> Builder<'a, InBlock> {
     pub fn as_program(&mut self) -> Builder<'_, InGlobal> {
         Builder {
             context: InGlobal,
+            program: self.program,
+            errors: self.errors,
+            current_scope: self.current_scope.clone(),
+        }
+    }
+
+    pub fn as_module(&mut self) -> Builder<'_, InModule> {
+        Builder {
+            context: InModule {
+                path: self.context.path.clone(),
+            },
             program: self.program,
             errors: self.errors,
             current_scope: self.current_scope.clone(),

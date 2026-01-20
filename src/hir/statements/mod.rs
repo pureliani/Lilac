@@ -42,7 +42,7 @@ impl<'a> Builder<'a, InBlock> {
                     }
                 }
                 StmtKind::TypeAliasDecl(decl) => {
-                    self.build_type_alias_decl(decl, statement.span);
+                    self.as_module().build_type_alias_decl(decl, statement.span);
                 }
                 StmtKind::VarDecl(var_decl) => {
                     self.build_var_decl(var_decl);
@@ -54,7 +54,8 @@ impl<'a> Builder<'a, InBlock> {
                     self.build_assignment_stmt(target, value);
                 }
                 StmtKind::From { path, identifiers } => {
-                    self.build_from_stmt(path, identifiers, statement.span);
+                    self.as_module()
+                        .build_from_stmt(path, identifiers, statement.span);
                 }
                 StmtKind::While { condition, body } => {
                     self.build_while_stmt(condition, body);

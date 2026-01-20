@@ -1,14 +1,14 @@
 use crate::{
     ast::{decl::TypeAliasDecl, Span},
     hir::{
-        builders::{Builder, InBlock},
+        builders::{Builder, InModule},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedTypeAliasDecl},
         utils::check_type::{check_type_annotation, TypeCheckerContext},
     },
 };
 
-impl<'a> Builder<'a, InBlock> {
+impl<'a> Builder<'a, InModule> {
     pub fn build_type_alias_decl(&mut self, type_alias_decl: TypeAliasDecl, span: Span) {
         if !self.current_scope.is_file_scope() {
             self.errors.push(SemanticError {

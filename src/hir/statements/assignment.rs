@@ -28,10 +28,13 @@ impl<'a> Builder<'a, InBlock> {
                     .expect("INTERNAL COMPILER ERROR: Declaration not found");
 
                 match decl {
-                    CheckedDeclaration::Var(var) => Ok(Place {
-                        root: var.ptr,
-                        projections: vec![],
-                    }),
+                    CheckedDeclaration::Var(var) => {
+                        let current_root_ptr = self.use_value(var.ptr);
+                        Ok(Place {
+                            root: current_root_ptr,
+                            projections: vec![],
+                        })
+                    }
                     CheckedDeclaration::UninitializedVar { .. } => Err(SemanticError {
                         span: expr.span.clone(),
                         kind: SemanticErrorKind::UseOfUninitializedVariable(ident),
