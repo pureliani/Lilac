@@ -195,6 +195,23 @@ pub enum NumberKind {
     USize(usize),
 }
 
+pub fn number_kind_to_suffix(kind: &NumberKind) -> String {
+    match kind {
+        NumberKind::I64(_) => "i64".to_owned(),
+        NumberKind::I32(_) => "i32".to_owned(),
+        NumberKind::I16(_) => "i16".to_owned(),
+        NumberKind::I8(_) => "i8".to_owned(),
+        NumberKind::F32(_) => "f32".to_owned(),
+        NumberKind::F64(_) => "f64".to_owned(),
+        NumberKind::U64(_) => "u64".to_owned(),
+        NumberKind::U32(_) => "u32".to_owned(),
+        NumberKind::U16(_) => "u16".to_owned(),
+        NumberKind::U8(_) => "u8".to_owned(),
+        NumberKind::ISize(_) => "isize".to_owned(),
+        NumberKind::USize(_) => "usize".to_owned(),
+    }
+}
+
 impl NumberKind {
     pub fn to_string(&self) -> String {
         match self {

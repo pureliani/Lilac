@@ -2,6 +2,7 @@ pub mod check_binary_numeric_op;
 pub mod check_is_assignable;
 pub mod check_is_equatable;
 pub mod check_type;
+pub mod dump;
 pub mod layout;
 pub mod numeric;
 pub mod scope;

@@ -61,9 +61,19 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
         Type::Struct(s) => struct_to_string(s, visited_set),
         Type::Fn(fn_type) => fn_signature_to_string(fn_type, visited_set),
         Type::Pointer {
-            constraint: _,
+            constraint,
             narrowed_to,
-        } => type_to_string_recursive(narrowed_to, visited_set),
+        } => {
+            if constraint == narrowed_to {
+                format!("ptr<{}>", type_to_string_recursive(constraint, visited_set))
+            } else {
+                format!(
+                    "ptr<{} narrowed to {}>",
+                    type_to_string_recursive(constraint, visited_set),
+                    type_to_string_recursive(narrowed_to, visited_set)
+                )
+            }
+        }
         Type::Buffer { size, alignment } => {
             format!("Buffer(size={}, align={})", size, alignment)
         }

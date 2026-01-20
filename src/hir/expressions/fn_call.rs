@@ -21,8 +21,7 @@ impl<'a> Builder<'a, InBlock> {
             .collect();
 
         match self.call(func_id, arg_ids, span) {
-            Ok(Some(return_value_id)) => return_value_id,
-            Ok(None) => self.emit_const_void(),
+            Ok(return_value_id) => return_value_id,
             Err(e) => self.report_error_and_get_poison(e),
         }
     }

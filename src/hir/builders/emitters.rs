@@ -452,12 +452,8 @@ impl<'a> Builder<'a, InBlock> {
         func: ValueId,
         args: Vec<ValueId>,
         return_type: Type,
-    ) -> Option<ValueId> {
-        let destination = if return_type == Type::Void {
-            None
-        } else {
-            Some(self.new_value_id(return_type))
-        };
+    ) -> ValueId {
+        let destination = self.new_value_id(return_type);
 
         self.push_instruction(Instruction::FunctionCall {
             destination,
@@ -823,7 +819,7 @@ impl<'a> Builder<'a, InBlock> {
         func: ValueId,
         args: Vec<(ValueId, Span)>,
         span: Span,
-    ) -> Result<Option<ValueId>, SemanticError> {
+    ) -> Result<ValueId, SemanticError> {
         let func_ty = self.get_value_type(&func).clone();
 
         match func_ty {

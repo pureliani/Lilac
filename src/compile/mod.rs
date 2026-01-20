@@ -20,7 +20,10 @@ use crate::{
     hir::{
         builders::{Builder, InGlobal, Program},
         errors::SemanticError,
-        utils::scope::{Scope, ScopeKind},
+        utils::{
+            dump::dump_program,
+            scope::{Scope, ScopeKind},
+        },
     },
     parse::{Parser, ParsingError},
     tokenize::{TokenizationError, Tokenizer},
@@ -119,6 +122,10 @@ impl Compiler {
         };
 
         program_builder.build(modules_to_compile);
+
+        if std::env::var("DUMP_HIR").is_ok() {
+            dump_program(&program);
+        }
 
         self.errors
             .extend(builder_errors.into_iter().map(CompilerErrorKind::Semantic));

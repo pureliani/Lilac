@@ -251,7 +251,7 @@ pub enum Instruction {
     },
     // Calls
     FunctionCall {
-        destination: Option<ValueId>,
+        destination: ValueId,
         func: ValueId,
         args: Vec<ValueId>,
     },
