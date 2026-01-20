@@ -1,27 +1,29 @@
 use crate::{
     ast::{expr::Expr, Span},
-    hir::{cfg::Value, FunctionBuilder, HIRContext},
+    hir::builders::{Builder, InBlock, ValueId},
 };
 
-impl FunctionBuilder {
+impl<'a> Builder<'a, InBlock> {
     pub fn build_fn_call_expr(
         &mut self,
-        ctx: &mut HIRContext,
         left: Box<Expr>,
         args: Vec<Expr>,
         span: Span,
-    ) -> Value {
-        let function_value = self.build_expr(ctx, *left);
+    ) -> ValueId {
+        let func_id = self.build_expr(*left);
 
-        let arg_values: Vec<Value> = args
+        let arg_ids: Vec<(ValueId, Span)> = args
             .into_iter()
-            .map(|arg_expr| self.build_expr(ctx, arg_expr))
+            .map(|arg_expr| {
+                let s = arg_expr.span.clone();
+                (self.build_expr(arg_expr), s)
+            })
             .collect();
 
-        match self.emit_function_call(ctx, function_value, arg_values, span) {
-            Ok(Some(return_value_id)) => Value::Use(return_value_id),
-            Ok(None) => Value::VoidLiteral,
-            Err(e) => Value::Use(self.report_error_and_get_poison(ctx, e)),
+        match self.call(func_id, arg_ids, span) {
+            Ok(Some(return_value_id)) => return_value_id,
+            Ok(None) => self.emit_const_void(),
+            Err(e) => self.report_error_and_get_poison(e),
         }
     }
 }

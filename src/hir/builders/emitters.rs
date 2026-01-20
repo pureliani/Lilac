@@ -821,7 +821,7 @@ impl<'a> Builder<'a, InBlock> {
     pub fn call(
         &mut self,
         func: ValueId,
-        args: Vec<ValueId>,
+        args: Vec<(ValueId, Span)>,
         span: Span,
     ) -> Result<Option<ValueId>, SemanticError> {
         let func_ty = self.get_value_type(&func).clone();
@@ -838,21 +838,25 @@ impl<'a> Builder<'a, InBlock> {
                     });
                 }
 
-                for (param, arg_val) in fn_type.params.iter().zip(args.iter()) {
+                for (param, (arg_val, arg_span)) in fn_type.params.iter().zip(args.iter())
+                {
                     let arg_ty = self.get_value_type(arg_val);
                     if !check_is_assignable(arg_ty, &param.ty) {
-                        // TODO: We need argument span here
                         return Err(SemanticError {
+                            span: arg_span.clone(),
                             kind: SemanticErrorKind::TypeMismatch {
                                 expected: param.ty.clone(),
                                 received: arg_ty.clone(),
                             },
-                            span,
                         });
                     }
                 }
 
-                Ok(self.emit_function_call(func, args, *fn_type.return_type))
+                Ok(self.emit_function_call(
+                    func,
+                    args.iter().map(|a| a.0).collect(),
+                    *fn_type.return_type,
+                ))
             }
             _ => Err(SemanticError {
                 kind: SemanticErrorKind::CannotCall(func_ty),

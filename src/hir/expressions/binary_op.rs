@@ -1,37 +1,77 @@
 use crate::{
     ast::expr::Expr,
-    hir::{
-        cfg::{BinaryOperationKind, Value},
-        FunctionBuilder, HIRContext,
-    },
+    hir::builders::{Builder, InBlock, ValueId},
 };
 
-impl FunctionBuilder {
-    pub fn build_binary_op_expr(
+impl<'a> Builder<'a, InBlock> {
+    fn build_binary_helper<F>(
         &mut self,
-        ctx: &mut HIRContext,
         left: Box<Expr>,
         right: Box<Expr>,
-        op_kind: BinaryOperationKind,
-    ) -> Value {
-        let left_span = left.span;
-        let right_span = right.span;
-        let left_value = self.build_expr(ctx, *left);
-        let right_value = self.build_expr(ctx, *right);
-        let destination = match self.emit_binary_op(
-            ctx,
-            op_kind,
-            left_value,
-            left_span,
-            right_value,
-            right_span,
-        ) {
-            Ok(destination_id) => destination_id,
-            Err(error) => {
-                return Value::Use(self.report_error_and_get_poison(ctx, error));
-            }
-        };
+        op: F,
+    ) -> ValueId
+    where
+        F: FnOnce(
+            &mut Self,
+            ValueId,
+            crate::ast::Span,
+            ValueId,
+            crate::ast::Span,
+        ) -> Result<ValueId, crate::hir::errors::SemanticError>,
+    {
+        let l_span = left.span.clone();
+        let r_span = right.span.clone();
 
-        Value::Use(destination)
+        let lhs = self.build_expr(*left);
+        let rhs = self.build_expr(*right);
+
+        match op(self, lhs, l_span, rhs, r_span) {
+            Ok(id) => id,
+            Err(e) => self.report_error_and_get_poison(e),
+        }
+    }
+
+    pub fn build_add_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.add(l, ls, r, rs))
+    }
+
+    pub fn build_sub_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.sub(l, ls, r, rs))
+    }
+
+    pub fn build_mul_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.mul(l, ls, r, rs))
+    }
+
+    pub fn build_div_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.div(l, ls, r, rs))
+    }
+
+    pub fn build_mod_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.rem(l, ls, r, rs))
+    }
+
+    pub fn build_eq_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.eq(l, ls, r, rs))
+    }
+
+    pub fn build_neq_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.ne(l, ls, r, rs))
+    }
+
+    pub fn build_lt_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.lt(l, ls, r, rs))
+    }
+
+    pub fn build_lte_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.le(l, ls, r, rs))
+    }
+
+    pub fn build_gt_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.gt(l, ls, r, rs))
+    }
+
+    pub fn build_gte_expr(&mut self, left: Box<Expr>, right: Box<Expr>) -> ValueId {
+        self.build_binary_helper(left, right, |b, l, ls, r, rs| b.ge(l, ls, r, rs))
     }
 }
