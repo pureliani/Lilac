@@ -1,89 +1,73 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{expr::Expr, IdentifierNode, Span},
+    ast::{expr::Expr, IdentifierNode},
+    compile::interner::StringId,
     hir::{
-        cfg::Value,
+        builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::CheckedParam,
             checked_type::{StructKind, Type},
         },
         utils::layout::pack_struct,
-        FunctionBuilder, HIRContext,
     },
     tokenize::NumberKind,
+    unwrap_or_poison,
 };
 
-impl FunctionBuilder {
+impl<'a> Builder<'a, InBlock> {
     pub fn build_struct_init_expr(
         &mut self,
-        ctx: &mut HIRContext,
         fields: Vec<(IdentifierNode, Expr)>,
-    ) -> Value {
+    ) -> ValueId {
         let mut resolved_fields: Vec<CheckedParam> = Vec::with_capacity(fields.len());
-        let mut field_values: HashMap<IdentifierNode, (Value, Span)> =
+        let mut field_values: HashMap<StringId, ValueId> =
             HashMap::with_capacity(fields.len());
-        let mut initialized_fields: HashSet<IdentifierNode> = HashSet::new();
+        let mut seen_names: HashSet<StringId> = HashSet::new();
 
         for (field_name, field_expr) in fields {
-            if !initialized_fields.insert(field_name) {
-                return Value::Use(self.report_error_and_get_poison(
-                    ctx,
-                    SemanticError {
-                        kind: SemanticErrorKind::DuplicateStructFieldInitializer(
-                            field_name,
-                        ),
-                        span: field_name.span,
-                    },
-                ));
+            if !seen_names.insert(field_name.name) {
+                return self.report_error_and_get_poison(SemanticError {
+                    kind: SemanticErrorKind::DuplicateStructFieldInitializer(
+                        field_name.clone(),
+                    ),
+                    span: field_name.span,
+                });
             }
 
-            let value_span = field_expr.span;
-            let value = self.build_expr(ctx, field_expr);
-            let value_type = ctx.program_builder.get_value_type(&value);
+            let val_id = self.build_expr(field_expr);
+            let val_type = self.get_value_type(&val_id).clone();
 
             resolved_fields.push(CheckedParam {
-                identifier: field_name,
-                ty: value_type,
+                identifier: field_name.clone(),
+                ty: val_type,
             });
-            field_values.insert(field_name, (value, value_span));
+            field_values.insert(field_name.name, val_id);
         }
 
-        let packed_fields = pack_struct(
-            ctx.program_builder,
-            StructKind::UserDefined(resolved_fields),
-        );
+        let packed_kind = pack_struct(StructKind::UserDefined(resolved_fields));
+        let struct_type = Type::Struct(packed_kind.clone());
 
-        let struct_type = Type::Struct(packed_fields);
+        let count_val = self.emit_const_number(NumberKind::USize(1));
+        let struct_ptr =
+            unwrap_or_poison!(self, self.emit_heap_alloc(struct_type, count_val));
 
-        let struct_ptr = self
-            .emit_heap_alloc(
-                ctx,
-                struct_type.clone(),
-                Value::NumberLiteral(NumberKind::USize(1)),
-            )
-            .expect("INTERNAL COMPILER ERROR: failed to allocate struct on heap");
-
-        if let Type::Struct(StructKind::UserDefined(sorted_fields)) = &struct_type {
+        if let StructKind::UserDefined(sorted_fields) = packed_kind {
             for field in sorted_fields {
-                let field_ptr =
-                    match self.emit_get_field_ptr(ctx, struct_ptr, field.identifier) {
-                        Ok(ptr) => ptr,
-                        Err(error) => {
-                            return Value::Use(
-                                self.report_error_and_get_poison(ctx, error),
-                            )
-                        }
-                    };
+                let field_ptr = unwrap_or_poison!(
+                    self,
+                    self.get_field_ptr(struct_ptr, &field.identifier)
+                );
 
-                let (field_value, value_span) =
-                    field_values.get(&field.identifier).unwrap();
+                let val_id = field_values.get(&field.identifier.name).expect(
+                    "INTERNAL COMPILER ERROR: Field value missing during initialization",
+                );
 
-                self.emit_store(ctx, field_ptr, field_value.clone(), *value_span);
+                self.store(field_ptr, *val_id, field.identifier.span.clone());
             }
         }
 
-        Value::Use(struct_ptr)
+        struct_ptr
     }
 }
