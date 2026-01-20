@@ -228,18 +228,16 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         if !self.bb().sealed {
-            // We don't know all predecessors yet, so we MUST create a placeholder parameter.
-            // We will fill in the terminator arguments later when we seal.
-            let ty = self.get_value_type(&original_value_id);
-            let param_id = self.append_param(ty.clone());
+            let placeholder_type = self.get_value_type(&original_value_id);
+            let placeholder_param_id = self.append_param(placeholder_type.clone());
 
-            self.map_value(original_value_id, param_id);
+            self.map_value(original_value_id, placeholder_param_id);
 
             self.bb_mut()
                 .incomplete_params
-                .push((param_id, original_value_id));
+                .push((placeholder_param_id, original_value_id));
 
-            return param_id;
+            return placeholder_param_id;
         }
 
         let ty = self.get_value_type(&original_value_id);

@@ -11,19 +11,18 @@ use crate::{
         stmt::{Stmt, StmtKind},
     },
     hir::{
-        cfg::Terminator,
+        builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
         expressions::r#if::IfContext,
-        statements::{from::build_from_stmt, type_alias_decl::build_type_alias_decl},
-        FunctionBuilder, HIRContext,
     },
 };
+use std::collections::HashMap;
 
-impl FunctionBuilder {
-    pub fn build_statements(&mut self, ctx: &mut HIRContext, statements: Vec<Stmt>) {
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_statements(&mut self, statements: Vec<Stmt>) {
         for statement in statements {
-            if self.get_current_basic_block().terminator.is_some() {
-                ctx.module_builder.errors.push(SemanticError {
+            if self.bb().terminator.is_some() {
+                self.errors.push(SemanticError {
                     kind: SemanticErrorKind::UnreachableCode,
                     span: statement.span,
                 });
@@ -37,54 +36,44 @@ impl FunctionBuilder {
                         else_branch,
                     } = expr.kind
                     {
-                        self.build_if(ctx, branches, else_branch, IfContext::Statement);
+                        self.build_if(branches, else_branch, IfContext::Statement);
                     } else {
-                        self.build_expr(ctx, expr);
+                        self.build_expr(expr);
                     }
                 }
-                StmtKind::TypeAliasDecl(type_alias_decl) => {
-                    build_type_alias_decl(ctx, type_alias_decl, statement.span);
+                StmtKind::TypeAliasDecl(decl) => {
+                    self.build_type_alias_decl(decl, statement.span);
                 }
                 StmtKind::VarDecl(var_decl) => {
-                    self.build_var_decl(ctx, var_decl, statement.span)
+                    self.build_var_decl(var_decl);
                 }
                 StmtKind::Return { value } => {
-                    self.build_return_stmt(ctx, value, statement.span)
+                    self.build_return_stmt(value, statement.span);
                 }
                 StmtKind::Assignment { target, value } => {
-                    self.build_assignment_stmt(ctx, target, value)
+                    self.build_assignment_stmt(target, value);
                 }
                 StmtKind::From { path, identifiers } => {
-                    build_from_stmt(ctx, path, identifiers, statement.span)
+                    self.build_from_stmt(path, identifiers, statement.span);
                 }
                 StmtKind::While { condition, body } => {
-                    self.build_while_stmt(ctx, condition, body);
+                    self.build_while_stmt(condition, body);
                 }
                 StmtKind::Break => {
-                    if let Some((_, break_target)) =
-                        ctx.module_builder.within_loop_scope()
-                    {
-                        self.set_basic_block_terminator(Terminator::Jump {
-                            target: break_target,
-                            args: vec![],
-                        });
+                    if let Some(targets) = self.current_scope.within_loop_body() {
+                        self.jmp(targets.on_break, HashMap::new());
                     } else {
-                        ctx.module_builder.errors.push(SemanticError {
+                        self.errors.push(SemanticError {
                             kind: SemanticErrorKind::BreakKeywordOutsideLoop,
                             span: statement.span,
                         });
                     }
                 }
                 StmtKind::Continue => {
-                    if let Some((continue_target, _)) =
-                        ctx.module_builder.within_loop_scope()
-                    {
-                        self.set_basic_block_terminator(Terminator::Jump {
-                            target: continue_target,
-                            args: vec![],
-                        });
+                    if let Some(targets) = self.current_scope.within_loop_body() {
+                        self.jmp(targets.on_continue, HashMap::new());
                     } else {
-                        ctx.module_builder.errors.push(SemanticError {
+                        self.errors.push(SemanticError {
                             kind: SemanticErrorKind::ContinueKeywordOutsideLoop,
                             span: statement.span,
                         });

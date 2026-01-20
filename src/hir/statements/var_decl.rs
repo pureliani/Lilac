@@ -1,104 +1,81 @@
 use crate::{
-    ast::{decl::VarDecl, Span},
+    ast::decl::VarDecl,
     hir::{
-        cfg::Value,
+        builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::{CheckedDeclaration, CheckedVarDecl},
             checked_type::Type,
         },
         utils::{
-            check_is_assignable::check_is_assignable, check_type::check_type_annotation,
+            check_is_assignable::check_is_assignable,
+            check_type::{check_type_annotation, TypeCheckerContext},
         },
-        FunctionBuilder, HIRContext,
     },
 };
 
-impl FunctionBuilder {
-    pub fn build_var_decl(
-        &mut self,
-        ctx: &mut HIRContext,
-        var_decl: VarDecl,
-        span: Span,
-    ) {
-        if ctx.module_builder.is_file_scope() {
-            ctx.module_builder.errors.push(SemanticError {
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_var_decl(&mut self, var_decl: VarDecl) {
+        if self.current_scope.is_file_scope() {
+            self.errors.push(SemanticError {
                 kind: SemanticErrorKind::CannotDeclareGlobalVariable,
-                span,
+                span: var_decl.identifier.span.clone(),
             });
             return;
         }
 
-        let initial_value_span = var_decl.value.span;
-        let (initial_value, initial_constraint) = match var_decl.constraint {
-            Some(constraint_annotation) => {
-                let initial_value = self.build_expr(ctx, var_decl.value);
-                let initial_value_type =
-                    ctx.program_builder.get_value_type(&initial_value);
+        let initial_value_span = var_decl.value.span.clone();
 
-                let expected_constraint =
-                    check_type_annotation(ctx, &constraint_annotation);
+        let val_id = self.build_expr(var_decl.value);
+        let val_type = self.get_value_type(&val_id).clone();
 
-                if !check_is_assignable(&initial_value_type, &expected_constraint) {
-                    ctx.module_builder.errors.push(SemanticError {
-                        span: initial_value_span,
-                        kind: SemanticErrorKind::TypeMismatch {
-                            expected: expected_constraint.clone(),
-                            received: initial_value_type,
-                        },
-                    });
-                }
+        let constraint = if let Some(annotation) = &var_decl.constraint {
+            let mut type_ctx = TypeCheckerContext {
+                scope: self.current_scope.clone(),
+                declarations: &self.program.declarations,
+                errors: self.errors,
+            };
 
-                (initial_value, expected_constraint)
+            let expected = check_type_annotation(&mut type_ctx, annotation);
+
+            if !check_is_assignable(&val_type, &expected) {
+                self.errors.push(SemanticError {
+                    span: initial_value_span.clone(),
+                    kind: SemanticErrorKind::TypeMismatch {
+                        expected: expected.clone(),
+                        received: val_type.clone(),
+                    },
+                });
             }
-            None => {
-                let initial_value = self.build_expr(ctx, var_decl.value);
-                let initial_value_type =
-                    ctx.program_builder.get_value_type(&initial_value);
-
-                (initial_value, initial_value_type)
-            }
+            expected
+        } else {
+            val_type.clone()
         };
 
-        let ptr = self.emit_stack_alloc(ctx, initial_constraint.clone(), 1);
+        let ptr = self.emit_stack_alloc(constraint.clone(), 1);
+        self.store(ptr, val_id, initial_value_span.clone());
 
-        let val_id = match &initial_value {
-            Value::Use(id) => self.use_value_in_block(ctx, self.current_block_id, *id),
-            _ => {
-                let ty = ctx.program_builder.get_value_type(&initial_value);
-                self.emit_type_cast(ctx, initial_value.clone(), initial_value_span, ty)
-            }
-        };
-
-        self.emit_store(ctx, ptr, Value::Use(val_id), initial_value_span);
-
-        let value_type = ctx.program_builder.get_value_type(&initial_value);
         let narrowed_ptr_ty = Type::Pointer {
-            constraint: Box::new(initial_constraint.clone()),
-            narrowed_to: Box::new(value_type),
+            constraint: Box::new(constraint.clone()),
+            narrowed_to: Box::new(val_type),
         };
 
-        let narrowed_ptr = self.emit_type_cast(
-            ctx,
-            Value::Use(ptr),
-            initial_value_span,
-            narrowed_ptr_ty,
-        );
-
-        self.map_value(self.current_block_id, ptr, narrowed_ptr);
+        let narrowed_ptr = self.emit_refine_type(ptr, narrowed_ptr_ty);
+        self.map_value(ptr, narrowed_ptr);
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
             ptr,
-            identifier: var_decl.identifier,
+            identifier: var_decl.identifier.clone(),
             documentation: var_decl.documentation,
-            constraint: initial_constraint,
+            constraint,
         };
 
-        ctx.module_builder.scope_insert(
-            ctx.program_builder,
-            var_decl.identifier,
-            CheckedDeclaration::Var(checked_var_decl),
-        );
+        self.program
+            .declarations
+            .insert(var_decl.id, CheckedDeclaration::Var(checked_var_decl));
+
+        self.current_scope
+            .map_name_to_decl(var_decl.identifier.name, var_decl.id);
     }
 }

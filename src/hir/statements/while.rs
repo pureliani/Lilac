@@ -1,85 +1,84 @@
-// src/hir/statements/while.rs
-
 use crate::{
     ast::expr::{BlockContents, Expr},
     hir::{
-        cfg::{Terminator, Value},
+        builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::Type,
         utils::{check_is_assignable::check_is_assignable, scope::ScopeKind},
-        FunctionBuilder, HIRContext,
     },
 };
+use std::collections::HashMap;
 
-impl FunctionBuilder {
-    pub fn build_while_stmt(
-        &mut self,
-        ctx: &mut HIRContext,
-        condition: Box<Expr>,
-        body: BlockContents,
-    ) {
-        let header_block = self.new_basic_block();
-        let body_block = self.new_basic_block();
-        let exit_block = self.new_basic_block();
+impl<'a> Builder<'a, InBlock> {
+    pub fn build_while_stmt(&mut self, condition: Box<Expr>, body: BlockContents) {
+        let header_block_id = self.as_fn().new_bb();
+        let body_block_id = self.as_fn().new_bb();
+        let exit_block_id = self.as_fn().new_bb();
 
-        self.set_basic_block_terminator(Terminator::Jump {
-            target: header_block,
-            args: vec![],
-        });
+        self.jmp(header_block_id, HashMap::new());
+        self.use_basic_block(header_block_id);
 
-        self.use_basic_block(header_block);
+        let condition_span = condition.span.clone();
+        let cond_id = self.build_expr(*condition);
+        let cond_ty = self.get_value_type(&cond_id);
 
-        let condition_span = condition.span;
-        let condition_value = self.build_expr(ctx, *condition);
-        let condition_type = ctx.program_builder.get_value_type(&condition_value);
-
-        if !check_is_assignable(&condition_type, &Type::Bool) {
-            ctx.module_builder.errors.push(SemanticError {
+        if !check_is_assignable(cond_ty, &Type::Bool) {
+            self.errors.push(SemanticError {
                 span: condition_span,
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,
-                    received: condition_type,
+                    received: cond_ty.clone(),
                 },
             });
         }
 
-        if let Value::Use(cond_id) = condition_value {
-            if let Some(pred) = self.predicates.get(&cond_id).cloned() {
-                self.map_value(body_block, pred.source, pred.true_id);
-                self.map_value(exit_block, pred.source, pred.false_id);
-            }
+        let predicate = self.get_fn().predicates.get(&cond_id).cloned();
+        if let Some(pred) = predicate {
+            self.get_bb_mut(body_block_id)
+                .original_to_local_valueid
+                .insert(pred.source, pred.true_id);
+
+            self.get_bb_mut(exit_block_id)
+                .original_to_local_valueid
+                .insert(pred.source, pred.false_id);
         }
 
-        self.set_basic_block_terminator(Terminator::CondJump {
-            condition: condition_value,
-            true_target: body_block,
-            true_args: vec![],
-            false_target: exit_block,
-            false_args: vec![],
-        });
+        self.cond_jmp(
+            cond_id,
+            body_block_id,
+            HashMap::new(),
+            exit_block_id,
+            HashMap::new(),
+        );
 
-        self.seal_block(ctx, body_block);
+        self.seal_block(body_block_id);
+        self.use_basic_block(body_block_id);
 
-        self.use_basic_block(body_block);
+        self.current_scope = self.current_scope.enter(
+            ScopeKind::WhileBody {
+                break_target: exit_block_id,
+                continue_target: header_block_id,
+            },
+            body.span.start,
+        );
 
-        ctx.module_builder.enter_scope(ScopeKind::WhileBody {
-            break_target: exit_block,
-            continue_target: header_block,
-        });
-
-        let _ = self.build_codeblock_expr(ctx, body);
-
-        ctx.module_builder.exit_scope();
-
-        if self.get_current_basic_block().terminator.is_none() {
-            self.set_basic_block_terminator(Terminator::Jump {
-                target: header_block,
-                args: vec![],
-            });
+        self.build_statements(body.statements);
+        if let Some(final_expr) = body.final_expr {
+            self.build_expr(*final_expr);
         }
 
-        self.seal_block(ctx, header_block);
-        self.use_basic_block(exit_block);
-        self.seal_block(ctx, exit_block);
+        self.current_scope = self
+            .current_scope
+            .exit(body.span.end)
+            .expect("INTERNAL COMPILER ERROR: Scope mismatch");
+
+        if self.bb().terminator.is_none() {
+            self.jmp(header_block_id, HashMap::new());
+        }
+
+        self.seal_block(header_block_id);
+
+        self.use_basic_block(exit_block_id);
+        self.seal_block(exit_block_id);
     }
 }
