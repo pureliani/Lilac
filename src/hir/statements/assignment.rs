@@ -82,6 +82,7 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn build_assignment_stmt(&mut self, target: Expr, value: Expr) {
+        let target_span = target.span.clone();
         let source_val = self.build_expr(value);
 
         let place = match self.build_place(target) {
@@ -92,7 +93,7 @@ impl<'a> Builder<'a, InBlock> {
             }
         };
 
-        self.write_place(place, source_val);
+        self.write_place(place, source_val, target_span);
     }
 
     fn get_place_type(&self, place: &Place) -> Result<Type, SemanticError> {

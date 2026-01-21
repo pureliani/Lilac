@@ -124,13 +124,13 @@ impl<'a> Builder<'a, InBlock> {
         value_id
     }
 
-    pub fn read_place(&mut self, place: Place) -> ValueId {
+    pub fn read_place(&mut self, place: Place, span: Span) -> ValueId {
         let mut current = self.use_value(place.root);
 
         for proj in place.projections {
             match proj {
                 Projection::Deref => {
-                    current = match self.load(current, Span::default()) {
+                    current = match self.load(current, span.clone()) {
                         Ok(val) => val,
                         Err(e) => return self.report_error_and_get_poison(e),
                     };
@@ -166,19 +166,19 @@ impl<'a> Builder<'a, InBlock> {
             }
         }
 
-        match self.load(current, Span::default()) {
+        match self.load(current, span) {
             Ok(val) => val,
             Err(e) => self.report_error_and_get_poison(e),
         }
     }
 
-    pub fn write_place(&mut self, place: Place, value: ValueId) {
+    pub fn write_place(&mut self, place: Place, value: ValueId, span: Span) {
         let mut current = self.use_value(place.root);
 
         for proj in &place.projections {
             match proj {
                 Projection::Deref => {
-                    current = match self.load(current, Span::default()) {
+                    current = match self.load(current, span.clone()) {
                         Ok(val) => val,
                         Err(e) => {
                             self.errors.push(e);
@@ -228,7 +228,7 @@ impl<'a> Builder<'a, InBlock> {
             }
         }
 
-        self.store(current, value, Span::default());
+        self.store(current, value, span.clone());
 
         // for now we skip narrowing if Index is involved as it's hard to track
         let is_narrowable = !place

@@ -35,7 +35,7 @@ impl<'a> Builder<'a, InBlock> {
 
         match decl {
             CheckedDeclaration::Var(_) => match self.build_place(expr_for_place) {
-                Ok(place) => self.read_place(place),
+                Ok(place) => self.read_place(place, identifier.span.clone()),
                 Err(e) => self.report_error_and_get_poison(e),
             },
             CheckedDeclaration::UninitializedVar { .. } => self
