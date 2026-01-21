@@ -90,7 +90,7 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
     let term = bb.terminator.clone().unwrap();
     match term {
         Terminator::Jump { target } => {
-            write!(out, "    jmp block_{}\n", target.0).unwrap();
+            writeln!(out, "    jmp block_{}", target.0).unwrap();
         }
         Terminator::CondJump {
             condition,

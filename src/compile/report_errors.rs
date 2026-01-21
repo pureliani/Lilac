@@ -571,9 +571,28 @@ impl Compiler {
                                  not supported yet",
                             )),
                         SemanticErrorKind::ExpectedTagWithoutValue { received } => {
-                            todo!()
+                            let received_str = type_to_string(received);
+                            report
+                                .with_message("Unexpected value for tag")
+                                .with_label(label.with_message(format!(
+                                    "This tag is defined without a value, but found a value of type \"{}\"",
+                                    received_str
+                                )))
+                                .with_help("Remove the parentheses and the value following the tag identifier")
                         }
-                        SemanticErrorKind::ExpectedTagWithValue { expected } => todo!(),
+                        SemanticErrorKind::ExpectedTagWithValue { expected } => {
+                            let expected_str = type_to_string(expected);
+                            report
+                                .with_message("Missing value for tag")
+                                .with_label(label.with_message(format!(
+                                    "This tag requires a value of type \"{}\"",
+                                    expected_str
+                                )))
+                                .with_help(format!(
+                                    "Provide a value of type \"{}\" in parentheses, e.g., #Tag(value)",
+                                    expected_str
+                                ))
+                        }
                     };
                     let _ = final_report.finish().print(&mut *cache);
                 }
