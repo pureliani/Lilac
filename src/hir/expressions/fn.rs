@@ -121,13 +121,9 @@ impl<'a> Builder<'a, InModule> {
                     received: final_value_type,
                 },
             });
-
-            if fn_builder.bb().terminator.is_none() {
-                fn_builder.emit_unreachable_terminator();
-            }
-        } else if fn_builder.bb().terminator.is_none() {
-            fn_builder.emit_return_terminator(final_value);
         }
+
+        fn_builder.emit_return_terminator(final_value);
     }
 }
 

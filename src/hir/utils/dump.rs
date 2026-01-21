@@ -1,14 +1,56 @@
 use crate::{
     globals::STRING_INTERNER,
     hir::{
-        builders::{BasicBlock, BasicBlockId, Function, Program, ValueId},
+        builders::{BasicBlockId, Function, Program, ValueId},
         instructions::{Instruction, Terminator},
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::type_to_string::type_to_string,
     },
     tokenize::number_kind_to_suffix,
 };
-use std::{collections::HashMap, fmt::Write};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::Write,
+};
+
+fn get_vt(p: &Program, vid: &ValueId) -> String {
+    type_to_string(&p.value_types[vid])
+}
+
+fn find_blocks(f: &Function) -> Vec<BasicBlockId> {
+    let mut blocks = Vec::new();
+    let mut queue = VecDeque::new();
+    let mut expanded = std::collections::HashSet::new();
+
+    queue.push_back(f.entry_block);
+
+    while let Some(bid) = queue.pop_front() {
+        blocks.retain(|&id| id != bid);
+        blocks.push(bid);
+
+        if expanded.insert(bid) {
+            if let Some(bb) = f.blocks.get(&bid) {
+                if let Some(terminator) = &bb.terminator {
+                    match terminator {
+                        Terminator::Jump { target, .. } => {
+                            queue.push_back(*target);
+                        }
+                        Terminator::CondJump {
+                            true_target,
+                            false_target,
+                            ..
+                        } => {
+                            queue.push_back(*true_target);
+                            queue.push_back(*false_target);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    blocks
+}
 
 pub fn dump_program(program: &Program) {
     let mut out = String::new();
@@ -26,7 +68,11 @@ fn dump_function(f: &Function, p: &Program, out: &mut String) {
     let fn_name = STRING_INTERNER.resolve(f.identifier.name);
     let return_type = type_to_string(&f.return_type);
     writeln!(out, "fn {fn_name} -> {return_type}:").unwrap();
-    dump_block(&f.entry_block, f, p, out);
+    let block_ids = find_blocks(f);
+
+    for bid in block_ids {
+        dump_block(&bid, f, p, out);
+    }
 }
 
 pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut String) {
@@ -40,8 +86,8 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
     writeln!(out, "    }} ").unwrap();
 
     writeln!(out, "    params {{ ").unwrap();
-    for p in &bb.params {
-        writeln!(out, "      v{}", p.0).unwrap();
+    for param in &bb.params {
+        writeln!(out, "      v{}: {}", param.0, get_vt(p, param)).unwrap();
     }
     writeln!(out, "    }} ").unwrap();
 
@@ -51,7 +97,7 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
     }
     writeln!(out, "    }} ").unwrap();
 
-    write!(out, "\n\n").unwrap();
+    writeln!(out).unwrap();
 
     dump_instructions(&bb.instructions, p, out);
 
@@ -69,7 +115,7 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
     let term = bb.terminator.clone().unwrap();
     match term {
         Terminator::Jump { target, args } => {
-            write!(out, "    jmp block_{}", target.0).unwrap();
+            write!(out, "\n    jmp block_{}", target.0).unwrap();
             print_args(out, &args);
             write!(out, "\n\n").unwrap();
         }
@@ -82,7 +128,7 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
         } => {
             write!(
                 out,
-                "    cond_jmp v{} ? block_{}",
+                "\n    cond_jmp v{} ? block_{}",
                 condition.0, true_target.0
             )
             .unwrap();
@@ -90,19 +136,15 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
             write!(out, " : block_{}", false_target.0).unwrap();
             print_args(out, &false_args);
             write!(out, "\n\n").unwrap();
-
-            dump_block(&true_target, f, p, out);
-            dump_block(&false_target, f, p, out);
         }
         Terminator::Return { value } => {
-            writeln!(out, "ret v{}", value.0).unwrap();
+            writeln!(out, "\n    ret v{}\n", value.0).unwrap();
         }
-        _ => writeln!(out, "{:?}", term).unwrap(),
+        _ => writeln!(out, "    {:?}", term).unwrap(),
     }
 }
 
 pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) {
-    let get_ty = |vid: &ValueId| type_to_string(&p.value_types[vid]);
     let get_binary_op_sign = |instr: &Instruction| {
         String::from(match instr {
             Instruction::IAdd { .. } | Instruction::FAdd { .. } => "+",
@@ -154,7 +196,6 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                         .unwrap();
                 writeln!(out, "v{}: string = \"{}\";", dest.0, literal).unwrap();
             }
-            Instruction::ConstFn { dest, decl_id } => todo!(),
             Instruction::ConstVoid { dest } => {
                 writeln!(out, "v{}: void = void;", dest.0).unwrap();
             }
@@ -190,7 +231,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     out,
                     "v{}: {} = {} {} {};",
                     dest.0,
-                    get_ty(dest),
+                    get_vt(p, dest),
                     lhs.0,
                     get_binary_op_sign(instruction),
                     rhs.0
@@ -198,10 +239,10 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 .unwrap();
             }
             Instruction::INeg { dest, src } | Instruction::FNeg { dest, src } => {
-                writeln!(out, "v{}: {} = -{};", dest.0, get_ty(dest), src.0).unwrap();
+                writeln!(out, "v{}: {} = -{};", dest.0, get_vt(p, dest), src.0).unwrap();
             }
             Instruction::BNot { dest, src } => {
-                writeln!(out, "v{}: {} = !{};", dest.0, get_ty(dest), src.0).unwrap();
+                writeln!(out, "v{}: {} = !{};", dest.0, get_vt(p, dest), src.0).unwrap();
             }
             Instruction::HeapFree { ptr } => {
                 writeln!(out, "free(v{})", ptr.0).unwrap();
@@ -215,7 +256,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     out,
                     "v{}: {} = stackAlloc({} x {});",
                     destination.0,
-                    get_ty(destination),
+                    get_vt(p, destination),
                     count,
                     inner_ty
                 )
@@ -230,7 +271,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     out,
                     "v{}: {} = heapAlloc(v{} x {});",
                     destination.0,
-                    get_ty(destination),
+                    get_vt(p, destination),
                     count.0,
                     inner_ty
                 )
@@ -244,7 +285,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     out,
                     "v{}: {} = *v{};",
                     destination.0,
-                    get_ty(destination),
+                    get_vt(p, destination),
                     ptr.0
                 )
                 .unwrap();
@@ -269,7 +310,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     out,
                     "v{}: {} = &v{}.{};",
                     destination.0,
-                    get_ty(destination),
+                    get_vt(p, destination),
                     base_ptr.0,
                     field_name
                 )
@@ -284,7 +325,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     out,
                     "v{}: {} = {} + {};",
                     destination.0,
-                    get_ty(destination),
+                    get_vt(p, destination),
                     base_ptr.0,
                     index.0
                 )
@@ -305,7 +346,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     out,
                     "v{}: {} = call v{}({});",
                     destination.0,
-                    get_ty(destination),
+                    get_vt(p, destination),
                     func.0,
                     args
                 )
