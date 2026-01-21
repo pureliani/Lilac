@@ -288,6 +288,12 @@ impl<'a> Builder<'a, InBlock> {
         block_id: BasicBlockId,
         identity_id: ValueId,
     ) -> ValueId {
+        if let Some(defs) = self.definitions.get(&block_id) {
+            if let Some(val) = defs.get(&identity_id) {
+                return *val;
+            }
+        }
+
         let val: ValueId;
         if !self.get_bb(block_id).sealed {
             val = self.new_value_id(self.get_value_type(&identity_id).clone());
