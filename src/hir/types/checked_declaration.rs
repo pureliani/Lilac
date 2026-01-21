@@ -69,7 +69,6 @@ impl Hash for CheckedTypeAliasDecl {
 #[derive(Clone, Debug)]
 pub struct CheckedVarDecl {
     pub id: DeclarationId,
-    /// ptr is a ValueId which holds a pointer to the actual data
     pub ptr: ValueId,
     pub identifier: IdentifierNode,
     pub documentation: Option<DocAnnotation>,
@@ -81,7 +80,6 @@ pub enum CheckedDeclaration {
     TypeAlias(CheckedTypeAliasDecl),
     Function(Function),
     Var(CheckedVarDecl),
-    // This is for detecting the Temporal Dead Zone
     UninitializedVar {
         id: DeclarationId,
         identifier: IdentifierNode,

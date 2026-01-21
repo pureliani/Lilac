@@ -16,7 +16,6 @@ use crate::{
         expressions::r#if::IfContext,
     },
 };
-use std::collections::HashMap;
 
 impl<'a> Builder<'a, InBlock> {
     pub fn build_statements(&mut self, statements: Vec<Stmt>) {
@@ -62,7 +61,7 @@ impl<'a> Builder<'a, InBlock> {
                 }
                 StmtKind::Break => {
                     if let Some(targets) = self.current_scope.within_loop_body() {
-                        self.jmp(targets.on_break, HashMap::new());
+                        self.jmp(targets.on_break);
                     } else {
                         self.errors.push(SemanticError {
                             kind: SemanticErrorKind::BreakKeywordOutsideLoop,
@@ -72,7 +71,7 @@ impl<'a> Builder<'a, InBlock> {
                 }
                 StmtKind::Continue => {
                     if let Some(targets) = self.current_scope.within_loop_body() {
-                        self.jmp(targets.on_continue, HashMap::new());
+                        self.jmp(targets.on_continue);
                     } else {
                         self.errors.push(SemanticError {
                             kind: SemanticErrorKind::ContinueKeywordOutsideLoop,

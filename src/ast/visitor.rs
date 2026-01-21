@@ -28,16 +28,12 @@ pub trait ASTVisitor<'ast>: Sized {
         walk_type(self, ty);
     }
 
-    /// e.g. `x + 1`, `print(x)`
     fn visit_ident_usage(&mut self, _id: IdentifierNode) {}
 
-    /// e.g. `let x`, `fn foo(x)`
     fn visit_ident_decl(&mut self, _id: IdentifierNode) {}
 
-    /// Called for non-variable identifiers: struct fields, enum tags, static methods
     fn visit_ident_label(&mut self, _id: IdentifierNode) {}
 
-    /// Called for type names e.g. `x: MyType`
     fn visit_ident_type(&mut self, _id: IdentifierNode) {}
 
     fn visit_expr_stmt(&mut self, expr: &'ast Expr) {

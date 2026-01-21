@@ -1,12 +1,10 @@
-use std::collections::HashMap;
-
 use crate::{
-    ast::{expr::Expr, type_annotation::TagAnnotation, IdentifierNode},
-    globals::{COMMON_IDENTIFIERS, TAG_INTERNER},
+    ast::{expr::Expr, type_annotation::TagAnnotation},
+    globals::TAG_INTERNER,
     hir::{
-        builders::{Builder, InBlock, TypePredicate, ValueId},
+        builders::{Builder, InBlock, Phi, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::{StructKind, Type},
+        types::checked_type::Type,
         utils::try_unify_types::{intersect_types, subtract_types},
     },
     tokenize::NumberKind,
@@ -24,43 +22,26 @@ impl<'a> Builder<'a, InBlock> {
         let source_val = self.build_expr(*left.clone());
         let source_ty = self.get_value_type(&source_val).clone();
 
-        let underlying_ty = match &source_ty {
-            Type::Pointer { narrowed_to, .. } => narrowed_to.as_ref(),
-            other => other,
-        };
-
-        if !matches!(
-            underlying_ty,
-            Type::Struct(StructKind::Union { .. }) | Type::Unknown
-        ) {
+        if !matches!(source_ty, Type::Union(_) | Type::Unknown) {
             return self.report_error_and_get_poison(SemanticError {
                 kind: SemanticErrorKind::CannotNarrowNonUnion(source_ty),
                 span: left_span,
             });
         }
 
-        let union_ptr = match self.build_place(*left) {
-            Ok(place) => place.root,
-            Err(_) => {
-                let p = self.emit_stack_alloc(source_ty.clone(), 1);
-                self.store(p, source_val, left_span.clone());
-                p
-            }
-        };
-
-        let id_field = IdentifierNode {
-            name: COMMON_IDENTIFIERS.id,
-            span: left_span.clone(),
-        };
-        let id_ptr = unwrap_or_poison!(self, self.get_field_ptr(union_ptr, &id_field));
-        let actual_id_val = unwrap_or_poison!(self, self.load(id_ptr, left_span.clone()));
+        let actual_id_val = self.emit_get_tag_id(source_val);
 
         let true_path = self.as_fn().new_bb();
         let false_path = self.as_fn().new_bb();
         let merge_block = self.as_fn().new_bb();
 
         let mut target_tag_ids = Vec::new();
-        let result_bool_param = self.append_param_to_block(merge_block, Type::Bool);
+
+        let identity_id = if let Ok(place) = self.build_place(*left) {
+            Some(place.root)
+        } else {
+            None
+        };
 
         for (i, tag_ann) in variants.iter().enumerate() {
             if tag_ann.value_type.is_some() {
@@ -91,13 +72,7 @@ impl<'a> Builder<'a, InBlock> {
                 self.as_fn().new_bb()
             };
 
-            self.cond_jmp(
-                is_match,
-                true_path,
-                HashMap::new(),
-                next_check_block,
-                HashMap::new(),
-            );
+            self.cond_jmp(is_match, true_path, next_check_block);
 
             if !is_last {
                 self.seal_block(next_check_block);
@@ -110,36 +85,61 @@ impl<'a> Builder<'a, InBlock> {
 
         self.seal_block(true_path);
         self.use_basic_block(true_path);
-        let true_id = self.emit_refine_type(source_val, true_ty);
-        self.map_value(source_val, true_id);
+        let true_refined_id = self.emit_refine_type(source_val, true_ty);
+
+        if let Some(id) = identity_id {
+            self.definitions
+                .entry(true_path)
+                .or_default()
+                .insert(id, true_refined_id);
+        }
+
         let const_true = self.emit_const_bool(true);
-        self.jmp(
-            merge_block,
-            HashMap::from([(result_bool_param, const_true)]),
-        );
+        let true_final_bb = self.context.block_id;
+        self.jmp(merge_block);
 
         self.seal_block(false_path);
         self.use_basic_block(false_path);
-        let false_id = self.emit_refine_type(source_val, false_ty);
-        self.map_value(source_val, false_id);
+        let false_refined_id = self.emit_refine_type(source_val, false_ty);
+
+        if let Some(id) = identity_id {
+            self.definitions
+                .entry(false_path)
+                .or_default()
+                .insert(id, false_refined_id);
+        }
+
         let const_false = self.emit_const_bool(false);
-        self.jmp(
-            merge_block,
-            HashMap::from([(result_bool_param, const_false)]),
-        );
+        let false_final_bb = self.context.block_id;
+        self.jmp(merge_block);
 
         self.seal_block(merge_block);
         self.use_basic_block(merge_block);
 
-        self.get_fn().predicates.insert(
-            result_bool_param,
-            TypePredicate {
-                source: source_val,
-                true_id,
-                false_id,
+        let result_bool_id = self.new_value_id(Type::Bool);
+        let phi_operands = vec![
+            Phi {
+                from: true_final_bb,
+                value: const_true,
             },
-        );
+            Phi {
+                from: false_final_bb,
+                value: const_false,
+            },
+        ];
+        self.bb_mut().phis.push((result_bool_id, phi_operands));
 
-        result_bool_param
+        if let Some(id) = identity_id {
+            self.get_fn().predicates.insert(
+                result_bool_id,
+                TypePredicate {
+                    source: id,
+                    true_id: true_refined_id,
+                    false_id: false_refined_id,
+                },
+            );
+        }
+
+        result_bool_id
     }
 }

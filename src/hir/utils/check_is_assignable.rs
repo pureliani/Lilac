@@ -54,26 +54,18 @@ fn check_is_assignable_recursive<'a>(
         ) => {
             check_is_assignable_recursive(source_narrowed_to, target_constraint, visited)
         }
-        (Struct(source), Struct(target)) => match (source, target) {
-            (
-                StructKind::Union { variants: source },
-                StructKind::Union { variants: target },
-            ) => source.iter().all(|source_item| {
-                target.iter().any(|target_item| {
-                    check_is_tag_assignable(source_item, target_item, visited)
-                })
-            }),
-            (
-                StructKind::Tag(source_item),
-                StructKind::Union {
-                    variants: target_union,
-                },
-            ) => target_union.iter().any(|target_item| {
+        (Type::Union(source), Type::Union(target)) => source.iter().all(|source_item| {
+            target.iter().any(|target_item| {
                 check_is_tag_assignable(source_item, target_item, visited)
-            }),
-            (StructKind::Tag(t1), StructKind::Tag(t2)) => {
-                check_is_tag_assignable(t1, t2, visited)
-            }
+            })
+        }),
+        (Type::Tag(source_item), Type::Union(target_union)) => {
+            target_union.iter().any(|target_item| {
+                check_is_tag_assignable(source_item, target_item, visited)
+            })
+        }
+        (Type::Tag(t1), Type::Tag(t2)) => check_is_tag_assignable(t1, t2, visited),
+        (Struct(source), Struct(target)) => match (source, target) {
             (
                 StructKind::UserDefined(source_fields),
                 StructKind::UserDefined(target_fields),

@@ -11,7 +11,6 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
-    /// Handles implicit dereferencing for struct fields and array indices
     pub fn build_place(&mut self, expr: Expr) -> Result<Place, SemanticError> {
         match expr.kind {
             ExprKind::Identifier(ident) => {
@@ -28,13 +27,10 @@ impl<'a> Builder<'a, InBlock> {
                     .expect("INTERNAL COMPILER ERROR: Declaration not found");
 
                 match decl {
-                    CheckedDeclaration::Var(var) => {
-                        let current_root_ptr = self.use_value(var.ptr);
-                        Ok(Place {
-                            root: current_root_ptr,
-                            projections: vec![],
-                        })
-                    }
+                    CheckedDeclaration::Var(var) => Ok(Place {
+                        root: self.use_var(var.ptr),
+                        projections: vec![],
+                    }),
                     CheckedDeclaration::UninitializedVar { .. } => Err(SemanticError {
                         span: expr.span.clone(),
                         kind: SemanticErrorKind::UseOfUninitializedVariable(ident),
@@ -49,8 +45,9 @@ impl<'a> Builder<'a, InBlock> {
                 let mut place = self.build_place(*left)?;
 
                 let ty = self.get_place_type(&place)?;
-                if let Type::Pointer { narrowed_to, .. } = ty {
-                    if matches!(*narrowed_to, Type::Pointer { .. }) {
+
+                if let Type::Pointer { narrowed_to, .. } = &ty {
+                    if matches!(**narrowed_to, Type::Pointer { .. }) {
                         place.projections.push(Projection::Deref);
                     }
                 }
@@ -60,13 +57,14 @@ impl<'a> Builder<'a, InBlock> {
             }
             ExprKind::Index { left, index } => {
                 let mut place = self.build_place(*left)?;
-
                 let ty = self.get_place_type(&place)?;
-                if let Type::Pointer { narrowed_to, .. } = ty {
-                    if matches!(*narrowed_to, Type::Pointer { .. }) {
+
+                if let Type::Pointer { narrowed_to, .. } = &ty {
+                    if matches!(**narrowed_to, Type::Pointer { .. }) {
                         place.projections.push(Projection::Deref);
                     }
                 }
+
                 let index_span = index.span.clone();
                 let index_val = self.build_expr(*index);
                 place
@@ -96,15 +94,9 @@ impl<'a> Builder<'a, InBlock> {
         self.write_place(place, source_val, target_span);
     }
 
-    fn get_place_type(&self, place: &Place) -> Result<Type, SemanticError> {
-        let root_val_id =
-            if let Some(mapped) = self.bb().original_to_local_valueid.get(&place.root) {
-                *mapped
-            } else {
-                place.root
-            };
-
-        let mut ty = self.get_value_type(&root_val_id).clone();
+    fn get_place_type(&mut self, place: &Place) -> Result<Type, SemanticError> {
+        let current_ssa_id = self.use_var(place.root);
+        let mut ty = self.get_value_type(&current_ssa_id).clone();
 
         for proj in &place.projections {
             match proj {

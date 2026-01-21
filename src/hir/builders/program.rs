@@ -1,10 +1,22 @@
-use crate::ast::decl::Declaration;
-use crate::ast::expr::ExprKind;
-use crate::ast::stmt::StmtKind;
-use crate::ast::Position;
-use crate::compile::ParallelParseResult;
-use crate::hir::builders::{Builder, InBlock, InGlobal, InModule, Module};
-use crate::hir::utils::scope::ScopeKind;
+use std::collections::HashMap;
+
+use crate::{
+    ast::{
+        decl::{Declaration, FnDecl},
+        expr::ExprKind,
+        stmt::StmtKind,
+        ModulePath, Position,
+    },
+    compile::ParallelParseResult,
+    hir::{
+        builders::{BasicBlockId, Builder, Function, InGlobal, InModule, Module},
+        types::checked_declaration::CheckedDeclaration,
+        utils::{
+            check_type::{check_params, check_type_annotation, TypeCheckerContext},
+            scope::ScopeKind,
+        },
+    },
+};
 
 impl<'a> Builder<'a, InGlobal> {
     pub fn build(&mut self, mut modules: Vec<ParallelParseResult>) {
@@ -59,39 +71,21 @@ impl<'a> Builder<'a, InGlobal> {
         }
     }
 
-    fn as_module(&mut self, path: crate::ast::ModulePath) -> Builder<'_, InModule> {
+    fn as_module(&mut self, path: ModulePath) -> Builder<'_, InModule> {
         let scope = self.program.modules.get(&path).unwrap().root_scope.clone();
         Builder {
             context: InModule { path },
             program: self.program,
             errors: self.errors,
             current_scope: scope,
+            definitions: self.definitions,
+            incomplete_phis: self.incomplete_phis,
         }
     }
 }
 
 impl<'a> Builder<'a, InModule> {
-    fn as_dummy_block(&mut self) -> Builder<'_, InBlock> {
-        Builder {
-            context: crate::hir::builders::InBlock {
-                path: self.context.path.clone(),
-                func_id: crate::ast::DeclarationId(0), // Not inside a real function
-                block_id: crate::hir::builders::BasicBlockId(0),
-            },
-            program: self.program,
-            errors: self.errors,
-            current_scope: self.current_scope.clone(),
-        }
-    }
-
-    fn register_fn_signature(&mut self, f: &crate::ast::decl::FnDecl) {
-        use crate::hir::builders::Function;
-        use crate::hir::types::checked_declaration::CheckedDeclaration;
-        use crate::hir::utils::check_type::{
-            check_params, check_type_annotation, TypeCheckerContext,
-        };
-        use std::collections::HashMap;
-
+    fn register_fn_signature(&mut self, f: &FnDecl) {
         let mut type_ctx = TypeCheckerContext {
             scope: self.current_scope.clone(),
             declarations: &self.program.declarations,
@@ -107,7 +101,7 @@ impl<'a> Builder<'a, InModule> {
             params: checked_params,
             return_type: checked_return_type,
             is_exported: f.is_exported,
-            entry_block: crate::hir::builders::BasicBlockId(0), // Placeholder
+            entry_block: BasicBlockId(0),
             blocks: HashMap::new(),
             value_definitions: HashMap::new(),
             predicates: HashMap::new(),

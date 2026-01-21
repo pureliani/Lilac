@@ -232,9 +232,10 @@ impl Compiler {
                             let type_str = type_to_string(ty);
                             report.with_message("Redundant type check").with_label(
                                 label.with_message(format!(
-                                "Value is already `{}`, `::is()` only works on unions",
-                                type_str
-                            )),
+                                    "Value is already `{}`, `::is()` only works on \
+                                     unions",
+                                    type_str
+                                )),
                             )
                         }
                         SemanticErrorKind::ExpectedANumericOperand => {
@@ -314,13 +315,12 @@ impl Compiler {
                                 )),
                             )
                         }
-
                         SemanticErrorKind::ValuedTagInIsExpression => report
                             .with_message("Valued tag not allowed in `::is()` expression")
                             .with_label(label.with_message(
                                 "The `::is()` operator only checks the variant \
-                                     identifier. Remove the value type (e.g., use \
-                                     `#Tag` instead of `#Tag(Type)`)",
+                                 identifier. Remove the value type (e.g., use `#Tag` \
+                                 instead of `#Tag(Type)`)",
                             )),
                         SemanticErrorKind::UnreachableCode => {
                             report.with_message("Unreachable code").with_label(
@@ -340,8 +340,8 @@ impl Compiler {
                             let name = STRING_INTERNER.resolve(id.name);
                             report.with_message("Duplicate union variant").with_label(
                                 label.with_message(format!(
-                                    "Variant \"{}\" is defined multiple times in \
-                                         this union",
+                                    "Variant \"{}\" is defined multiple times in this \
+                                     union",
                                     name
                                 )),
                             )
@@ -356,7 +356,7 @@ impl Compiler {
                             report.with_message("Invalid import location").with_label(
                                 label.with_message(
                                     "`from` statements must be declared at the top \
-                                         level of the file",
+                                     level of the file",
                                 ),
                             )
                         }
@@ -364,7 +364,7 @@ impl Compiler {
                             .with_message("Global variables not allowed")
                             .with_label(label.with_message(
                                 "Variables cannot be declared at the file scope \
-                                     (top-level)",
+                                 (top-level)",
                             )),
                         SemanticErrorKind::DuplicateStructFieldInitializer(id) => {
                             let name = STRING_INTERNER.resolve(id.name);
@@ -372,8 +372,8 @@ impl Compiler {
                             report
                                 .with_message("Duplicate initializer for a struct field")
                                 .with_label(label.with_message(format!(
-                                    "Struct field \"{}\" cannot be initialized \
-                                         multiple times",
+                                    "Struct field \"{}\" cannot be initialized multiple \
+                                     times",
                                     name
                                 )))
                         }
@@ -403,15 +403,14 @@ impl Compiler {
                                 .with_message("Missing field initializers")
                                 .with_label(label.with_message(format!(
                                     "Missing initializers for the following struct \
-                                         fields {}",
+                                     fields {}",
                                     joined
                                 )))
                         }
                         SemanticErrorKind::CannotCall(target) => report
                             .with_message("Cannot use the function call operator")
                             .with_label(label.with_message(format!(
-                                "Cannot use the function-call operator on type \
-                                     \"{}\"",
+                                "Cannot use the function-call operator on type \"{}\"",
                                 type_to_string(target)
                             ))),
                         SemanticErrorKind::IncompatibleBranchTypes { first, second } => {
@@ -429,8 +428,7 @@ impl Compiler {
                             report
                                 .with_message("Use of uninitialized variable")
                                 .with_label(label.with_message(format!(
-                                    "Variable \"{}\" is used before being \
-                                         initialized",
+                                    "Variable \"{}\" is used before being initialized",
                                     name
                                 )))
                         }
@@ -440,7 +438,7 @@ impl Compiler {
                             )
                             .with_label(label.with_message(
                                 "Cannot use the \"return\" keyword outside of a \
-                                     function scope",
+                                 function scope",
                             )),
                         SemanticErrorKind::BreakKeywordOutsideLoop => report
                             .with_message(
@@ -448,15 +446,15 @@ impl Compiler {
                             )
                             .with_label(label.with_message(
                                 "Cannot use the \"break\" keyword outside of a loop \
-                                     scope",
+                                 scope",
                             )),
                         SemanticErrorKind::ContinueKeywordOutsideLoop => report
                             .with_message(
                                 "Keyword \"continue\" used outside of a loop scope",
                             )
                             .with_label(label.with_message(
-                                "Cannot use the \"continue\" keyword outside of a \
-                                     loop scope",
+                                "Cannot use the \"continue\" keyword outside of a loop \
+                                 scope",
                             )),
                         SemanticErrorKind::InvalidLValue => report
                             .with_message("Invalid assignment target")
@@ -483,12 +481,12 @@ impl Compiler {
                         }
                         SemanticErrorKind::ReturnNotLastStatement => report
                             .with_message(
-                                "Expected the return statement to be the last \
-                                     statement in the function",
+                                "Expected the return statement to be the last statement \
+                                 in the function",
                             )
                             .with_label(label.with_message(
-                                "Expected the return statement to be the last \
-                                     statement in the function",
+                                "Expected the return statement to be the last statement \
+                                 in the function",
                             )),
                         SemanticErrorKind::CannotAccess(target) => report
                             .with_message("Cannot access field")
@@ -523,8 +521,8 @@ impl Compiler {
                             report
                                 .with_message("Function argument count mismatch")
                                 .with_label(label.with_message(format!(
-                                    "This function expects {} argument{}, but \
-                                         instead received {}",
+                                    "This function expects {} argument{}, but instead \
+                                     received {}",
                                     expected, s, received
                                 )))
                         }
@@ -553,8 +551,8 @@ impl Compiler {
                         SemanticErrorKind::IfExpressionMissingElse => report
                             .with_message("`if` expression missing `else` block")
                             .with_label(label.with_message(
-                                "`if` expressions used as values must have an \
-                                     `else` block",
+                                "`if` expressions used as values must have an `else` \
+                                 block",
                             )),
                         SemanticErrorKind::CannotCastType {
                             source_type,
@@ -569,9 +567,13 @@ impl Compiler {
                         SemanticErrorKind::ClosuresNotSupportedYet => report
                             .with_message("Closures not supported")
                             .with_label(label.with_message(
-                                "Capturing variables from outer scopes (closures) \
-                                     is not supported yet",
+                                "Capturing variables from outer scopes (closures) is \
+                                 not supported yet",
                             )),
+                        SemanticErrorKind::ExpectedTagWithoutValue { received } => {
+                            todo!()
+                        }
+                        SemanticErrorKind::ExpectedTagWithValue { expected } => todo!(),
                     };
                     let _ = final_report.finish().print(&mut *cache);
                 }

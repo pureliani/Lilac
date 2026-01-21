@@ -1,5 +1,6 @@
 use crate::{
-    globals::STRING_INTERNER,
+    compile::interner::TagId,
+    globals::{STRING_INTERNER, TAG_INTERNER},
     hir::{
         builders::{BasicBlockId, Function, Program, ValueId},
         instructions::{Instruction, Terminator},
@@ -8,10 +9,7 @@ use crate::{
     },
     tokenize::number_kind_to_suffix,
 };
-use std::{
-    collections::{HashMap, VecDeque},
-    fmt::Write,
-};
+use std::{collections::VecDeque, fmt::Write};
 
 fn get_vt(p: &Program, vid: &ValueId) -> String {
     type_to_string(&p.value_types[vid])
@@ -85,60 +83,29 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
     }
     writeln!(out, "    }} ").unwrap();
 
-    writeln!(out, "    params {{ ").unwrap();
-    for param in &bb.params {
-        writeln!(out, "      v{}: {}", param.0, get_vt(p, param)).unwrap();
-    }
-    writeln!(out, "    }} ").unwrap();
-
-    writeln!(out, "    mappings {{ ").unwrap();
-    for (orig, local) in &bb.original_to_local_valueid {
-        writeln!(out, "      v{} (original) -> v{} (local) ", orig.0, local.0).unwrap();
-    }
-    writeln!(out, "    }} ").unwrap();
-
     writeln!(out).unwrap();
 
     dump_instructions(&bb.instructions, p, out);
 
-    let print_args = |out: &mut String, args: &HashMap<ValueId, ValueId>| {
-        write!(out, "(").unwrap();
-        let joined_args = args
-            .iter()
-            .map(|(parameter, argument)| format!("v{} <- v{}", parameter.0, argument.0))
-            .collect::<Vec<String>>()
-            .join(", ");
-        write!(out, "{}", joined_args).unwrap();
-        write!(out, ")").unwrap();
-    };
-
     let term = bb.terminator.clone().unwrap();
     match term {
-        Terminator::Jump { target, args } => {
-            write!(out, "\n    jmp block_{}", target.0).unwrap();
-            print_args(out, &args);
-            write!(out, "\n\n").unwrap();
+        Terminator::Jump { target } => {
+            write!(out, "    jmp block_{}\n", target.0).unwrap();
         }
         Terminator::CondJump {
             condition,
             true_target,
-            true_args,
             false_target,
-            false_args,
         } => {
-            write!(
+            writeln!(
                 out,
-                "\n    cond_jmp v{} ? block_{}",
-                condition.0, true_target.0
+                "    cond_jmp v{} ? block_{} : block_{}\n",
+                condition.0, true_target.0, false_target.0
             )
             .unwrap();
-            print_args(out, &true_args);
-            write!(out, " : block_{}", false_target.0).unwrap();
-            print_args(out, &false_args);
-            write!(out, "\n\n").unwrap();
         }
         Terminator::Return { value } => {
-            writeln!(out, "\n    ret v{}\n", value.0).unwrap();
+            writeln!(out, "    ret v{}\n", value.0).unwrap();
         }
         _ => writeln!(out, "    {:?}", term).unwrap(),
     }
@@ -247,22 +214,10 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
             Instruction::HeapFree { ptr } => {
                 writeln!(out, "free(v{})", ptr.0).unwrap();
             }
-            Instruction::StackAlloc { destination, count } => {
-                let inner_ty = match &p.value_types[destination] {
-                    Type::Pointer { constraint, .. } => type_to_string(constraint),
-                    _ => "unknown".to_string(),
-                };
-                writeln!(
-                    out,
-                    "v{}: {} = stackAlloc({} x {});",
-                    destination.0,
-                    get_vt(p, destination),
-                    count,
-                    inner_ty
-                )
-                .unwrap();
-            }
-            Instruction::HeapAlloc { destination, count } => {
+            Instruction::HeapAlloc {
+                dest: destination,
+                count,
+            } => {
                 let inner_ty = match &p.value_types[destination] {
                     Type::Pointer { constraint, .. } => type_to_string(constraint),
                     _ => "unknown".to_string(),
@@ -280,7 +235,10 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
             Instruction::Store { ptr, value } => {
                 writeln!(out, "*v{} = v{};", ptr.0, value.0).unwrap();
             }
-            Instruction::Load { destination, ptr } => {
+            Instruction::Load {
+                dest: destination,
+                ptr,
+            } => {
                 writeln!(
                     out,
                     "v{}: {} = *v{};",
@@ -292,7 +250,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
             }
 
             Instruction::GetFieldPtr {
-                destination,
+                dest: destination,
                 base_ptr,
                 field_index,
             } => {
@@ -317,7 +275,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 .unwrap();
             }
             Instruction::PtrOffset {
-                destination,
+                dest: destination,
                 base_ptr,
                 index,
             } => {
@@ -332,7 +290,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 .unwrap();
             }
             Instruction::FunctionCall {
-                destination,
+                dest: destination,
                 func,
                 args,
             } => {
@@ -365,6 +323,46 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 )
                 .unwrap();
             }
+            Instruction::AssembleTag {
+                dest,
+                tag_id,
+                value,
+            } => {
+                let s_id = TAG_INTERNER.resolve(TagId(*tag_id));
+                let t_name = STRING_INTERNER.resolve(s_id);
+
+                let inner_value_str = value
+                    .map(|v_id| format!("(v{})", v_id.0))
+                    .unwrap_or_default();
+
+                let inner_type = value.map(|v_id| get_vt(p, &v_id)).unwrap_or_default();
+                let inner_type_str = format!("({})", inner_type);
+
+                let type_tag = format!("#{}{}", t_name, inner_type_str);
+                let value_tag = format!("#{}{}", t_name, inner_value_str);
+
+                writeln!(out, "v{}: {} = {};", dest.0, type_tag, value_tag).unwrap();
+            }
+            Instruction::GetTagId { dest, src } => {
+                let dest_ty = get_vt(p, dest);
+                let tag_id = match p.value_types.get(src) {
+                    Some(Type::Tag(t)) => t.id.0,
+                    _ => panic!("INTERNAL COMPILER ERROR: GetTagId on non tag type"),
+                };
+
+                writeln!(
+                    out,
+                    "v{}: {} = v{}::id (id is {});",
+                    dest.0, dest_ty, src.0, tag_id
+                )
+                .unwrap();
+            }
+            Instruction::GetTagPayload { dest, src } => {
+                let dest_ty = get_vt(p, dest);
+
+                writeln!(out, "v{}: {} = v{}::value;", dest.0, dest_ty, src.0,).unwrap();
+            }
+
             Instruction::Nop => {}
 
             x => writeln!(out, "{:?}", x).unwrap(),

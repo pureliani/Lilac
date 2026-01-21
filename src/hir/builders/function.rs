@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::{
     globals::next_block_id,
@@ -14,20 +14,23 @@ impl<'a> Builder<'a, InFunction> {
 
         let bb = BasicBlock {
             id,
-            incomplete_params: vec![],
             instructions: vec![],
-            params: vec![],
             sealed: false,
             terminator: None,
-            original_to_local_valueid: HashMap::new(),
             predecessors: HashSet::new(),
+            phis: vec![],
         };
 
-        let decl = self.program
+        let decl = self
+            .program
             .declarations
             .get_mut(&self.context.func_id)
             .unwrap_or_else(|| {
-                panic!("INTERNAL COMPILER ERROR: Expected function with DeclarationId({}) to exist.", self.context.func_id.0)
+                panic!(
+                    "INTERNAL COMPILER ERROR: Expected function with DeclarationId({}) \
+                     to exist.",
+                    self.context.func_id.0
+                )
             });
 
         let func = match decl {

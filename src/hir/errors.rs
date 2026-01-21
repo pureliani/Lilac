@@ -8,6 +8,12 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum SemanticErrorKind {
+    ExpectedTagWithoutValue {
+        received: Type,
+    },
+    ExpectedTagWithValue {
+        expected: Type,
+    },
     CannotNarrowNonUnion(Type),
     ValuedTagInIsExpression,
     UnreachableCode,
@@ -39,6 +45,7 @@ pub enum SemanticErrorKind {
     BreakKeywordOutsideLoop,
     ContinueKeywordOutsideLoop,
     InvalidLValue,
+
     TypeMismatch {
         expected: Type,
         received: Type,
@@ -127,6 +134,8 @@ impl SemanticErrorKind {
             SemanticErrorKind::ClosuresNotSupportedYet => 41,
             SemanticErrorKind::ValuedTagInIsExpression => 42,
             SemanticErrorKind::CannotNarrowNonUnion(_) => 43,
+            SemanticErrorKind::ExpectedTagWithoutValue { .. } => 44,
+            SemanticErrorKind::ExpectedTagWithValue { .. } => 45,
         }
     }
 }

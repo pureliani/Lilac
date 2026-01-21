@@ -40,7 +40,7 @@ pub struct ConstantId(pub usize);
 
 #[derive(Debug, Clone)]
 pub struct TypePredicate {
-    /// The original ValueId that was checked, could be a pointer or a value
+    /// The original ValueId that was checked
     pub source: ValueId,
     /// The new ValueId to use in the true path
     pub true_id: ValueId,
@@ -49,9 +49,7 @@ pub struct TypePredicate {
 }
 
 pub struct Place {
-    /// The local variable (stack slot) this starts from
     pub root: ValueId,
-    /// The sequence of projections (fields, index, deref)
     pub projections: Vec<Projection>,
 }
 
@@ -92,10 +90,14 @@ pub struct Function {
     pub entry_block: BasicBlockId,
     pub blocks: HashMap<BasicBlockId, BasicBlock>,
 
-    // Metadata
     pub value_definitions: HashMap<ValueId, BasicBlockId>,
-    /// Maps a boolean ValueId to the narrowing facts it carries
     pub predicates: HashMap<ValueId, TypePredicate>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Phi {
+    pub from: BasicBlockId,
+    pub value: ValueId,
 }
 
 #[derive(Debug, Clone)]
@@ -104,14 +106,7 @@ pub struct BasicBlock {
     pub instructions: Vec<Instruction>,
     pub terminator: Option<Terminator>,
     pub predecessors: HashSet<BasicBlockId>,
-    pub params: Vec<ValueId>,
-
-    // list of (placeholder valueid, original valueid)
-    pub incomplete_params: Vec<(ValueId, ValueId)>,
-
-    // Map original valueid -> block-local valueid
-    pub original_to_local_valueid: HashMap<ValueId, ValueId>,
-
+    pub phis: Vec<(ValueId, Vec<Phi>)>,
     pub sealed: bool,
 }
 
@@ -123,6 +118,11 @@ pub struct Builder<'a, C: BuilderContext> {
 
     pub errors: &'a mut Vec<SemanticError>,
     pub current_scope: Scope,
+
+    /// Block -> (Original Variable ID -> Current SSA Value ID)
+    pub definitions: &'a mut HashMap<BasicBlockId, HashMap<ValueId, ValueId>>,
+    /// Block -> List of (PhiValueId, OriginalVariableId) to be filled on seal()
+    pub incomplete_phis: &'a mut HashMap<BasicBlockId, Vec<(ValueId, ValueId)>>,
 }
 
 pub struct InGlobal;

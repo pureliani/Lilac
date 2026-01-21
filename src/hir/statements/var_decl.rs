@@ -3,10 +3,7 @@ use crate::{
     hir::{
         builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
-        types::{
-            checked_declaration::{CheckedDeclaration, CheckedVarDecl},
-            checked_type::Type,
-        },
+        types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
         utils::{
             check_is_assignable::check_is_assignable,
             check_type::{check_type_annotation, TypeCheckerContext},
@@ -52,20 +49,16 @@ impl<'a> Builder<'a, InBlock> {
             val_type.clone()
         };
 
-        let ptr = self.emit_stack_alloc(constraint.clone(), 1);
-        self.store(ptr, val_id, initial_value_span.clone());
+        let identity_id = val_id;
 
-        let narrowed_ptr_ty = Type::Pointer {
-            constraint: Box::new(constraint.clone()),
-            narrowed_to: Box::new(val_type),
-        };
-
-        let narrowed_ptr = self.emit_refine_type(ptr, narrowed_ptr_ty);
-        self.map_value(ptr, narrowed_ptr);
+        self.definitions
+            .entry(self.context.block_id)
+            .or_default()
+            .insert(identity_id, val_id);
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
-            ptr,
+            ptr: identity_id,
             identifier: var_decl.identifier.clone(),
             documentation: var_decl.documentation,
             constraint,

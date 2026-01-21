@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     ast::{DeclarationId, IdentifierNode, Span},
     hir::{
@@ -7,13 +5,15 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, Terminator},
         types::{
-            checked_declaration::CheckedDeclaration,
+            checked_declaration::{CheckedDeclaration, FnType},
             checked_type::{StructKind, Type},
         },
         utils::{
             check_binary_numeric_op::check_binary_numeric_operation,
             check_is_assignable::check_is_assignable,
             numeric::{get_numeric_type_rank, is_float, is_integer, is_signed},
+            try_unify_types::try_unify_types,
+            type_to_string::type_to_string,
         },
     },
     tokenize::NumberKind,
@@ -38,13 +38,13 @@ impl<'a> Builder<'a, InBlock> {
 
         if bb.terminator.is_some() {
             panic!(
-                "INTERNAL COMPILER ERROR: Tried to re-set terminator for basic block (ID: {})",
+                "INTERNAL COMPILER ERROR: Tried to re-set terminator for basic block \
+                 (ID: {})",
                 bb.id.0
             );
         }
     }
 
-    // Constants
     pub fn emit_const_number(&mut self, val: NumberKind) -> ValueId {
         let ty = match val {
             NumberKind::I64(_) => Type::I64,
@@ -104,7 +104,7 @@ impl<'a> Builder<'a, InBlock> {
             _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
         };
 
-        let ty = Type::Fn(crate::hir::types::checked_declaration::FnType {
+        let ty = Type::Fn(FnType {
             params,
             return_type,
         });
@@ -113,8 +113,6 @@ impl<'a> Builder<'a, InBlock> {
         self.push_instruction(Instruction::ConstFn { dest, decl_id });
         dest
     }
-
-    // Integer arithmetic
 
     pub fn emit_iadd(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
         let ty = self.get_value_type(&lhs).clone();
@@ -164,8 +162,6 @@ impl<'a> Builder<'a, InBlock> {
         self.push_instruction(Instruction::URem { dest, lhs, rhs });
         dest
     }
-
-    // Float arithmetic
 
     pub fn emit_frem(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
         let ty = self.get_value_type(&lhs).clone();
@@ -221,8 +217,6 @@ impl<'a> Builder<'a, InBlock> {
         });
         dest
     }
-
-    // Comparisons
 
     pub fn emit_ieq(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
         let dest = self.new_value_id(Type::Bool);
@@ -320,8 +314,6 @@ impl<'a> Builder<'a, InBlock> {
         dest
     }
 
-    // Unary
-
     pub fn emit_ineg(&mut self, src: ValueId) -> ValueId {
         let ty = self.get_value_type(&src).clone();
         let dest = self.new_value_id(ty);
@@ -341,8 +333,6 @@ impl<'a> Builder<'a, InBlock> {
         self.push_instruction(Instruction::BNot { dest, src });
         dest
     }
-
-    // Casts
 
     pub fn emit_itof(&mut self, src: ValueId, target_ty: Type) -> ValueId {
         let dest = self.new_value_id(target_ty.clone());
@@ -396,16 +386,6 @@ impl<'a> Builder<'a, InBlock> {
 
     // Memory
 
-    pub fn emit_stack_alloc(&mut self, ty: Type, count: usize) -> ValueId {
-        let destination = self.new_value_id(Type::Pointer {
-            constraint: Box::new(ty.clone()),
-            narrowed_to: Box::new(ty),
-        });
-        self.push_instruction(Instruction::StackAlloc { destination, count });
-
-        destination
-    }
-
     pub fn emit_heap_alloc(
         &mut self,
         ty: Type,
@@ -415,7 +395,10 @@ impl<'a> Builder<'a, InBlock> {
             constraint: Box::new(ty.clone()),
             narrowed_to: Box::new(ty),
         });
-        self.push_instruction(Instruction::HeapAlloc { destination, count });
+        self.push_instruction(Instruction::HeapAlloc {
+            dest: destination,
+            count,
+        });
 
         Ok(destination)
     }
@@ -427,7 +410,10 @@ impl<'a> Builder<'a, InBlock> {
             _ => panic!("INTERNAL ERROR: Load expected pointer"),
         };
         let destination = self.new_value_id(dest_ty);
-        self.push_instruction(Instruction::Load { destination, ptr });
+        self.push_instruction(Instruction::Load {
+            dest: destination,
+            ptr,
+        });
         destination
     }
 
@@ -456,7 +442,7 @@ impl<'a> Builder<'a, InBlock> {
         let destination = self.new_value_id(return_type);
 
         self.push_instruction(Instruction::FunctionCall {
-            destination,
+            dest: destination,
             func,
             args,
         });
@@ -464,53 +450,19 @@ impl<'a> Builder<'a, InBlock> {
         destination
     }
 
-    fn validate_terminator_args(
-        &self,
-        target: BasicBlockId,
-        args: &HashMap<ValueId, ValueId>,
-    ) {
-        let target_bb = self.get_bb(target);
-        let args_len = args.len();
-        let params_len = target_bb.params.len();
-
-        if args_len != params_len {
-            let s = if params_len > 1 { "s" } else { "" };
-            panic!(
-                "INTERNAL COMPILER ERROR: Argument count mismatch for jump from BasicBlockId({}) to BasicBlockId({}). Expected {} argument{}, got {}",
-                self.context.block_id.0,
-                target.0,
-                s,
-                params_len,
-                args_len
-            );
-        }
-
-        for param_id in &target_bb.params {
-            if !args.contains_key(param_id) {
-                panic!(
-                    "INTERNAL COMPILER ERROR: Jump from BasicBlockId({}) to BasicBlockId({}) is missing argument for parameter ValueId({})",
-                    self.context.block_id.0, target.0, param_id.0
-                );
-            }
-        }
-    }
-
-    pub fn jmp(&mut self, target: BasicBlockId, args: HashMap<ValueId, ValueId>) {
+    pub fn jmp(&mut self, target: BasicBlockId) {
         self.check_no_terminator();
         let this_block_id = self.context.block_id;
         self.get_bb_mut(target).predecessors.insert(this_block_id);
 
-        self.validate_terminator_args(target, &args);
-        self.bb_mut().terminator = Some(Terminator::Jump { target, args });
+        self.bb_mut().terminator = Some(Terminator::Jump { target });
     }
 
     pub fn cond_jmp(
         &mut self,
         condition: ValueId,
         true_target: BasicBlockId,
-        true_args: HashMap<ValueId, ValueId>,
         false_target: BasicBlockId,
-        false_args: HashMap<ValueId, ValueId>,
     ) {
         self.check_no_terminator();
         let this_block_id = self.context.block_id;
@@ -522,15 +474,10 @@ impl<'a> Builder<'a, InBlock> {
             .predecessors
             .insert(this_block_id);
 
-        self.validate_terminator_args(true_target, &true_args);
-        self.validate_terminator_args(false_target, &false_args);
-
         self.bb_mut().terminator = Some(Terminator::CondJump {
             condition,
             true_target,
-            true_args,
             false_target,
-            false_args,
         });
     }
 
@@ -543,8 +490,6 @@ impl<'a> Builder<'a, InBlock> {
         self.check_no_terminator();
         self.bb_mut().terminator = Some(Terminator::Unreachable)
     }
-
-    // Type-checked emitter wrappers
 
     pub fn add(
         &mut self,
@@ -943,7 +888,7 @@ impl<'a> Builder<'a, InBlock> {
                 let destination = self.new_value_id(dest_ty);
 
                 self.push_instruction(Instruction::PtrOffset {
-                    destination,
+                    dest: destination,
                     base_ptr,
                     index,
                 });
@@ -994,7 +939,7 @@ impl<'a> Builder<'a, InBlock> {
         });
 
         self.push_instruction(Instruction::GetFieldPtr {
-            destination,
+            dest: destination,
             base_ptr,
             field_index,
         });
@@ -1080,5 +1025,120 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         Ok(self.emit_refine_type(src, new_type))
+    }
+
+    pub fn emit_assemble_tag(
+        &mut self,
+        tag_type: Type,
+        inner_value: Option<ValueId>,
+        span: Span,
+    ) -> ValueId {
+        let tag_id = match &tag_type {
+            Type::Tag(tag) => tag.id.0,
+            Type::Unknown => return self.new_value_id(Type::Unknown),
+            _ => panic!(
+                "INTERNAL COMPILER ERROR: emit_assemble_tag called with non-tag type: \
+                 {:?}",
+                tag_type
+            ),
+        };
+
+        if let Type::Tag(tag_meta) = &tag_type {
+            match (inner_value, &tag_meta.value_type) {
+                (Some(val_id), Some(expected_ty)) => {
+                    let actual_ty = self.get_value_type(&val_id);
+                    if !check_is_assignable(actual_ty, expected_ty) {
+                        self.errors.push(SemanticError {
+                            kind: SemanticErrorKind::TypeMismatch {
+                                expected: *expected_ty.clone(),
+                                received: actual_ty.clone(),
+                            },
+                            span,
+                        });
+                    }
+                }
+                (None, None) => {}
+                (Some(received_valueid), None) => {
+                    let received_type = self.get_value_type(&received_valueid);
+                    self.errors.push(SemanticError {
+                        kind: SemanticErrorKind::ExpectedTagWithoutValue {
+                            received: received_type.clone(),
+                        },
+                        span,
+                    });
+                }
+                (None, Some(expected)) => {
+                    self.errors.push(SemanticError {
+                        kind: SemanticErrorKind::ExpectedTagWithValue {
+                            expected: *expected.clone(),
+                        },
+                        span,
+                    });
+                }
+            }
+        }
+
+        let dest = self.new_value_id(tag_type);
+        self.push_instruction(Instruction::AssembleTag {
+            dest,
+            tag_id,
+            value: inner_value,
+        });
+        dest
+    }
+
+    pub fn emit_get_tag_id(&mut self, src: ValueId) -> ValueId {
+        let src_ty = self.get_value_type(&src);
+
+        if !matches!(src_ty, Type::Tag(_) | Type::Union(_) | Type::Unknown) {
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot get tag ID from non-sum type: {:?}",
+                src_ty
+            );
+        }
+
+        let dest = self.new_value_id(Type::U16);
+        self.push_instruction(Instruction::GetTagId { dest, src });
+        dest
+    }
+
+    pub fn emit_get_tag_payload(&mut self, src: ValueId) -> Option<ValueId> {
+        let src_ty = self.get_value_type(&src);
+
+        match src_ty {
+            Type::Tag(t) => {
+                if let Some(inner) = &t.value_type {
+                    let dest = self.new_value_id(*inner.clone());
+                    self.push_instruction(Instruction::GetTagPayload { dest, src });
+                    Some(dest)
+                } else {
+                    None
+                }
+            }
+            Type::Union(variants) => {
+                // Collect all possible payload types
+                let mut payload_types = Vec::new();
+                for v in variants {
+                    if let Some(ty) = &v.value_type {
+                        payload_types.push((*ty.clone(), v.span.clone()));
+                    }
+                }
+
+                if payload_types.is_empty() {
+                    return None;
+                }
+
+                let unified_ty = try_unify_types(&payload_types).unwrap_or(Type::Unknown);
+
+                let dest = self.new_value_id(unified_ty);
+                self.push_instruction(Instruction::GetTagPayload { dest, src });
+                Some(dest)
+            }
+            Type::Unknown => Some(self.new_value_id(Type::Unknown)),
+            _ => panic!(
+            "INTERNAL COMPILER ERROR: Attempted to extract payload from non-sum type: {}",
+            type_to_string(src_ty)
+        ),
+        }
     }
 }

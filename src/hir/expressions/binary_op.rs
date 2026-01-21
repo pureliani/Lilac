@@ -1,6 +1,9 @@
 use crate::{
-    ast::expr::Expr,
-    hir::builders::{Builder, InBlock, ValueId},
+    ast::{expr::Expr, Span},
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        errors::SemanticError,
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -14,10 +17,10 @@ impl<'a> Builder<'a, InBlock> {
         F: FnOnce(
             &mut Self,
             ValueId,
-            crate::ast::Span,
+            Span,
             ValueId,
-            crate::ast::Span,
-        ) -> Result<ValueId, crate::hir::errors::SemanticError>,
+            Span,
+        ) -> Result<ValueId, SemanticError>,
     {
         let l_span = left.span.clone();
         let r_span = right.span.clone();

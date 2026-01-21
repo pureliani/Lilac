@@ -1,12 +1,10 @@
-use std::collections::HashMap;
-
 use crate::{
     ast::{
         expr::{BlockContents, Expr},
         Span,
     },
     hir::{
-        builders::{BasicBlockId, Builder, InBlock, ValueId},
+        builders::{BasicBlockId, Builder, InBlock, Phi, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::Type,
         utils::{
@@ -40,7 +38,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let merge_block_id = self.as_fn().new_bb();
         let mut branch_results: Vec<(BasicBlockId, ValueId, Span)> = Vec::new();
-        let mut current_condition_block_id = self.context.block_id;
+        let mut current_cond_block_id = self.context.block_id;
 
         let get_final_expr_span = |block: &BlockContents| {
             block
@@ -52,10 +50,9 @@ impl<'a> Builder<'a, InBlock> {
         };
 
         for (condition, body) in branches {
-            self.use_basic_block(current_condition_block_id);
+            self.use_basic_block(current_cond_block_id);
 
             let condition_span = condition.span.clone();
-
             let cond_id = self.build_expr(*condition);
             let cond_ty = self.get_value_type(&cond_id);
 
@@ -73,22 +70,18 @@ impl<'a> Builder<'a, InBlock> {
             let next_cond_block_id = self.as_fn().new_bb();
 
             if let Some(pred) = self.get_fn().predicates.get(&cond_id).cloned() {
-                self.get_bb_mut(then_block_id)
-                    .original_to_local_valueid
+                self.definitions
+                    .entry(then_block_id)
+                    .or_default()
                     .insert(pred.source, pred.true_id);
 
-                self.get_bb_mut(next_cond_block_id)
-                    .original_to_local_valueid
+                self.definitions
+                    .entry(next_cond_block_id)
+                    .or_default()
                     .insert(pred.source, pred.false_id);
             }
 
-            self.cond_jmp(
-                cond_id,
-                then_block_id,
-                HashMap::new(),
-                next_cond_block_id,
-                HashMap::new(),
-            );
+            self.cond_jmp(cond_id, then_block_id, next_cond_block_id);
 
             self.seal_block(then_block_id);
             self.use_basic_block(then_block_id);
@@ -97,26 +90,31 @@ impl<'a> Builder<'a, InBlock> {
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, then_val, final_expr_span));
+                self.jmp(merge_block_id);
             }
 
-            current_condition_block_id = next_cond_block_id;
+            current_cond_block_id = next_cond_block_id;
         }
 
-        self.use_basic_block(current_condition_block_id);
+        self.use_basic_block(current_cond_block_id);
         if let Some(else_body) = else_branch {
             let final_expr_span = get_final_expr_span(&else_body);
             let else_val = self.build_codeblock_expr(else_body);
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, else_val, final_expr_span));
+                self.jmp(merge_block_id);
             }
         } else {
-            self.jmp(merge_block_id, HashMap::new());
+            self.jmp(merge_block_id);
         }
 
-        self.seal_block(current_condition_block_id);
+        self.seal_block(current_cond_block_id);
 
-        let result_param_id = if context == IfContext::Expression {
+        self.seal_block(merge_block_id);
+        self.use_basic_block(merge_block_id);
+
+        if context == IfContext::Expression {
             let type_entries: Vec<(Type, Span)> = branch_results
                 .iter()
                 .map(|(_, val, span)| (self.get_value_type(val).clone(), span.clone()))
@@ -130,23 +128,16 @@ impl<'a> Builder<'a, InBlock> {
                 }
             };
 
-            Some(self.append_param_to_block(merge_block_id, result_type))
+            let result_id = self.new_value_id(result_type);
+            let phi_operands: Vec<Phi> = branch_results
+                .into_iter()
+                .map(|(block, value, _)| Phi { from: block, value })
+                .collect();
+
+            self.bb_mut().phis.push((result_id, phi_operands));
+            result_id
         } else {
-            None
-        };
-
-        for (block_id, val, _) in branch_results {
-            self.use_basic_block(block_id);
-            let mut args = HashMap::new();
-            if let Some(param_id) = result_param_id {
-                args.insert(param_id, val);
-            }
-            self.jmp(merge_block_id, args);
+            self.emit_const_void()
         }
-
-        self.seal_block(merge_block_id);
-        self.use_basic_block(merge_block_id);
-
-        result_param_id.unwrap_or_else(|| self.emit_const_void())
     }
 }

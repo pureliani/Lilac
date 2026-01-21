@@ -105,6 +105,8 @@ impl Compiler {
         }
 
         let mut builder_errors = vec![];
+        let mut definitions = HashMap::new();
+        let mut incomplete_phis = HashMap::new();
         let mut program = Program {
             constant_data: HashMap::new(),
             declarations: HashMap::new(),
@@ -119,6 +121,8 @@ impl Compiler {
             current_scope: global_scope,
             errors: &mut builder_errors,
             program: &mut program,
+            definitions: &mut definitions,
+            incomplete_phis: &mut incomplete_phis,
         };
 
         program_builder.build(modules_to_compile);

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     ast::DeclarationId,
     hir::{
@@ -219,12 +217,8 @@ pub enum Instruction {
         target_ty: Type,
     },
     // Memory
-    StackAlloc {
-        destination: ValueId,
-        count: usize,
-    },
     HeapAlloc {
-        destination: ValueId,
+        dest: ValueId,
         count: ValueId,
     },
     HeapFree {
@@ -235,27 +229,40 @@ pub enum Instruction {
         value: ValueId,
     },
     Load {
-        destination: ValueId,
+        dest: ValueId,
         ptr: ValueId,
     },
     // Access
     GetFieldPtr {
-        destination: ValueId,
+        dest: ValueId,
         base_ptr: ValueId,
         field_index: usize,
     },
     PtrOffset {
-        destination: ValueId,
+        dest: ValueId,
         base_ptr: ValueId,
         index: ValueId,
     },
     // Calls
     FunctionCall {
-        destination: ValueId,
+        dest: ValueId,
         func: ValueId,
         args: Vec<ValueId>,
     },
     // Other
+    AssembleTag {
+        dest: ValueId,
+        tag_id: u16,
+        value: Option<ValueId>,
+    },
+    GetTagId {
+        dest: ValueId,
+        src: ValueId,
+    },
+    GetTagPayload {
+        dest: ValueId,
+        src: ValueId,
+    },
     RefineType {
         dest: ValueId,
         src: ValueId,
@@ -268,15 +275,11 @@ pub enum Instruction {
 pub enum Terminator {
     Jump {
         target: BasicBlockId,
-        // param id -> argument id
-        args: HashMap<ValueId, ValueId>,
     },
     CondJump {
         condition: ValueId,
         true_target: BasicBlockId,
-        true_args: HashMap<ValueId, ValueId>,
         false_target: BasicBlockId,
-        false_args: HashMap<ValueId, ValueId>,
     },
     Return {
         value: ValueId,

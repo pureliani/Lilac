@@ -56,23 +56,20 @@ pub fn try_unify_types(entries: &[(Type, Span)]) -> Result<Type, SemanticError> 
         return Ok(Type::Void);
     }
 
-    let all_tags = entries.iter().all(|(t, _)| {
-        matches!(
-            t,
-            Type::Struct(StructKind::Tag(_)) | Type::Struct(StructKind::Union { .. })
-        )
-    });
+    let all_tags = entries
+        .iter()
+        .all(|(t, _)| matches!(t, Type::Tag(_) | Type::Union { .. }));
 
     if all_tags {
         let mut collected_tags: Vec<TagType> = Vec::new();
         for (ty, _) in entries {
             match ty {
-                Type::Struct(StructKind::Tag(tag)) => {
+                Type::Tag(tag) => {
                     if !collected_tags.contains(tag) {
                         collected_tags.push(tag.clone());
                     }
                 }
-                Type::Struct(StructKind::Union { variants }) => {
+                Type::Union(variants) => {
                     for tag in variants {
                         if !collected_tags.contains(tag) {
                             collected_tags.push(tag.clone());
@@ -111,7 +108,7 @@ pub fn subtract_types(base: &Type, to_remove: &[TagId]) -> Type {
             constraint: constraint.clone(),
             narrowed_to: Box::new(subtract_types(narrowed_to, to_remove)),
         },
-        Type::Struct(StructKind::Union { variants }) => {
+        Type::Union(variants) => {
             let remaining: Vec<TagType> = variants
                 .iter()
                 .filter(|v| !to_remove.contains(&v.id))
@@ -120,7 +117,7 @@ pub fn subtract_types(base: &Type, to_remove: &[TagId]) -> Type {
 
             wrap_variants(remaining)
         }
-        Type::Struct(StructKind::Tag(t)) => {
+        Type::Tag(t) => {
             if to_remove.contains(&t.id) {
                 Type::Void
             } else {
@@ -140,7 +137,7 @@ pub fn intersect_types(base: &Type, allowed: &[TagId]) -> Type {
             constraint: constraint.clone(),
             narrowed_to: Box::new(intersect_types(narrowed_to, allowed)),
         },
-        Type::Struct(StructKind::Union { variants }) => {
+        Type::Union(variants) => {
             let kept: Vec<TagType> = variants
                 .iter()
                 .filter(|v| allowed.contains(&v.id))
@@ -149,7 +146,7 @@ pub fn intersect_types(base: &Type, allowed: &[TagId]) -> Type {
 
             wrap_variants(kept)
         }
-        Type::Struct(StructKind::Tag(t)) => {
+        Type::Tag(t) => {
             if allowed.contains(&t.id) {
                 base.clone()
             } else {
@@ -167,10 +164,10 @@ fn wrap_variants(mut variants: Vec<TagType>) -> Type {
     }
 
     if variants.len() == 1 {
-        return Type::Struct(StructKind::Tag(variants.pop().unwrap()));
+        return Type::Tag(variants.pop().unwrap());
     }
 
     variants.sort_by(|a, b| a.id.0.cmp(&b.id.0));
 
-    Type::Struct(StructKind::Union { variants })
+    Type::Union(variants)
 }

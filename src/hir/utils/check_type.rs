@@ -2,7 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{
-        DeclarationId, IdentifierNode, decl::Param, type_annotation::{TagAnnotation, TypeAnnotation, TypeAnnotationKind}
+        decl::Param,
+        type_annotation::{TagAnnotation, TypeAnnotation, TypeAnnotationKind},
+        DeclarationId, IdentifierNode,
     },
     compile::interner::TagId,
     globals::TAG_INTERNER,
@@ -19,9 +21,8 @@ use crate::{
 pub struct TypeCheckerContext<'a> {
     pub scope: Scope,
     pub declarations: &'a HashMap<DeclarationId, CheckedDeclaration>,
-    pub errors: &'a mut Vec<SemanticError>
+    pub errors: &'a mut Vec<SemanticError>,
 }
-
 
 pub fn check_params(ctx: &mut TypeCheckerContext, params: &[Param]) -> Vec<CheckedParam> {
     params
@@ -39,25 +40,32 @@ pub fn check_type_identifier_annotation(
 ) -> Type {
     ctx.scope
         .lookup(id.name)
-        .map(|entry| match ctx.declarations.get(&entry).unwrap_or_else(||panic!("INTERNAL COMPILER ERROR: Expected declarations to contain DeclarationId({}) key", entry.0)) {
-            CheckedDeclaration::TypeAlias(decl) => (*decl.value).clone(),
-            CheckedDeclaration::Function(_) => {
+        .map(|entry| {
+            match ctx.declarations.get(&entry).unwrap_or_else(|| {
+                panic!(
+                    "INTERNAL COMPILER ERROR: Expected declarations to contain \
+                     DeclarationId({}) key",
+                    entry.0
+                )
+            }) {
+                CheckedDeclaration::TypeAlias(decl) => (*decl.value).clone(),
+                CheckedDeclaration::Function(_) => {
+                    ctx.errors.push(SemanticError {
+                        kind: SemanticErrorKind::CannotUseFunctionDeclarationAsType,
+                        span: id.span.clone(),
+                    });
 
-         ctx.errors.push(SemanticError {
-                kind: SemanticErrorKind::CannotUseFunctionDeclarationAsType,
-                span: id.span.clone(),
-            });
+                    Type::Unknown
+                }
+                CheckedDeclaration::Var(_)
+                | CheckedDeclaration::UninitializedVar { .. } => {
+                    ctx.errors.push(SemanticError {
+                        kind: SemanticErrorKind::CannotUseVariableDeclarationAsType,
+                        span: id.span.clone(),
+                    });
 
-                Type::Unknown
-        },
-            CheckedDeclaration::Var(_) | CheckedDeclaration::UninitializedVar { .. } => {
-                 ctx.errors.push(SemanticError {
-                    kind: SemanticErrorKind::CannotUseVariableDeclarationAsType,
-                    span: id.span.clone(),
-                });
-                
-
-                Type::Unknown
+                    Type::Unknown
+                }
             }
         })
         .unwrap_or_else(|| {
@@ -71,7 +79,7 @@ pub fn check_type_identifier_annotation(
 }
 
 pub fn check_tag_annotation(
-   ctx: &mut TypeCheckerContext,
+    ctx: &mut TypeCheckerContext,
     TagAnnotation {
         identifier,
         value_type,
@@ -88,7 +96,10 @@ pub fn check_tag_annotation(
     }
 }
 
-pub fn check_type_annotation(ctx: &mut TypeCheckerContext, annotation: &TypeAnnotation) -> Type {
+pub fn check_type_annotation(
+    ctx: &mut TypeCheckerContext,
+    annotation: &TypeAnnotation,
+) -> Type {
     let kind = match &annotation.kind {
         TypeAnnotationKind::Void => Type::Void,
         TypeAnnotationKind::Bool => Type::Bool,
@@ -102,7 +113,9 @@ pub fn check_type_annotation(ctx: &mut TypeCheckerContext, annotation: &TypeAnno
         TypeAnnotationKind::I64 => Type::I64,
         TypeAnnotationKind::F32 => Type::F32,
         TypeAnnotationKind::F64 => Type::F64,
-        TypeAnnotationKind::Identifier(id) => check_type_identifier_annotation(ctx, id.clone()),
+        TypeAnnotationKind::Identifier(id) => {
+            check_type_identifier_annotation(ctx, id.clone())
+        }
         TypeAnnotationKind::FnType {
             params,
             return_type,
@@ -115,9 +128,7 @@ pub fn check_type_annotation(ctx: &mut TypeCheckerContext, annotation: &TypeAnno
                 return_type: Box::new(checked_return_type),
             })
         }
-        TypeAnnotationKind::Tag(t) => {
-            Type::Struct(StructKind::Tag(check_tag_annotation(ctx, t)))
-        }
+        TypeAnnotationKind::Tag(t) => Type::Tag(check_tag_annotation(ctx, t)),
         TypeAnnotationKind::Union(tag_annotations) => {
             let mut checked_variants: Vec<TagType> =
                 Vec::with_capacity(tag_annotations.len());
@@ -131,16 +142,16 @@ pub fn check_type_annotation(ctx: &mut TypeCheckerContext, annotation: &TypeAnno
                 } else {
                     ctx.errors.push(SemanticError {
                         span: t.span.clone(),
-                        kind: SemanticErrorKind::DuplicateUnionVariant(t.identifier.clone()),
+                        kind: SemanticErrorKind::DuplicateUnionVariant(
+                            t.identifier.clone(),
+                        ),
                     })
                 }
             }
 
             checked_variants.sort_by(|a, b| a.id.0.cmp(&b.id.0));
 
-            Type::Struct(StructKind::Union {
-                variants: checked_variants,
-            })
+            Type::Union(checked_variants)
         }
         // Passed by pointer
         TypeAnnotationKind::String => {

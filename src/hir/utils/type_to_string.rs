@@ -77,6 +77,19 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
         Type::Buffer { size, alignment } => {
             format!("Buffer(size={}, align={})", size, alignment)
         }
+        Type::Tag(tag_type) => tag_type_to_string(tag_type, visited_set),
+        Type::Union(variants) => {
+            if variants.is_empty() {
+                return String::from("<empty union>");
+            }
+            let variants_str = variants
+                .iter()
+                .map(|tag| tag_type_to_string(tag, visited_set))
+                .collect::<Vec<String>>()
+                .join(" | ");
+
+            variants_str
+        }
     };
 
     visited_set.remove(ty);
@@ -118,19 +131,6 @@ fn struct_to_string(s: &StructKind, visited_set: &mut HashSet<Type>) -> String {
                 .collect::<Vec<String>>()
                 .join(", ");
             format!("{{ {} }}", fields_str)
-        }
-        StructKind::Tag(tag_type) => tag_type_to_string(tag_type, visited_set),
-        StructKind::Union { variants } => {
-            if variants.is_empty() {
-                return String::from("<empty union>");
-            }
-            let variants_str = variants
-                .iter()
-                .map(|tag| tag_type_to_string(tag, visited_set))
-                .collect::<Vec<String>>()
-                .join(" | ");
-
-            variants_str
         }
         StructKind::List(item_type) => {
             let elem_type_str = type_to_string_recursive(item_type, visited_set);

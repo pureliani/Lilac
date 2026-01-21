@@ -1,8 +1,9 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::LazyLock;
+
 use crate::ast::DeclarationId;
 use crate::compile::interner::{SharedStringInterner, SharedTagInterner, StringId};
 use crate::hir::builders::{BasicBlockId, ConstantId, ValueId};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::LazyLock;
 
 pub struct CommonIdentifiers {
     pub ptr: StringId,

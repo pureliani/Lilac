@@ -40,6 +40,7 @@ impl<'a> Builder<'a, InModule> {
             declarations: &self.program.declarations,
             errors: self.errors,
         };
+
         let checked_params = check_params(&mut type_ctx, &params);
         let checked_return_type = check_type_annotation(&mut type_ctx, &return_type);
 
@@ -71,6 +72,8 @@ impl<'a> Builder<'a, InModule> {
             current_scope: self
                 .current_scope
                 .enter(ScopeKind::FunctionBody, body.span.start),
+            definitions: self.definitions,
+            incomplete_phis: self.incomplete_phis,
         };
 
         let entry_bb = BasicBlock {
@@ -78,23 +81,24 @@ impl<'a> Builder<'a, InModule> {
             instructions: vec![],
             terminator: None,
             predecessors: HashSet::new(),
-            params: vec![],
-            incomplete_params: vec![],
-            original_to_local_valueid: HashMap::new(),
+            phis: vec![],
             sealed: true,
         };
         fn_builder.get_fn().blocks.insert(entry_block_id, entry_bb);
 
         for param in &checked_params {
-            let arg_ssa_val = fn_builder.append_param(param.ty.clone());
+            let identity_id = fn_builder.new_value_id(param.ty.clone());
 
-            let stack_ptr = fn_builder.emit_stack_alloc(param.ty.clone(), 1);
-            fn_builder.store(stack_ptr, arg_ssa_val, param.identifier.span.clone());
+            fn_builder
+                .definitions
+                .entry(entry_block_id)
+                .or_default()
+                .insert(identity_id, identity_id);
 
             let param_var_id = next_declaration_id();
             let decl = CheckedVarDecl {
                 id: param_var_id,
-                ptr: stack_ptr,
+                ptr: identity_id,
                 identifier: param.identifier.clone(),
                 documentation: None,
                 constraint: param.ty.clone(),
@@ -104,6 +108,7 @@ impl<'a> Builder<'a, InModule> {
                 .program
                 .declarations
                 .insert(param_var_id, CheckedDeclaration::Var(decl));
+
             fn_builder
                 .current_scope
                 .map_name_to_decl(param.identifier.name, param_var_id);

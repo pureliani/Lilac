@@ -89,7 +89,10 @@ impl Scope {
         if let Entry::Vacant(e) = data.symbols.entry(name) {
             e.insert(id);
         } else {
-            panic!("INTERNAL COMPILER ERROR: tried to re-map identifier to declaration, this should have been avoided at declaration site");
+            panic!(
+                "INTERNAL COMPILER ERROR: tried to re-map identifier to declaration, \
+                 this should have been avoided at declaration site"
+            );
         }
     }
 

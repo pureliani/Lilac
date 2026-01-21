@@ -1,8 +1,8 @@
 use crate::{
-    ast::{expr::Expr, IdentifierNode, Span},
+    ast::{expr::Expr, IdentifierNode},
     globals::{COMMON_IDENTIFIERS, STRING_INTERNER, TAG_INTERNER},
     hir::{
-        builders::{Builder, InBlock, ValueId},
+        builders::{Builder, InBlock, Phi, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::TagType,
@@ -10,10 +10,8 @@ use crate::{
         },
         utils::check_is_assignable::check_is_assignable,
     },
-    tokenize::NumberKind,
     unwrap_or_poison,
 };
-use std::collections::HashMap;
 
 impl<'a> Builder<'a, InBlock> {
     pub fn build_index_expr(
@@ -61,20 +59,23 @@ impl<'a> Builder<'a, InBlock> {
         let none_tag_id = TAG_INTERNER.intern(&STRING_INTERNER.intern("none"));
         let some_tag_id = TAG_INTERNER.intern(&STRING_INTERNER.intern("some"));
 
-        let none_variant = TagType {
+        let none_tag_type = Type::Tag(TagType {
             id: none_tag_id,
             value_type: None,
             span: left_span.clone(),
-        };
-        let some_variant = TagType {
+        });
+        let some_tag_type = Type::Tag(TagType {
             id: some_tag_id,
             value_type: Some(Box::new(element_type.clone())),
             span: left_span.clone(),
-        };
+        });
 
-        let mut variants = vec![none_variant.clone(), some_variant.clone()];
+        let mut variants = match (&none_tag_type, &some_tag_type) {
+            (Type::Tag(t1), Type::Tag(t2)) => vec![t1.clone(), t2.clone()],
+            _ => unreachable!(),
+        };
         variants.sort_by(|a, b| a.id.0.cmp(&b.id.0));
-        let result_union_type = Type::Struct(StructKind::Union { variants });
+        let result_union_type = Type::Union(variants);
 
         let len_field = IdentifierNode {
             name: COMMON_IDENTIFIERS.len,
@@ -92,85 +93,47 @@ impl<'a> Builder<'a, InBlock> {
         let fail_bb = self.as_fn().new_bb();
         let merge_bb = self.as_fn().new_bb();
 
-        let result_param =
-            self.append_param_to_block(merge_bb, result_union_type.clone());
-
-        self.cond_jmp(
-            is_in_bounds,
-            success_bb,
-            HashMap::new(),
-            fail_bb,
-            HashMap::new(),
-        );
+        self.cond_jmp(is_in_bounds, success_bb, fail_bb);
 
         self.seal_block(success_bb);
         self.use_basic_block(success_bb);
 
-        let ptr_field = IdentifierNode {
-            name: COMMON_IDENTIFIERS.ptr,
-            span: left_span.clone(),
-        };
-        let internal_ptr_ptr =
-            unwrap_or_poison!(self, self.get_field_ptr(list_val, &ptr_field));
-        let buffer_ptr =
-            unwrap_or_poison!(self, self.load(internal_ptr_ptr, left_span.clone()));
-
+        let buffer_ptr = self.get_list_buffer_ptr(list_val, left_span.clone());
         let elem_ptr = unwrap_or_poison!(
             self,
             self.ptr_offset(buffer_ptr, index_val, index_span.clone())
         );
         let elem_val = unwrap_or_poison!(self, self.load(elem_ptr, index_span.clone()));
 
-        let some_val = self.build_tag_from_parts(
-            some_variant,
-            Some(elem_val),
-            &result_union_type,
-            &left_span,
-        );
-        self.jmp(merge_bb, HashMap::from([(result_param, some_val)]));
+        let some_val =
+            self.emit_assemble_tag(some_tag_type, Some(elem_val), left_span.clone());
+        let success_final_bb = self.context.block_id;
+        self.jmp(merge_bb);
 
         self.seal_block(fail_bb);
         self.use_basic_block(fail_bb);
 
-        let none_val =
-            self.build_tag_from_parts(none_variant, None, &result_union_type, &left_span);
-        self.jmp(merge_bb, HashMap::from([(result_param, none_val)]));
+        let none_val = self.emit_assemble_tag(none_tag_type, None, left_span.clone());
+        let fail_final_bb = self.context.block_id;
+        self.jmp(merge_bb);
 
         self.seal_block(merge_bb);
         self.use_basic_block(merge_bb);
 
-        result_param
-    }
+        let result_id = self.new_value_id(result_union_type);
+        let phi_operands = vec![
+            Phi {
+                from: success_final_bb,
+                value: some_val,
+            },
+            Phi {
+                from: fail_final_bb,
+                value: none_val,
+            },
+        ];
 
-    fn build_tag_from_parts(
-        &mut self,
-        tag_ty: TagType,
-        val: Option<ValueId>,
-        union_ty: &Type,
-        span: &Span,
-    ) -> ValueId {
-        let struct_ty = Type::Struct(StructKind::Tag(tag_ty.clone()));
-        let ptr = self.emit_stack_alloc(struct_ty, 1);
+        self.bb_mut().phis.push((result_id, phi_operands));
 
-        let id_field = IdentifierNode {
-            name: COMMON_IDENTIFIERS.id,
-            span: span.clone(),
-        };
-        let id_ptr = unwrap_or_poison!(self, self.get_field_ptr(ptr, &id_field));
-        let id_const = self.emit_const_number(NumberKind::U16(tag_ty.id.0));
-        self.store(id_ptr, id_const, span.clone());
-
-        if let Some(v) = val {
-            let val_field = IdentifierNode {
-                name: COMMON_IDENTIFIERS.value,
-                span: span.clone(),
-            };
-            let val_ptr = unwrap_or_poison!(self, self.get_field_ptr(ptr, &val_field));
-            self.store(val_ptr, v, span.clone());
-        }
-
-        let loaded = unwrap_or_poison!(self, self.load(ptr, span.clone()));
-
-        self.emit_refine_type(loaded, union_ty.clone())
+        result_id
     }
 }

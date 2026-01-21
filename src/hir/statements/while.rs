@@ -7,7 +7,6 @@ use crate::{
         utils::{check_is_assignable::check_is_assignable, scope::ScopeKind},
     },
 };
-use std::collections::HashMap;
 
 impl<'a> Builder<'a, InBlock> {
     pub fn build_while_stmt(&mut self, condition: Box<Expr>, body: BlockContents) {
@@ -15,7 +14,7 @@ impl<'a> Builder<'a, InBlock> {
         let body_block_id = self.as_fn().new_bb();
         let exit_block_id = self.as_fn().new_bb();
 
-        self.jmp(header_block_id, HashMap::new());
+        self.jmp(header_block_id);
         self.use_basic_block(header_block_id);
 
         let condition_span = condition.span.clone();
@@ -32,24 +31,19 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
-        let predicate = self.get_fn().predicates.get(&cond_id).cloned();
-        if let Some(pred) = predicate {
-            self.get_bb_mut(body_block_id)
-                .original_to_local_valueid
+        if let Some(pred) = self.get_fn().predicates.get(&cond_id).cloned() {
+            self.definitions
+                .entry(body_block_id)
+                .or_default()
                 .insert(pred.source, pred.true_id);
 
-            self.get_bb_mut(exit_block_id)
-                .original_to_local_valueid
+            self.definitions
+                .entry(exit_block_id)
+                .or_default()
                 .insert(pred.source, pred.false_id);
         }
 
-        self.cond_jmp(
-            cond_id,
-            body_block_id,
-            HashMap::new(),
-            exit_block_id,
-            HashMap::new(),
-        );
+        self.cond_jmp(cond_id, body_block_id, exit_block_id);
 
         self.seal_block(body_block_id);
         self.use_basic_block(body_block_id);
@@ -73,7 +67,7 @@ impl<'a> Builder<'a, InBlock> {
             .expect("INTERNAL COMPILER ERROR: Scope mismatch");
 
         if self.bb().terminator.is_none() {
-            self.jmp(header_block_id, HashMap::new());
+            self.jmp(header_block_id);
         }
 
         self.seal_block(header_block_id);

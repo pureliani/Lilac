@@ -7,6 +7,8 @@ impl<'a> Builder<'a, InModule> {
             errors: self.errors,
             current_scope: self.current_scope.clone(),
             context: InGlobal,
+            definitions: self.definitions,
+            incomplete_phis: self.incomplete_phis,
         }
     }
 

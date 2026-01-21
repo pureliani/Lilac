@@ -4,13 +4,13 @@ use crate::{
     hir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
-            InModule, Module, Place, Projection, ValueId,
+            InModule, Phi, Place, Projection, ValueId,
         },
-        errors::SemanticError,
-        instructions::Terminator,
+        errors::{SemanticError, SemanticErrorKind},
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::try_unify_types::narrow_type_at_path,
     },
+    unwrap_or_poison,
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -20,6 +20,8 @@ impl<'a> Builder<'a, InBlock> {
             program: self.program,
             errors: self.errors,
             current_scope: self.current_scope.clone(),
+            definitions: self.definitions,
+            incomplete_phis: self.incomplete_phis,
         }
     }
 
@@ -31,6 +33,8 @@ impl<'a> Builder<'a, InBlock> {
             program: self.program,
             errors: self.errors,
             current_scope: self.current_scope.clone(),
+            definitions: self.definitions,
+            incomplete_phis: self.incomplete_phis,
         }
     }
 
@@ -43,6 +47,8 @@ impl<'a> Builder<'a, InBlock> {
             program: self.program,
             errors: self.errors,
             current_scope: self.current_scope.clone(),
+            definitions: self.definitions,
+            incomplete_phis: self.incomplete_phis,
         }
     }
 
@@ -59,18 +65,13 @@ impl<'a> Builder<'a, InBlock> {
             .get_mut(&func_id)
             .expect("INTERNAL COMPILER ERROR: Function not found");
 
-        let func = match decl {
-            CheckedDeclaration::Function(f) => f,
+        match decl {
+            CheckedDeclaration::Function(f) => f
+                .blocks
+                .get_mut(&block_id)
+                .expect("INTERNAL COMPILER ERROR: Block not found"),
             _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
-        };
-
-        func.blocks
-            .get_mut(&block_id)
-            .expect("INTERNAL COMPILER ERROR: Block not found in function")
-    }
-
-    pub fn bb(&self) -> &BasicBlock {
-        self.get_bb(self.context.block_id)
+        }
     }
 
     pub fn get_bb(&self, block_id: BasicBlockId) -> &BasicBlock {
@@ -82,14 +83,17 @@ impl<'a> Builder<'a, InBlock> {
             .get(&func_id)
             .expect("INTERNAL COMPILER ERROR: Function not found");
 
-        let func = match decl {
-            CheckedDeclaration::Function(f) => f,
+        match decl {
+            CheckedDeclaration::Function(f) => f
+                .blocks
+                .get(&block_id)
+                .expect("INTERNAL COMPILER ERROR: Block not found"),
             _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
-        };
+        }
+    }
 
-        func.blocks
-            .get(&block_id)
-            .expect("INTERNAL COMPILER ERROR: Block not found in function")
+    pub fn bb(&self) -> &BasicBlock {
+        self.get_bb(self.context.block_id)
     }
 
     pub fn get_fn(&mut self) -> &mut Function {
@@ -101,136 +105,153 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn get_module(&mut self) -> &mut Module {
-        self.program
-            .modules
-            .get_mut(&self.context.path)
-            .expect("INTERNAL COMPILER ERROR: Module not found")
-    }
-
     pub fn get_value_type(&self, id: &ValueId) -> &Type {
-        self.program.value_types.get(id)
-        .unwrap_or_else(|| panic!("INTERNAL COMPILER ERROR: Expected ValueId({}) to have an associated type", id.0))
+        self.program.value_types.get(id).unwrap_or_else(|| {
+            panic!("INTERNAL COMPILER ERROR: ValueId({}) has no type", id.0)
+        })
     }
 
     pub fn new_value_id(&mut self, ty: Type) -> ValueId {
         let value_id = next_value_id();
         let this_block_id = self.context.block_id;
+
         self.get_fn()
             .value_definitions
             .insert(value_id, this_block_id);
+
         self.program.value_types.insert(value_id, ty);
 
         value_id
     }
 
+    pub fn get_list_buffer_ptr(&mut self, list_ptr: ValueId, span: Span) -> ValueId {
+        let ptr_field_node = IdentifierNode {
+            name: COMMON_IDENTIFIERS.ptr,
+            span: span.clone(),
+        };
+        let internal_ptr_ptr =
+            unwrap_or_poison!(self, self.get_field_ptr(list_ptr, &ptr_field_node));
+        unwrap_or_poison!(self, self.load(internal_ptr_ptr, span))
+    }
+
     pub fn read_place(&mut self, place: Place, span: Span) -> ValueId {
-        let mut current = self.use_value(place.root);
+        let mut current = self.use_var(place.root);
 
         for proj in place.projections {
+            let current_ty = self.get_value_type(&current).clone();
+
             match proj {
-                Projection::Deref => {
-                    current = match self.load(current, span.clone()) {
-                        Ok(val) => val,
-                        Err(e) => return self.report_error_and_get_poison(e),
-                    };
-                }
                 Projection::Field(field_node) => {
-                    current = match self.get_field_ptr(current, &field_node) {
-                        Ok(val) => val,
-                        Err(e) => return self.report_error_and_get_poison(e),
-                    };
+                    if field_node.name == COMMON_IDENTIFIERS.value {
+                        if let Type::Pointer { narrowed_to, .. } = current_ty {
+                            if matches!(*narrowed_to, Type::Tag(_) | Type::Union(_)) {
+                                current = unwrap_or_poison!(
+                                    self,
+                                    self.load(current, span.clone())
+                                );
+                            }
+                        }
+
+                        current =
+                            self.emit_get_tag_payload(current).unwrap_or_else(|| {
+                                self.report_error_and_get_poison(SemanticError {
+                                    kind: SemanticErrorKind::AccessToUndefinedField(
+                                        field_node,
+                                    ),
+                                    span: span.clone(),
+                                })
+                            });
+                    } else {
+                        current = unwrap_or_poison!(
+                            self,
+                            self.get_field_ptr(current, &field_node)
+                        );
+                    }
                 }
-                Projection::Index(idx_val, span) => {
-                    let ptr_field_node = IdentifierNode {
-                        name: COMMON_IDENTIFIERS.ptr,
-                        span: span.clone(),
-                    };
-
-                    let internal_ptr_ptr =
-                        match self.get_field_ptr(current, &ptr_field_node) {
-                            Ok(p) => p,
-                            Err(e) => return self.report_error_and_get_poison(e),
-                        };
-
-                    let buffer_ptr = match self.load(internal_ptr_ptr, span.clone()) {
-                        Ok(p) => p,
-                        Err(e) => return self.report_error_and_get_poison(e),
-                    };
-
-                    current = match self.ptr_offset(buffer_ptr, idx_val, span) {
-                        Ok(p) => p,
-                        Err(e) => return self.report_error_and_get_poison(e),
-                    };
+                Projection::Index(idx_val, s) => {
+                    let buffer_ptr = self.get_list_buffer_ptr(current, s.clone());
+                    current =
+                        unwrap_or_poison!(self, self.ptr_offset(buffer_ptr, idx_val, s));
+                }
+                Projection::Deref => {
+                    current = unwrap_or_poison!(self, self.load(current, span.clone()));
                 }
             }
         }
 
-        match self.load(current, span) {
-            Ok(val) => val,
-            Err(e) => self.report_error_and_get_poison(e),
+        if matches!(self.get_value_type(&current), Type::Pointer { .. }) {
+            unwrap_or_poison!(self, self.load(current, span))
+        } else {
+            current
         }
     }
 
     pub fn write_place(&mut self, place: Place, value: ValueId, span: Span) {
-        let mut current = self.use_value(place.root);
+        if place.projections.is_empty() {
+            self.definitions
+                .entry(self.context.block_id)
+                .or_default()
+                .insert(place.root, value);
+            return;
+        }
 
-        for proj in &place.projections {
-            match proj {
+        let mut current = self.use_var(place.root);
+        let last_idx = place.projections.len() - 1;
+
+        for i in 0..last_idx {
+            let current_ty = self.get_value_type(&current).clone();
+            match &place.projections[i] {
                 Projection::Deref => {
-                    current = match self.load(current, span.clone()) {
-                        Ok(val) => val,
-                        Err(e) => {
-                            self.errors.push(e);
-                            return;
-                        }
-                    };
+                    current = unwrap_or_poison!(self, self.load(current, span.clone()));
                 }
-                Projection::Field(field_node) => {
-                    current = match self.get_field_ptr(current, field_node) {
-                        Ok(val) => val,
-                        Err(e) => {
-                            self.errors.push(e);
-                            return;
+                Projection::Field(f) => {
+                    if f.name == COMMON_IDENTIFIERS.value {
+                        if let Type::Pointer { .. } = current_ty {
+                            current =
+                                unwrap_or_poison!(self, self.load(current, span.clone()));
                         }
-                    };
+                        current =
+                            self.emit_get_tag_payload(current).unwrap_or_else(|| {
+                                self.report_error_and_get_poison(SemanticError {
+                                    kind: SemanticErrorKind::AccessToUndefinedField(
+                                        f.clone(),
+                                    ),
+                                    span: span.clone(),
+                                })
+                            });
+                    } else {
+                        current = unwrap_or_poison!(self, self.get_field_ptr(current, f));
+                        current =
+                            unwrap_or_poison!(self, self.load(current, span.clone()));
+                    }
                 }
-                Projection::Index(idx_val, span) => {
-                    let ptr_field_node = IdentifierNode {
-                        name: COMMON_IDENTIFIERS.ptr,
-                        span: span.clone(),
-                    };
-                    let internal_ptr_ptr =
-                        match self.get_field_ptr(current, &ptr_field_node) {
-                            Ok(p) => p,
-                            Err(e) => {
-                                self.errors.push(e);
-                                return;
-                            }
-                        };
-
-                    let buffer_ptr = match self.load(internal_ptr_ptr, span.clone()) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            self.errors.push(e);
-                            return;
-                        }
-                    };
-
-                    current = match self.ptr_offset(buffer_ptr, *idx_val, span.clone()) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            self.errors.push(e);
-                            return;
-                        }
-                    };
+                Projection::Index(idx, s) => {
+                    let buffer = self.get_list_buffer_ptr(current, s.clone());
+                    let elem_ptr =
+                        unwrap_or_poison!(self, self.ptr_offset(buffer, *idx, s.clone()));
+                    current = unwrap_or_poison!(self, self.load(elem_ptr, span.clone()));
                 }
             }
         }
 
-        self.store(current, value, span.clone());
+        let final_proj = &place.projections[last_idx];
 
-        // for now we skip narrowing if Index is involved as it's hard to track
+        let final_ptr = match final_proj {
+            Projection::Deref => current,
+            Projection::Field(f) => {
+                if f.name == COMMON_IDENTIFIERS.value {
+                    panic!("Semantic Error: Direct assignment to '.value' is not supported. Assign a new Tag to the parent field instead.");
+                }
+                unwrap_or_poison!(self, self.get_field_ptr(current, f))
+            }
+            Projection::Index(idx, s) => {
+                let buffer = self.get_list_buffer_ptr(current, s.clone());
+                unwrap_or_poison!(self, self.ptr_offset(buffer, *idx, s.clone()))
+            }
+        };
+
+        self.store(final_ptr, value, span.clone());
+
         let is_narrowable = !place
             .projections
             .iter()
@@ -243,63 +264,75 @@ impl<'a> Builder<'a, InBlock> {
             let narrowed_root_ty =
                 narrow_type_at_path(root_ty, &place.projections, source_ty);
 
-            let current_root = self.use_value(place.root);
-            let narrowed_root_ptr = self.emit_refine_type(current_root, narrowed_root_ty);
-            self.bb_mut()
-                .original_to_local_valueid
-                .insert(place.root, narrowed_root_ptr);
+            let current_root = self.use_var(place.root);
+            let refined_val = self.emit_refine_type(current_root, narrowed_root_ty);
+
+            self.definitions
+                .entry(self.context.block_id)
+                .or_default()
+                .insert(place.root, refined_val);
         }
     }
 
-    pub fn get_mapped_value(&self, original: ValueId) -> Option<ValueId> {
-        self.bb().original_to_local_valueid.get(&original).copied()
-    }
-
-    pub fn map_value(&mut self, original: ValueId, local: ValueId) {
-        self.bb_mut()
-            .original_to_local_valueid
-            .insert(original, local);
-    }
-
-    pub fn use_value(&mut self, original_value_id: ValueId) -> ValueId {
-        if let Some(local_id) = self.get_mapped_value(original_value_id) {
-            return local_id;
-        }
-
-        let this_block_id = self.context.block_id;
-        let f = self.get_fn();
-        if let Some(def_block) = f.value_definitions.get(&original_value_id) {
-            if *def_block == this_block_id {
-                return original_value_id;
+    pub fn use_var(&mut self, identity_id: ValueId) -> ValueId {
+        if let Some(defs) = self.definitions.get(&self.context.block_id) {
+            if let Some(val) = defs.get(&identity_id) {
+                return *val;
             }
         }
-
-        if !self.bb().sealed {
-            let placeholder_type = self.get_value_type(&original_value_id);
-            let placeholder_param_id = self.append_param(placeholder_type.clone());
-
-            self.map_value(original_value_id, placeholder_param_id);
-
-            self.bb_mut()
-                .incomplete_params
-                .push((placeholder_param_id, original_value_id));
-
-            return placeholder_param_id;
-        }
-
-        let ty = self.get_value_type(&original_value_id);
-        let param_id = self.append_param(ty.clone());
-
-        self.map_value(original_value_id, param_id);
-        self.fill_predecessors(original_value_id, param_id);
-
-        param_id
+        self.read_var_recursive(self.context.block_id, identity_id)
     }
 
-    pub fn append_param(&mut self, ty: Type) -> ValueId {
-        let id = self.new_value_id(ty);
-        self.bb_mut().params.push(id);
-        id
+    fn read_var_recursive(
+        &mut self,
+        block_id: BasicBlockId,
+        identity_id: ValueId,
+    ) -> ValueId {
+        let val: ValueId;
+        if !self.get_bb(block_id).sealed {
+            val = self.new_value_id(self.get_value_type(&identity_id).clone());
+            self.incomplete_phis
+                .entry(block_id)
+                .or_default()
+                .push((val, identity_id));
+        } else {
+            let preds: Vec<BasicBlockId> =
+                self.get_bb(block_id).predecessors.iter().cloned().collect();
+            if preds.len() == 1 {
+                val = self.read_var_recursive(preds[0], identity_id);
+            } else {
+                val = self.new_value_id(self.get_value_type(&identity_id).clone());
+                self.definitions
+                    .entry(block_id)
+                    .or_default()
+                    .insert(identity_id, val);
+                self.add_phi_operands(block_id, identity_id, val);
+            }
+        }
+        self.definitions
+            .entry(block_id)
+            .or_default()
+            .insert(identity_id, val);
+        val
+    }
+
+    fn add_phi_operands(
+        &mut self,
+        block_id: BasicBlockId,
+        identity_id: ValueId,
+        phi_val: ValueId,
+    ) {
+        let preds: Vec<BasicBlockId> =
+            self.get_bb(block_id).predecessors.iter().cloned().collect();
+        let mut operands = Vec::new();
+        for pred in preds {
+            let val = self.read_var_recursive(pred, identity_id);
+            operands.push(Phi {
+                from: pred,
+                value: val,
+            });
+        }
+        self.get_bb_mut(block_id).phis.push((phi_val, operands));
     }
 
     pub fn use_basic_block(&mut self, block_id: BasicBlockId) {
@@ -310,12 +343,13 @@ impl<'a> Builder<'a, InBlock> {
         if self.bb().sealed {
             return;
         }
-        self.bb_mut().sealed = true;
 
-        let params = std::mem::take(&mut self.bb_mut().incomplete_params);
-        for (param_id, original_value_id) in params {
-            self.fill_predecessors(original_value_id, param_id);
+        let block_id = self.context.block_id;
+        let incomplete = self.incomplete_phis.remove(&block_id).unwrap_or_default();
+        for (phi_val, identity_id) in incomplete {
+            self.add_phi_operands(block_id, identity_id, phi_val);
         }
+        self.bb_mut().sealed = true;
     }
 
     pub fn seal_block(&mut self, block_id: BasicBlockId) {
@@ -325,130 +359,6 @@ impl<'a> Builder<'a, InBlock> {
         self.context.block_id = old_block;
     }
 
-    fn fill_predecessors(&mut self, original_value_id: ValueId, param_id: ValueId) {
-        let predecessors: Vec<BasicBlockId> =
-            self.bb().predecessors.iter().cloned().collect();
-        let this_block_id = self.context.block_id;
-
-        for pred_id in predecessors {
-            let old_block_id = self.context.block_id;
-            self.context.block_id = pred_id;
-
-            let val_in_pred = self.use_value(original_value_id);
-
-            self.context.block_id = old_block_id;
-
-            self.append_arg_to_terminator(
-                &pred_id,
-                &this_block_id,
-                param_id,
-                val_in_pred,
-            );
-        }
-    }
-
-    pub fn append_param_to_block(&mut self, block_id: BasicBlockId, ty: Type) -> ValueId {
-        let old_block = self.context.block_id;
-        self.context.block_id = block_id;
-
-        let id = self.append_param(ty);
-
-        self.context.block_id = old_block;
-        id
-    }
-
-    pub fn append_arg_to_terminator(
-        &mut self,
-        from_block: &BasicBlockId,
-        to_block: &BasicBlockId,
-        param_id: ValueId,
-        arg: ValueId,
-    ) {
-        let from_bb = self.get_bb_mut(*from_block);
-        let terminator = from_bb
-            .terminator
-            .as_mut()
-            .expect("INTERNAL COMPILER ERROR: Terminator not found");
-
-        match terminator {
-            Terminator::Jump { target, args } => {
-                if target == to_block {
-                    args.insert(param_id, arg);
-                } else {
-                    panic!("INTERNAL COMPILER ERROR: Invalid 'to_block' argument")
-                }
-            }
-            Terminator::CondJump {
-                true_target,
-                true_args,
-                false_target,
-                false_args,
-                ..
-            } => {
-                let mut matched = false;
-                if true_target == to_block {
-                    true_args.insert(param_id, arg);
-                    matched = true;
-                }
-                if false_target == to_block {
-                    false_args.insert(param_id, arg);
-                    matched = true;
-                }
-                if !matched {
-                    panic!(
-                        "INTERNAL COMPILER ERROR: Invalid 'to_block' argument, didn't \
-                         match neither 'true_target' nor 'false_target'"
-                    )
-                }
-            }
-            _ => {
-                panic!(
-                        "INTERNAL COMPILER ERROR: Invalid terminator kind for BasicBlockId({}), expected Terminator::Jump or Terminator::CondJump.", from_block.0
-                    )
-            }
-        }
-    }
-
-    fn get_terminator_arg_for_param(
-        &self,
-        from_block: BasicBlockId,
-        to_block: BasicBlockId,
-        param_id: ValueId,
-    ) -> ValueId {
-        let terminator = self
-            .get_bb(from_block)
-            .terminator
-            .as_ref()
-            .expect("Block must have terminator");
-
-        match terminator {
-            Terminator::Jump { target, args } => {
-                assert_eq!(target, &to_block);
-                *args
-                    .get(&param_id)
-                    .expect("INTERNAL COMPILER ERROR: Missing argument for parameter")
-            }
-            Terminator::CondJump {
-                true_target,
-                true_args,
-                false_target,
-                false_args,
-                ..
-            } => {
-                if true_target == &to_block {
-                    *true_args.get(&param_id).expect("INTERNAL COMPILER ERROR: Missing argument for parameter in true branch")
-                } else if false_target == &to_block {
-                    *false_args.get(&param_id).expect("INTERNAL COMPILER ERROR: Missing argument for parameter in false branch")
-                } else {
-                    panic!("INTERNAL COMPILER ERROR: Inconsistent CFG, target block not found in CondJump")
-                }
-            }
-            _ => panic!("INTERNAL COMPILER ERROR: Terminator type does not support block arguments"),
-        }
-    }
-
-    /// Records a semantic error and returns a new "poison" Value of type Unknown
-    /// The caller is responsible for immediately returning the poison Value
     pub fn report_error_and_get_poison(&mut self, error: SemanticError) -> ValueId {
         self.as_program().errors.push(error);
         self.new_value_id(Type::Unknown)

@@ -1,8 +1,12 @@
 use std::panic;
 
-use crate::globals::STRING_INTERNER;
-use crate::hir::types::checked_declaration::CheckedParam;
-use crate::hir::types::checked_type::{StructKind, Type};
+use crate::{
+    globals::STRING_INTERNER,
+    hir::types::{
+        checked_declaration::CheckedParam,
+        checked_type::{StructKind, Type},
+    },
+};
 
 pub struct Layout {
     pub size: usize,
@@ -24,6 +28,23 @@ const USIZE_ALIGN: usize = size_of::<usize>();
 /// IMPORTANT: Make sure user-defined and closure-environment structs are packed first before calling this function
 pub fn get_layout_of(ty: &Type) -> Layout {
     match ty {
+        Type::Tag(tag) => {
+            if let Some(payload_ty) = &tag.value_type {
+                calculate_fields_layout(&[&Type::U16, payload_ty])
+            } else {
+                Layout::new(2, 2)
+            }
+        }
+        Type::Union(variants) => {
+            let mut max_size = 0;
+            let mut max_align = 2;
+            for v in variants {
+                let l = get_layout_of(&Type::Tag(v.clone()));
+                max_size = max_size.max(l.size);
+                max_align = max_align.max(l.alignment);
+            }
+            Layout::new(max_size, max_align)
+        }
         Type::Void => Layout::new(0, 1),
         Type::Bool | Type::U8 | Type::I8 => Layout::new(1, 1),
         Type::U16 | Type::I16 => Layout::new(2, 2),

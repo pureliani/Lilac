@@ -1,24 +1,13 @@
 use crate::{
     compile::interner::StringId,
     globals::COMMON_IDENTIFIERS,
-    hir::{
-        types::checked_declaration::{CheckedParam, FnType, TagType},
-        utils::layout::get_layout_of,
-    },
+    hir::types::checked_declaration::{CheckedParam, FnType, TagType},
 };
 use std::hash::Hash;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum StructKind {
     UserDefined(Vec<CheckedParam>), // packed
-
-    /// { id: u16, value: T }
-    Tag(TagType),
-
-    /// { id: u16, value: Buffer }
-    Union {
-        variants: Vec<TagType>,
-    },
 
     /// { capacity: usize, len: usize, ptr: ptr<T> }
     List(Box<Type>),
@@ -58,42 +47,10 @@ impl StructKind {
                     },
                 ),
             ],
-
-            StructKind::Tag(tag) => {
-                let mut fields = vec![(COMMON_IDENTIFIERS.id, Type::U16)];
-                if let Some(val) = &tag.value_type {
-                    fields.push((COMMON_IDENTIFIERS.value, *val.clone()));
-                }
-                fields
-            }
-
-            StructKind::Union { variants } => {
-                let mut max_size = 0;
-                let mut max_align = 1;
-
-                for tag_type in variants {
-                    if let Some(val_ty) = &tag_type.value_type {
-                        let layout = get_layout_of(val_ty);
-                        max_size = std::cmp::max(max_size, layout.size);
-                        max_align = std::cmp::max(max_align, layout.alignment);
-                    }
-                }
-
-                vec![
-                    (COMMON_IDENTIFIERS.id, Type::U16),
-                    (
-                        COMMON_IDENTIFIERS.value,
-                        Type::Buffer {
-                            size: max_size,
-                            alignment: max_align,
-                        },
-                    ),
-                ]
-            }
         }
     }
 
-    /// Maps a Field Name -> (Index, Type).
+    /// Maps a field name -> (Index, Type).
     pub fn get_field(&self, name: &StringId) -> Option<(usize, Type)> {
         self.fields()
             .into_iter()
@@ -125,18 +82,20 @@ pub enum Type {
         narrowed_to: Box<Type>,
     },
 
+    Tag(TagType),
+
+    Union(Vec<TagType>),
+
     /// Represents any block of memory with named fields
     Struct(StructKind),
 
     /// Represents a function pointer signature
     Fn(FnType),
 
-    /// Represents a raw block of memory with a specific size and alignment
     Buffer {
         size: usize,
         alignment: usize,
     },
 
-    /// Used for error recovery
     Unknown,
 }
