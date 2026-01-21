@@ -501,9 +501,26 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let _ = check_binary_numeric_operation(lhs_ty, lhs_span, rhs_ty, rhs_span)?;
+        let target_ty = check_binary_numeric_operation(
+            lhs_ty,
+            lhs_span.clone(),
+            rhs_ty,
+            rhs_span.clone(),
+        )?;
 
-        if is_float(lhs_ty) {
+        let lhs = if self.get_value_type(&lhs) != &target_ty {
+            self.cast(lhs, target_ty.clone(), lhs_span)?
+        } else {
+            lhs
+        };
+
+        let rhs = if self.get_value_type(&rhs) != &target_ty {
+            self.cast(rhs, target_ty.clone(), rhs_span)?
+        } else {
+            rhs
+        };
+
+        if is_float(&target_ty) {
             Ok(self.emit_fadd(lhs, rhs))
         } else {
             Ok(self.emit_iadd(lhs, rhs))
@@ -520,9 +537,26 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let _ = check_binary_numeric_operation(lhs_ty, lhs_span, rhs_ty, rhs_span)?;
+        let target_ty = check_binary_numeric_operation(
+            lhs_ty,
+            lhs_span.clone(),
+            rhs_ty,
+            rhs_span.clone(),
+        )?;
 
-        if is_float(lhs_ty) {
+        let lhs = if self.get_value_type(&lhs) != &target_ty {
+            self.cast(lhs, target_ty.clone(), lhs_span)?
+        } else {
+            lhs
+        };
+
+        let rhs = if self.get_value_type(&rhs) != &target_ty {
+            self.cast(rhs, target_ty.clone(), rhs_span)?
+        } else {
+            rhs
+        };
+
+        if is_float(&target_ty) {
             Ok(self.emit_fsub(lhs, rhs))
         } else {
             Ok(self.emit_isub(lhs, rhs))
@@ -539,9 +573,26 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let _ = check_binary_numeric_operation(lhs_ty, lhs_span, rhs_ty, rhs_span)?;
+        let target_ty = check_binary_numeric_operation(
+            lhs_ty,
+            lhs_span.clone(),
+            rhs_ty,
+            rhs_span.clone(),
+        )?;
 
-        if is_float(lhs_ty) {
+        let lhs = if self.get_value_type(&lhs) != &target_ty {
+            self.cast(lhs, target_ty.clone(), lhs_span)?
+        } else {
+            lhs
+        };
+
+        let rhs = if self.get_value_type(&rhs) != &target_ty {
+            self.cast(rhs, target_ty.clone(), rhs_span)?
+        } else {
+            rhs
+        };
+
+        if is_float(&target_ty) {
             Ok(self.emit_fmul(lhs, rhs))
         } else {
             Ok(self.emit_imul(lhs, rhs))
@@ -558,11 +609,28 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let _ = check_binary_numeric_operation(lhs_ty, lhs_span, rhs_ty, rhs_span)?;
+        let target_ty = check_binary_numeric_operation(
+            lhs_ty,
+            lhs_span.clone(),
+            rhs_ty,
+            rhs_span.clone(),
+        )?;
 
-        if is_float(lhs_ty) {
+        let lhs = if self.get_value_type(&lhs) != &target_ty {
+            self.cast(lhs, target_ty.clone(), lhs_span)?
+        } else {
+            lhs
+        };
+
+        let rhs = if self.get_value_type(&rhs) != &target_ty {
+            self.cast(rhs, target_ty.clone(), rhs_span)?
+        } else {
+            rhs
+        };
+
+        if is_float(&target_ty) {
             Ok(self.emit_fdiv(lhs, rhs))
-        } else if is_signed(lhs_ty) {
+        } else if is_signed(&target_ty) {
             Ok(self.emit_sdiv(lhs, rhs))
         } else {
             Ok(self.emit_udiv(lhs, rhs))
@@ -579,11 +647,28 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let _ = check_binary_numeric_operation(lhs_ty, lhs_span, rhs_ty, rhs_span)?;
+        let target_ty = check_binary_numeric_operation(
+            lhs_ty,
+            lhs_span.clone(),
+            rhs_ty,
+            rhs_span.clone(),
+        )?;
 
-        if is_float(lhs_ty) {
+        let lhs = if self.get_value_type(&lhs) != &target_ty {
+            self.cast(lhs, target_ty.clone(), lhs_span)?
+        } else {
+            lhs
+        };
+
+        let rhs = if self.get_value_type(&rhs) != &target_ty {
+            self.cast(rhs, target_ty.clone(), rhs_span)?
+        } else {
+            rhs
+        };
+
+        if is_float(&target_ty) {
             Ok(self.emit_frem(lhs, rhs))
-        } else if is_signed(lhs_ty) {
+        } else if is_signed(&target_ty) {
             Ok(self.emit_srem(lhs, rhs))
         } else {
             Ok(self.emit_urem(lhs, rhs))
@@ -654,11 +739,28 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let _ = check_binary_numeric_operation(lhs_ty, lhs_span, rhs_ty, rhs_span)?;
+        let target_ty = check_binary_numeric_operation(
+            lhs_ty,
+            lhs_span.clone(),
+            rhs_ty,
+            rhs_span.clone(),
+        )?;
 
-        if is_float(lhs_ty) {
+        let lhs = if self.get_value_type(&lhs) != &target_ty {
+            self.cast(lhs, target_ty.clone(), lhs_span)?
+        } else {
+            lhs
+        };
+
+        let rhs = if self.get_value_type(&rhs) != &target_ty {
+            self.cast(rhs, target_ty.clone(), rhs_span)?
+        } else {
+            rhs
+        };
+
+        if is_float(&target_ty) {
             Ok(self.emit_flt(lhs, rhs))
-        } else if is_signed(lhs_ty) {
+        } else if is_signed(&target_ty) {
             Ok(self.emit_slt(lhs, rhs))
         } else {
             Ok(self.emit_ult(lhs, rhs))
@@ -675,11 +777,28 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let _ = check_binary_numeric_operation(lhs_ty, lhs_span, rhs_ty, rhs_span)?;
+        let target_ty = check_binary_numeric_operation(
+            lhs_ty,
+            lhs_span.clone(),
+            rhs_ty,
+            rhs_span.clone(),
+        )?;
 
-        if is_float(lhs_ty) {
+        let lhs = if self.get_value_type(&lhs) != &target_ty {
+            self.cast(lhs, target_ty.clone(), lhs_span)?
+        } else {
+            lhs
+        };
+
+        let rhs = if self.get_value_type(&rhs) != &target_ty {
+            self.cast(rhs, target_ty.clone(), rhs_span)?
+        } else {
+            rhs
+        };
+
+        if is_float(&target_ty) {
             Ok(self.emit_fle(lhs, rhs))
-        } else if is_signed(lhs_ty) {
+        } else if is_signed(&target_ty) {
             Ok(self.emit_sle(lhs, rhs))
         } else {
             Ok(self.emit_ule(lhs, rhs))
@@ -696,11 +815,28 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let _ = check_binary_numeric_operation(lhs_ty, lhs_span, rhs_ty, rhs_span)?;
+        let target_ty = check_binary_numeric_operation(
+            lhs_ty,
+            lhs_span.clone(),
+            rhs_ty,
+            rhs_span.clone(),
+        )?;
 
-        if is_float(lhs_ty) {
+        let lhs = if self.get_value_type(&lhs) != &target_ty {
+            self.cast(lhs, target_ty.clone(), lhs_span)?
+        } else {
+            lhs
+        };
+
+        let rhs = if self.get_value_type(&rhs) != &target_ty {
+            self.cast(rhs, target_ty.clone(), rhs_span)?
+        } else {
+            rhs
+        };
+
+        if is_float(&target_ty) {
             Ok(self.emit_fgt(lhs, rhs))
-        } else if is_signed(lhs_ty) {
+        } else if is_signed(&target_ty) {
             Ok(self.emit_sgt(lhs, rhs))
         } else {
             Ok(self.emit_ugt(lhs, rhs))
@@ -717,11 +853,28 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let _ = check_binary_numeric_operation(lhs_ty, lhs_span, rhs_ty, rhs_span)?;
+        let target_ty = check_binary_numeric_operation(
+            lhs_ty,
+            lhs_span.clone(),
+            rhs_ty,
+            rhs_span.clone(),
+        )?;
 
-        if is_float(lhs_ty) {
+        let lhs = if self.get_value_type(&lhs) != &target_ty {
+            self.cast(lhs, target_ty.clone(), lhs_span)?
+        } else {
+            lhs
+        };
+
+        let rhs = if self.get_value_type(&rhs) != &target_ty {
+            self.cast(rhs, target_ty.clone(), rhs_span)?
+        } else {
+            rhs
+        };
+
+        if is_float(&target_ty) {
             Ok(self.emit_fge(lhs, rhs))
-        } else if is_signed(lhs_ty) {
+        } else if is_signed(&target_ty) {
             Ok(self.emit_sge(lhs, rhs))
         } else {
             Ok(self.emit_uge(lhs, rhs))

@@ -28,7 +28,7 @@ impl<'a> Builder<'a, InBlock> {
 
                 match decl {
                     CheckedDeclaration::Var(var) => Ok(Place {
-                        root: self.use_var(var.ptr),
+                        root: var.ptr,
                         projections: vec![],
                     }),
                     CheckedDeclaration::UninitializedVar { .. } => Err(SemanticError {

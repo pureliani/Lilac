@@ -5,7 +5,7 @@ use crate::{
         builders::{Builder, InBlock, Phi, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::Type,
-        utils::try_unify_types::{intersect_types, subtract_types},
+        utils::try_unify_types::{intersect_types, narrow_type_at_path, subtract_types},
     },
     tokenize::NumberKind,
     unwrap_or_poison,
@@ -37,11 +37,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let mut target_tag_ids = Vec::new();
 
-        let identity_id = if let Ok(place) = self.build_place(*left) {
-            Some(place.root)
-        } else {
-            None
-        };
+        let place = self.build_place(*left).ok();
 
         for (i, tag_ann) in variants.iter().enumerate() {
             if tag_ann.value_type.is_some() {
@@ -85,13 +81,22 @@ impl<'a> Builder<'a, InBlock> {
 
         self.seal_block(true_path);
         self.use_basic_block(true_path);
-        let true_refined_id = self.emit_refine_type(source_val, true_ty);
 
-        if let Some(id) = identity_id {
+        let _true_refined_leaf = self.emit_refine_type(source_val, true_ty.clone());
+
+        let mut true_refined_root = None;
+
+        if let Some(p) = &place {
+            let root_ty = self.get_value_type(&p.root);
+            let narrowed_root_ty = narrow_type_at_path(root_ty, &p.projections, &true_ty);
+
+            let refined = self.emit_refine_type(p.root, narrowed_root_ty);
+            true_refined_root = Some(refined);
+
             self.definitions
                 .entry(true_path)
                 .or_default()
-                .insert(id, true_refined_id);
+                .insert(p.root, refined);
         }
 
         let const_true = self.emit_const_bool(true);
@@ -100,13 +105,23 @@ impl<'a> Builder<'a, InBlock> {
 
         self.seal_block(false_path);
         self.use_basic_block(false_path);
-        let false_refined_id = self.emit_refine_type(source_val, false_ty);
 
-        if let Some(id) = identity_id {
+        let _false_refined_leaf = self.emit_refine_type(source_val, false_ty.clone());
+
+        let mut false_refined_root = None;
+
+        if let Some(p) = &place {
+            let root_ty = self.get_value_type(&p.root);
+            let narrowed_root_ty =
+                narrow_type_at_path(root_ty, &p.projections, &false_ty);
+
+            let refined = self.emit_refine_type(p.root, narrowed_root_ty);
+            false_refined_root = Some(refined);
+
             self.definitions
                 .entry(false_path)
                 .or_default()
-                .insert(id, false_refined_id);
+                .insert(p.root, refined);
         }
 
         let const_false = self.emit_const_bool(false);
@@ -129,15 +144,17 @@ impl<'a> Builder<'a, InBlock> {
         ];
         self.bb_mut().phis.push((result_bool_id, phi_operands));
 
-        if let Some(id) = identity_id {
-            self.get_fn().predicates.insert(
-                result_bool_id,
-                TypePredicate {
-                    source: id,
-                    true_id: true_refined_id,
-                    false_id: false_refined_id,
-                },
-            );
+        if let Some(p) = place {
+            if let (Some(t), Some(f)) = (true_refined_root, false_refined_root) {
+                self.get_fn().predicates.insert(
+                    result_bool_id,
+                    TypePredicate {
+                        source: p.root,
+                        true_id: t,
+                        false_id: f,
+                    },
+                );
+            }
         }
 
         result_bool_id
