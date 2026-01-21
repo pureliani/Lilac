@@ -83,6 +83,24 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
     }
     writeln!(out, "    }} ").unwrap();
 
+    writeln!(out, "    phis {{ ").unwrap();
+    for (dest, operands) in &bb.phis {
+        let ops_str = operands
+            .iter()
+            .map(|phi| format!("v{} from block_{}", phi.value.0, phi.from.0))
+            .collect::<Vec<_>>()
+            .join(", ");
+        writeln!(
+            out,
+            "      v{}: {} = phi [ {} ];",
+            dest.0,
+            get_vt(p, dest),
+            ops_str
+        )
+        .unwrap();
+    }
+    writeln!(out, "    }} ").unwrap();
+
     writeln!(out).unwrap();
 
     dump_instructions(&bb.instructions, p, out);
