@@ -42,7 +42,7 @@ impl<'a> Builder<'a, InBlock> {
         );
 
         let list_header_type =
-            Type::Struct(StructKind::List(Box::new(element_type.clone())));
+            Type::Struct(StructKind::ListHeader(Box::new(element_type.clone())));
         let const_one = self.emit_const_number(NumberKind::USize(1));
 
         let list_header_ptr =

@@ -56,7 +56,6 @@ pub struct Place {
 pub enum Projection {
     Field(IdentifierNode),
     Index(ValueId, Span),
-    Deref,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -94,7 +93,7 @@ pub struct Function {
     pub predicates: HashMap<ValueId, TypePredicate>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Phi {
     pub from: BasicBlockId,
     pub value: ValueId,
@@ -106,7 +105,7 @@ pub struct BasicBlock {
     pub instructions: Vec<Instruction>,
     pub terminator: Option<Terminator>,
     pub predecessors: HashSet<BasicBlockId>,
-    pub phis: Vec<(ValueId, Vec<Phi>)>,
+    pub phis: HashMap<ValueId, HashSet<Phi>>,
     pub sealed: bool,
 }
 

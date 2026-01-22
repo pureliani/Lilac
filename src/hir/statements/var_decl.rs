@@ -58,7 +58,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
-            ptr: identity_id,
+            initial_value: identity_id,
             identifier: var_decl.identifier.clone(),
             documentation: var_decl.documentation,
             constraint,

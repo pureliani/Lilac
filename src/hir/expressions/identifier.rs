@@ -38,11 +38,6 @@ impl<'a> Builder<'a, InBlock> {
                 Ok(place) => self.read_place(place, identifier.span.clone()),
                 Err(e) => self.report_error_and_get_poison(e),
             },
-            CheckedDeclaration::UninitializedVar { .. } => self
-                .report_error_and_get_poison(SemanticError {
-                    span: identifier.span.clone(),
-                    kind: SemanticErrorKind::UseOfUninitializedVariable(identifier),
-                }),
             CheckedDeclaration::Function(func) => self.emit_const_fn(func.id),
             CheckedDeclaration::TypeAlias(alias) => {
                 self.report_error_and_get_poison(SemanticError {

@@ -21,8 +21,8 @@ pub fn check_is_equatable(left: &Type, right: &Type) -> bool {
         return true;
     }
 
-    if matches!(left, Type::Struct(StructKind::String))
-        && matches!(right, Type::Struct(StructKind::String))
+    if matches!(left, Type::Struct(StructKind::StringHeader))
+        && matches!(right, Type::Struct(StructKind::StringHeader))
     {
         return true;
     }

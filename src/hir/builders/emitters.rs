@@ -73,11 +73,8 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn emit_const_string(&mut self, constant_id: ConstantId) -> ValueId {
-        let inner = Box::new(Type::Struct(StructKind::String));
-        let ty = Type::Pointer {
-            constraint: inner.clone(),
-            narrowed_to: inner,
-        };
+        let inner = Box::new(Type::Struct(StructKind::StringHeader));
+        let ty = Type::Pointer(inner);
 
         let dest = self.new_value_id(ty);
         self.push_instruction(Instruction::ConstString { dest, constant_id });
@@ -391,10 +388,7 @@ impl<'a> Builder<'a, InBlock> {
         ty: Type,
         count: ValueId,
     ) -> Result<ValueId, SemanticError> {
-        let destination = self.new_value_id(Type::Pointer {
-            constraint: Box::new(ty.clone()),
-            narrowed_to: Box::new(ty),
-        });
+        let destination = self.new_value_id(Type::Pointer(Box::new(ty)));
         self.push_instruction(Instruction::HeapAlloc {
             dest: destination,
             count,
@@ -406,7 +400,7 @@ impl<'a> Builder<'a, InBlock> {
     pub fn emit_load(&mut self, ptr: ValueId) -> ValueId {
         let ptr_ty = self.get_value_type(&ptr);
         let dest_ty = match ptr_ty {
-            Type::Pointer { narrowed_to, .. } => *narrowed_to.clone(),
+            Type::Pointer(to) => *to.clone(),
             _ => panic!("INTERNAL ERROR: Load expected pointer"),
         };
         let destination = self.new_value_id(dest_ty);
@@ -962,13 +956,10 @@ impl<'a> Builder<'a, InBlock> {
     pub fn load(&mut self, ptr: ValueId, span: Span) -> Result<ValueId, SemanticError> {
         let ptr_ty = self.get_value_type(&ptr);
 
-        if !matches!(ptr_ty, Type::Pointer { .. }) {
+        if !matches!(ptr_ty, Type::Pointer(_)) {
             return Err(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
-                    expected: Type::Pointer {
-                        constraint: Box::new(Type::Unknown),
-                        narrowed_to: Box::new(Type::Unknown),
-                    },
+                    expected: Type::Pointer(Box::new(Type::Unknown)),
                     received: ptr_ty.clone(),
                 },
                 span,
@@ -978,16 +969,21 @@ impl<'a> Builder<'a, InBlock> {
         Ok(self.emit_load(ptr))
     }
 
-    pub fn store(&mut self, ptr: ValueId, value: ValueId, span: Span) {
+    pub fn store(
+        &mut self,
+        ptr: ValueId,
+        value: ValueId,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
         let ptr_ty = self.get_value_type(&ptr).clone();
         let val_ty = self.get_value_type(&value).clone();
 
         match ptr_ty {
-            Type::Pointer { narrowed_to, .. } => {
-                if !check_is_assignable(&val_ty, &narrowed_to) {
-                    self.as_program().errors.push(SemanticError {
+            Type::Pointer(to) => {
+                if !check_is_assignable(&val_ty, &to) {
+                    return Err(SemanticError {
                         kind: SemanticErrorKind::TypeMismatch {
-                            expected: *narrowed_to.clone(),
+                            expected: *to.clone(),
                             received: val_ty.clone(),
                         },
                         span,
@@ -996,12 +992,9 @@ impl<'a> Builder<'a, InBlock> {
                 self.emit_store(ptr, value);
             }
             _ => {
-                self.as_program().errors.push(SemanticError {
+                return Err(SemanticError {
                     kind: SemanticErrorKind::TypeMismatch {
-                        expected: Type::Pointer {
-                            constraint: Box::new(Type::Unknown),
-                            narrowed_to: Box::new(Type::Unknown),
-                        },
+                        expected: Type::Pointer(Box::new(Type::Unknown)),
                         received: ptr_ty.clone(),
                     },
                     span,
@@ -1030,14 +1023,8 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         match ptr_ty {
-            Type::Pointer {
-                constraint,
-                narrowed_to,
-            } => {
-                let dest_ty = Type::Pointer {
-                    constraint,
-                    narrowed_to,
-                };
+            Type::Pointer(to) => {
+                let dest_ty = Type::Pointer(to);
                 let destination = self.new_value_id(dest_ty);
 
                 self.push_instruction(Instruction::PtrOffset {
@@ -1062,18 +1049,17 @@ impl<'a> Builder<'a, InBlock> {
     ) -> Result<ValueId, SemanticError> {
         let current_ty = self.get_value_type(&base_ptr);
 
-        let (constraint_struct, narrowed_struct) = match &current_ty {
-            Type::Pointer {
-                constraint,
-                narrowed_to,
-            } => match (&**constraint, &**narrowed_to) {
-                (Type::Struct(c), Type::Struct(n)) => (c, n),
+        let struct_kind = match current_ty {
+            Type::Pointer(to) => match &**to {
+                Type::Struct(s) => s,
                 _ => panic!("Expected pointer to struct, found {:?}", current_ty),
             },
-            _ => panic!("Expected pointer, found {:?}", current_ty),
+            _ => {
+                panic!("Expected pointer, found {:?}", current_ty);
+            }
         };
 
-        let field_index = match constraint_struct.get_field(&field_name.name) {
+        let field_index = match struct_kind.get_field(&field_name.name) {
             Some((idx, _)) => idx,
             None => {
                 return Err(SemanticError {
@@ -1083,13 +1069,9 @@ impl<'a> Builder<'a, InBlock> {
             }
         };
 
-        let (_, field_constraint) = constraint_struct.fields()[field_index].clone();
-        let (_, field_narrowed) = narrowed_struct.fields()[field_index].clone();
+        let (_, field_type) = struct_kind.fields()[field_index].clone();
 
-        let destination = self.new_value_id(Type::Pointer {
-            constraint: Box::new(field_constraint),
-            narrowed_to: Box::new(field_narrowed),
-        });
+        let destination = self.new_value_id(Type::Pointer(Box::new(field_type)));
 
         self.push_instruction(Instruction::GetFieldPtr {
             dest: destination,
@@ -1269,7 +1251,6 @@ impl<'a> Builder<'a, InBlock> {
                 }
             }
             Type::Union(variants) => {
-                // Collect all possible payload types
                 let mut payload_types = Vec::new();
                 for v in variants {
                     if let Some(ty) = &v.value_type {
@@ -1281,7 +1262,9 @@ impl<'a> Builder<'a, InBlock> {
                     return None;
                 }
 
-                let unified_ty = try_unify_types(&payload_types).unwrap_or(Type::Unknown);
+                let payload_spanless_types: Vec<Type> =
+                    payload_types.iter().map(|pt| pt.0.clone()).collect();
+                let unified_ty = try_unify_types(&payload_spanless_types);
 
                 let dest = self.new_value_id(unified_ty);
                 self.push_instruction(Instruction::GetTagPayload { dest, src });

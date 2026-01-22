@@ -10,10 +10,10 @@ pub enum StructKind {
     UserDefined(Vec<CheckedParam>), // packed
 
     /// { capacity: usize, len: usize, ptr: ptr<T> }
-    List(Box<Type>),
+    ListHeader(Box<Type>),
 
     /// { is_heap_allocated: bool, len: usize, ptr: ptr<u8> }
-    String,
+    StringHeader,
 }
 
 impl StructKind {
@@ -24,28 +24,16 @@ impl StructKind {
                 .map(|p| (p.identifier.name, p.ty.clone()))
                 .collect(),
 
-            StructKind::List(elem_ty) => vec![
+            StructKind::ListHeader(elem_ty) => vec![
                 (COMMON_IDENTIFIERS.capacity, Type::USize),
                 (COMMON_IDENTIFIERS.len, Type::USize),
-                (
-                    COMMON_IDENTIFIERS.ptr,
-                    Type::Pointer {
-                        constraint: elem_ty.clone(),
-                        narrowed_to: elem_ty.clone(),
-                    },
-                ),
+                (COMMON_IDENTIFIERS.ptr, Type::Pointer(elem_ty.clone())),
             ],
 
-            StructKind::String => vec![
+            StructKind::StringHeader => vec![
                 (COMMON_IDENTIFIERS.is_heap_allocated, Type::Bool),
                 (COMMON_IDENTIFIERS.len, Type::USize),
-                (
-                    COMMON_IDENTIFIERS.ptr,
-                    Type::Pointer {
-                        constraint: Box::new(Type::U8),
-                        narrowed_to: Box::new(Type::U8),
-                    },
-                ),
+                (COMMON_IDENTIFIERS.ptr, Type::Pointer(Box::new(Type::U8))),
             ],
         }
     }
@@ -77,10 +65,7 @@ pub enum Type {
     F32,
     F64,
 
-    Pointer {
-        constraint: Box<Type>,
-        narrowed_to: Box<Type>,
-    },
+    Pointer(Box<Type>),
 
     Tag(TagType),
 
@@ -98,4 +83,6 @@ pub enum Type {
     },
 
     Unknown,
+
+    Never,
 }

@@ -132,11 +132,11 @@ fn struct_to_string(s: &StructKind, visited_set: &mut HashSet<Type>) -> String {
                 .join(", ");
             format!("{{ {} }}", fields_str)
         }
-        StructKind::List(item_type) => {
+        StructKind::ListHeader(item_type) => {
             let elem_type_str = type_to_string_recursive(item_type, visited_set);
 
             format!("{}[]", elem_type_str)
         }
-        StructKind::String => String::from("string"),
+        StructKind::StringHeader => String::from("string"),
     }
 }

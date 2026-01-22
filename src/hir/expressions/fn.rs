@@ -98,7 +98,7 @@ impl<'a> Builder<'a, InModule> {
             let param_var_id = next_declaration_id();
             let decl = CheckedVarDecl {
                 id: param_var_id,
-                ptr: identity_id,
+                initial_value: identity_id,
                 identifier: param.identifier.clone(),
                 documentation: None,
                 constraint: param.ty.clone(),

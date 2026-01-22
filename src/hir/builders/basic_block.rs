@@ -1,5 +1,10 @@
+use std::collections::HashSet;
+
 use crate::{
-    ast::{IdentifierNode, Span},
+    ast::{
+        expr::{Expr, ExprKind},
+        IdentifierNode, Span,
+    },
     globals::{next_value_id, COMMON_IDENTIFIERS},
     hir::{
         builders::{
@@ -8,7 +13,7 @@ use crate::{
         },
         errors::{SemanticError, SemanticErrorKind},
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
-        utils::try_unify_types::narrow_type_at_path,
+        utils::try_unify_types::try_unify_types,
     },
     unwrap_or_poison,
 };
@@ -129,216 +134,237 @@ impl<'a> Builder<'a, InBlock> {
             name: COMMON_IDENTIFIERS.ptr,
             span: span.clone(),
         };
-        let internal_ptr_ptr =
+        let buffer_ptr_ptr =
             unwrap_or_poison!(self, self.get_field_ptr(list_ptr, &ptr_field_node));
-        unwrap_or_poison!(self, self.load(internal_ptr_ptr, span))
+        unwrap_or_poison!(self, self.load(buffer_ptr_ptr, span))
     }
 
-    pub fn read_place(&mut self, place: Place, span: Span) -> ValueId {
-        let mut current = self.use_var(place.root);
+    pub fn build_place(&mut self, expr: Expr) -> Result<Place, SemanticError> {
+        match expr.kind {
+            ExprKind::Identifier(ident) => {
+                let decl_id =
+                    self.current_scope.lookup(ident.name).ok_or(SemanticError {
+                        span: expr.span.clone(),
+                        kind: SemanticErrorKind::UndeclaredIdentifier(ident.clone()),
+                    })?;
+
+                let decl = self
+                    .program
+                    .declarations
+                    .get(&decl_id)
+                    .expect("INTERNAL COMPILER ERROR: Declaration not found");
+
+                match decl {
+                    CheckedDeclaration::Var(var) => Ok(Place {
+                        root: var.initial_value,
+                        projections: vec![],
+                    }),
+                    _ => Err(SemanticError {
+                        kind: SemanticErrorKind::InvalidLValue,
+                        span: expr.span,
+                    }),
+                }
+            }
+            ExprKind::Access { left, field } => {
+                let mut place = self.build_place(*left)?;
+                place.projections.push(Projection::Field(field));
+                Ok(place)
+            }
+            ExprKind::Index { left, index } => {
+                let mut place = self.build_place(*left)?;
+
+                let index_span = index.span.clone();
+                let index_val = self.build_expr(*index);
+                place
+                    .projections
+                    .push(Projection::Index(index_val, index_span));
+                Ok(place)
+            }
+            _ => Err(SemanticError {
+                kind: SemanticErrorKind::InvalidLValue,
+                span: expr.span,
+            }),
+        }
+    }
+
+    pub fn read_place(
+        &mut self,
+        place: Place,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let mut current = self.get_latest_alias(place.root);
 
         for proj in place.projections {
-            let current_ty = self.get_value_type(&current).clone();
+            let current_ty = self.get_value_type(&current);
 
             match proj {
-                Projection::Field(field_node) => {
-                    if field_node.name == COMMON_IDENTIFIERS.value {
-                        if let Type::Pointer { narrowed_to, .. } = current_ty {
-                            if matches!(*narrowed_to, Type::Tag(_) | Type::Union(_)) {
-                                current = unwrap_or_poison!(
-                                    self,
-                                    self.load(current, span.clone())
-                                );
-                            }
-                        }
-
-                        current =
-                            self.emit_get_tag_payload(current).unwrap_or_else(|| {
-                                self.report_error_and_get_poison(SemanticError {
-                                    kind: SemanticErrorKind::AccessToUndefinedField(
-                                        field_node,
-                                    ),
-                                    span: span.clone(),
-                                })
-                            });
-                    } else {
-                        current = unwrap_or_poison!(
-                            self,
-                            self.get_field_ptr(current, &field_node)
-                        );
+                Projection::Field(field_node) => match current_ty {
+                    Type::Pointer(_) => {
+                        current = self.get_field_ptr(current, &field_node)?;
                     }
-                }
-                Projection::Index(idx_val, s) => {
+                    Type::Tag(_) => {
+                        if field_node.name == COMMON_IDENTIFIERS.value {
+                            current = self.emit_get_tag_payload(current).ok_or(
+                                SemanticError {
+                                    kind: SemanticErrorKind::AccessToUndefinedField(
+                                        field_node.clone(),
+                                    ),
+                                    span: field_node.span.clone(),
+                                },
+                            )?;
+                        }
+                    }
+                    _ => {
+                        return Err(SemanticError {
+                            kind: SemanticErrorKind::CannotAccess(current_ty.clone()),
+                            span: field_node.span,
+                        })
+                    }
+                },
+                Projection::Index(offset, s) => {
                     let buffer_ptr = self.get_list_buffer_ptr(current, s.clone());
                     current =
-                        unwrap_or_poison!(self, self.ptr_offset(buffer_ptr, idx_val, s));
-                }
-                Projection::Deref => {
-                    current = unwrap_or_poison!(self, self.load(current, span.clone()));
+                        unwrap_or_poison!(self, self.ptr_offset(buffer_ptr, offset, s));
                 }
             }
         }
 
         if matches!(self.get_value_type(&current), Type::Pointer { .. }) {
-            unwrap_or_poison!(self, self.load(current, span))
+            Ok(unwrap_or_poison!(self, self.load(current, span)))
         } else {
-            current
+            Ok(current)
         }
     }
 
-    pub fn write_place(&mut self, place: Place, value: ValueId, span: Span) {
-        if place.projections.is_empty() {
-            self.definitions
-                .entry(self.context.block_id)
-                .or_default()
-                .insert(place.root, value);
-            return;
-        }
+    pub fn write_place(
+        &mut self,
+        place: &Place,
+        value: ValueId,
+        span: Span,
+    ) -> Result<(), SemanticError> {
+        let mut current = self.get_latest_alias(place.root);
 
-        let mut current = self.use_var(place.root);
-        let last_idx = place.projections.len() - 1;
+        for projection in &place.projections {
+            let current_ty = self.get_value_type(&current);
 
-        for i in 0..last_idx {
-            let current_ty = self.get_value_type(&current).clone();
-            match &place.projections[i] {
-                Projection::Deref => {
-                    current = unwrap_or_poison!(self, self.load(current, span.clone()));
-                }
-                Projection::Field(f) => {
-                    if f.name == COMMON_IDENTIFIERS.value {
-                        if let Type::Pointer { .. } = current_ty {
-                            current =
-                                unwrap_or_poison!(self, self.load(current, span.clone()));
+            match projection {
+                Projection::Field(field_node) => match current_ty {
+                    Type::Pointer(to) => {
+                        if let Type::Struct(s) = &**to {
+                            current = self.get_field_ptr(current, field_node)?;
                         }
-                        current =
-                            self.emit_get_tag_payload(current).unwrap_or_else(|| {
-                                self.report_error_and_get_poison(SemanticError {
-                                    kind: SemanticErrorKind::AccessToUndefinedField(
-                                        f.clone(),
-                                    ),
-                                    span: span.clone(),
-                                })
-                            });
-                    } else {
-                        current = unwrap_or_poison!(self, self.get_field_ptr(current, f));
-                        current =
-                            unwrap_or_poison!(self, self.load(current, span.clone()));
                     }
-                }
-                Projection::Index(idx, s) => {
-                    let buffer = self.get_list_buffer_ptr(current, s.clone());
-                    let elem_ptr =
-                        unwrap_or_poison!(self, self.ptr_offset(buffer, *idx, s.clone()));
-                    current = unwrap_or_poison!(self, self.load(elem_ptr, span.clone()));
+                    Type::Tag(_) => {
+                        if field_node.name == COMMON_IDENTIFIERS.value {
+                            todo!()
+                        }
+                    }
+                    unexpected_ty => {
+                        return Err(SemanticError {
+                            kind: SemanticErrorKind::TypeMismatchExpectedOneOf {
+                                expected: todo!(),
+                                received: todo!(),
+                            },
+                            span: field_node.span,
+                        })
+                    }
+                },
+                Projection::Index(offset, s) => {
+                    todo!()
                 }
             }
         }
 
-        let final_proj = &place.projections[last_idx];
-
-        let final_ptr = match final_proj {
-            Projection::Deref => current,
-            Projection::Field(f) => {
-                if f.name == COMMON_IDENTIFIERS.value {
-                    panic!("Semantic Error: Direct assignment to '.value' is not supported. Assign a new Tag to the parent field instead.");
-                }
-                unwrap_or_poison!(self, self.get_field_ptr(current, f))
-            }
-            Projection::Index(idx, s) => {
-                let buffer = self.get_list_buffer_ptr(current, s.clone());
-                unwrap_or_poison!(self, self.ptr_offset(buffer, *idx, s.clone()))
-            }
-        };
-
-        self.store(final_ptr, value, span.clone());
-
-        let is_narrowable = !place
-            .projections
-            .iter()
-            .any(|p| matches!(p, Projection::Index(..)));
-
-        if is_narrowable {
-            let source_ty = self.get_value_type(&value);
-            let root_ty = self.get_value_type(&place.root);
-
-            let narrowed_root_ty =
-                narrow_type_at_path(root_ty, &place.projections, source_ty);
-
-            let current_root = self.use_var(place.root);
-            let refined_val = self.emit_refine_type(current_root, narrowed_root_ty);
-
-            self.definitions
-                .entry(self.context.block_id)
-                .or_default()
-                .insert(place.root, refined_val);
-        }
+        Ok(())
     }
 
-    pub fn use_var(&mut self, identity_id: ValueId) -> ValueId {
+    pub fn get_latest_alias(&mut self, initial_id: ValueId) -> ValueId {
         if let Some(defs) = self.definitions.get(&self.context.block_id) {
-            if let Some(val) = defs.get(&identity_id) {
+            if let Some(val) = defs.get(&initial_id) {
                 return *val;
             }
         }
-        self.read_var_recursive(self.context.block_id, identity_id)
+        self.get_latest_alias_recursive(self.context.block_id, initial_id)
     }
 
-    fn read_var_recursive(
+    fn get_latest_alias_recursive(
         &mut self,
         block_id: BasicBlockId,
-        identity_id: ValueId,
+        initial_id: ValueId,
     ) -> ValueId {
         if let Some(defs) = self.definitions.get(&block_id) {
-            if let Some(val) = defs.get(&identity_id) {
+            if let Some(val) = defs.get(&initial_id) {
                 return *val;
             }
         }
 
-        let val: ValueId;
-        if !self.get_bb(block_id).sealed {
-            val = self.new_value_id(self.get_value_type(&identity_id).clone());
+        let result_valueid: ValueId = if !self.get_bb(block_id).sealed {
+            let value_type = self.get_value_type(&initial_id).clone();
+            let placeholder_value_id = self.new_value_id(value_type);
             self.incomplete_phis
                 .entry(block_id)
                 .or_default()
-                .push((val, identity_id));
+                .push((placeholder_value_id, initial_id));
+
+            placeholder_value_id
         } else {
-            let preds: Vec<BasicBlockId> =
+            let predecessors: Vec<BasicBlockId> =
                 self.get_bb(block_id).predecessors.iter().cloned().collect();
-            if preds.len() == 1 {
-                val = self.read_var_recursive(preds[0], identity_id);
-            } else {
-                val = self.new_value_id(self.get_value_type(&identity_id).clone());
+
+            if predecessors.len() == 1 {
+                let latest_alias_from_pred =
+                    self.get_latest_alias_recursive(predecessors[0], initial_id);
                 self.definitions
                     .entry(block_id)
                     .or_default()
-                    .insert(identity_id, val);
-                self.add_phi_operands(block_id, identity_id, val);
-            }
-        }
-        self.definitions
-            .entry(block_id)
-            .or_default()
-            .insert(identity_id, val);
-        val
-    }
+                    .insert(initial_id, latest_alias_from_pred);
 
-    fn add_phi_operands(
-        &mut self,
-        block_id: BasicBlockId,
-        identity_id: ValueId,
-        phi_val: ValueId,
-    ) {
-        let preds: Vec<BasicBlockId> =
-            self.get_bb(block_id).predecessors.iter().cloned().collect();
-        let mut operands = Vec::new();
-        for pred in preds {
-            let val = self.read_var_recursive(pred, identity_id);
-            operands.push(Phi {
-                from: pred,
-                value: val,
-            });
-        }
-        self.get_bb_mut(block_id).phis.push((phi_val, operands));
+                latest_alias_from_pred
+            } else {
+                let original_value_type = self.get_value_type(&initial_id).clone();
+                let phi_value_id = self.new_value_id(original_value_type);
+
+                let mut phi_accumulator: HashSet<Phi> = HashSet::new();
+                for pred in predecessors {
+                    let latest_alias_from_pred =
+                        self.get_latest_alias_recursive(pred, initial_id);
+
+                    let phi = Phi {
+                        from: pred,
+                        value: latest_alias_from_pred,
+                    };
+
+                    phi_accumulator.insert(phi);
+                }
+
+                let accumulated_phi_types: Vec<Type> = phi_accumulator
+                    .iter()
+                    .map(|p| self.get_value_type(&p.value).clone())
+                    .collect();
+
+                let correct_phi_type = try_unify_types(&accumulated_phi_types);
+
+                let current_phi_type = self
+                    .as_program()
+                    .program
+                    .value_types
+                    .get_mut(&phi_value_id)
+                    .unwrap();
+
+                *current_phi_type = correct_phi_type;
+
+                self.bb_mut().phis.insert(phi_value_id, phi_accumulator);
+
+                self.definitions
+                    .entry(block_id)
+                    .or_default()
+                    .insert(initial_id, phi_value_id);
+
+                phi_value_id
+            }
+        };
+
+        result_valueid
     }
 
     pub fn use_basic_block(&mut self, block_id: BasicBlockId) {

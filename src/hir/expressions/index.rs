@@ -40,7 +40,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let element_type = match list_type {
             Type::Pointer { narrowed_to, .. } => match &*narrowed_to {
-                Type::Struct(StructKind::List(inner)) => *inner.clone(),
+                Type::Struct(StructKind::ListHeader(inner)) => *inner.clone(),
                 _ => {
                     return self.report_error_and_get_poison(SemanticError {
                         kind: SemanticErrorKind::CannotIndex(*narrowed_to.clone()),

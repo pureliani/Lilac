@@ -69,7 +69,7 @@ impl Hash for CheckedTypeAliasDecl {
 #[derive(Clone, Debug)]
 pub struct CheckedVarDecl {
     pub id: DeclarationId,
-    pub ptr: ValueId,
+    pub initial_value: ValueId,
     pub identifier: IdentifierNode,
     pub documentation: Option<DocAnnotation>,
     pub constraint: Type,
@@ -80,8 +80,4 @@ pub enum CheckedDeclaration {
     TypeAlias(CheckedTypeAliasDecl),
     Function(Function),
     Var(CheckedVarDecl),
-    UninitializedVar {
-        id: DeclarationId,
-        identifier: IdentifierNode,
-    },
 }

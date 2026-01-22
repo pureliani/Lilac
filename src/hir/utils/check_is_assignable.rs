@@ -88,11 +88,11 @@ fn check_is_assignable_recursive<'a>(
 
                 is_assignable
             }
-            (StructKind::List(s_inner), StructKind::List(t_inner)) => {
+            (StructKind::ListHeader(s_inner), StructKind::ListHeader(t_inner)) => {
                 check_is_assignable_recursive(s_inner, t_inner, visited)
                     && check_is_assignable_recursive(t_inner, s_inner, visited)
             }
-            (StructKind::String, StructKind::String) => true,
+            (StructKind::StringHeader, StructKind::StringHeader) => true,
             _ => false,
         },
         (

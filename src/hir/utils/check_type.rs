@@ -57,8 +57,7 @@ pub fn check_type_identifier_annotation(
 
                     Type::Unknown
                 }
-                CheckedDeclaration::Var(_)
-                | CheckedDeclaration::UninitializedVar { .. } => {
+                CheckedDeclaration::Var(_) => {
                     ctx.errors.push(SemanticError {
                         kind: SemanticErrorKind::CannotUseVariableDeclarationAsType,
                         span: id.span.clone(),
@@ -155,7 +154,7 @@ pub fn check_type_annotation(
         }
         // Passed by pointer
         TypeAnnotationKind::String => {
-            let inner = Box::new(Type::Struct(StructKind::String));
+            let inner = Box::new(Type::Struct(StructKind::StringHeader));
             Type::Pointer {
                 constraint: inner.clone(),
                 narrowed_to: inner,
@@ -164,7 +163,7 @@ pub fn check_type_annotation(
         TypeAnnotationKind::List(item_type) => {
             let checked_item_type = check_type_annotation(ctx, item_type);
             let inner =
-                Box::new(Type::Struct(StructKind::List(Box::new(checked_item_type))));
+                Box::new(Type::Struct(StructKind::ListHeader(Box::new(checked_item_type))));
 
             Type::Pointer {
                 constraint: inner.clone(),

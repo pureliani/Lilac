@@ -423,15 +423,6 @@ impl Compiler {
                                 )),
                             )
                         }
-                        SemanticErrorKind::UseOfUninitializedVariable(id) => {
-                            let name = STRING_INTERNER.resolve(id.name);
-                            report
-                                .with_message("Use of uninitialized variable")
-                                .with_label(label.with_message(format!(
-                                    "Variable \"{}\" is used before being initialized",
-                                    name
-                                )))
-                        }
                         SemanticErrorKind::ReturnKeywordOutsideFunction => report
                             .with_message(
                                 "Keyword \"return\" used outside of a function scope",
