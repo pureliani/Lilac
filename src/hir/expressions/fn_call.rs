@@ -1,6 +1,9 @@
 use crate::{
     ast::{expr::Expr, Span},
-    hir::builders::{Builder, InBlock, ValueId},
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        errors::SemanticError,
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -9,20 +12,15 @@ impl<'a> Builder<'a, InBlock> {
         left: Box<Expr>,
         args: Vec<Expr>,
         span: Span,
-    ) -> ValueId {
-        let func_id = self.build_expr(*left);
+    ) -> Result<ValueId, SemanticError> {
+        let func_id = self.build_expr(*left)?;
+        let mut arg_ids: Vec<(ValueId, Span)> = Vec::with_capacity(args.len());
 
-        let arg_ids: Vec<(ValueId, Span)> = args
-            .into_iter()
-            .map(|arg_expr| {
-                let s = arg_expr.span.clone();
-                (self.build_expr(arg_expr), s)
-            })
-            .collect();
-
-        match self.call(func_id, arg_ids, span) {
-            Ok(return_value_id) => return_value_id,
-            Err(e) => self.report_error_and_get_poison(e),
+        for arg_expr in args {
+            let s = arg_expr.span.clone();
+            arg_ids.push((self.build_expr(arg_expr)?, s))
         }
+
+        self.call(func_id, arg_ids, span)
     }
 }

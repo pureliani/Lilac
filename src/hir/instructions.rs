@@ -217,6 +217,10 @@ pub enum Instruction {
         target_ty: Type,
     },
     // Memory
+    StackAlloc {
+        destination: ValueId,
+        count: usize,
+    },
     HeapAlloc {
         dest: ValueId,
         count: ValueId,
@@ -250,19 +254,6 @@ pub enum Instruction {
         args: Vec<ValueId>,
     },
     // Other
-    AssembleTag {
-        dest: ValueId,
-        tag_id: u16,
-        value: Option<ValueId>,
-    },
-    GetTagId {
-        dest: ValueId,
-        src: ValueId,
-    },
-    GetTagPayload {
-        dest: ValueId,
-        src: ValueId,
-    },
     RefineType {
         dest: ValueId,
         src: ValueId,

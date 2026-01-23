@@ -13,14 +13,13 @@ use crate::{
         utils::layout::pack_struct,
     },
     tokenize::NumberKind,
-    unwrap_or_poison,
 };
 
 impl<'a> Builder<'a, InBlock> {
     pub fn build_struct_init_expr(
         &mut self,
         fields: Vec<(IdentifierNode, Expr)>,
-    ) -> ValueId {
+    ) -> Result<ValueId, SemanticError> {
         let mut resolved_fields: Vec<CheckedParam> = Vec::with_capacity(fields.len());
         let mut field_values: HashMap<StringId, ValueId> =
             HashMap::with_capacity(fields.len());
@@ -28,7 +27,7 @@ impl<'a> Builder<'a, InBlock> {
 
         for (field_name, field_expr) in fields {
             if !seen_names.insert(field_name.name) {
-                return self.report_error_and_get_poison(SemanticError {
+                return Err(SemanticError {
                     kind: SemanticErrorKind::DuplicateStructFieldInitializer(
                         field_name.clone(),
                     ),
@@ -36,7 +35,7 @@ impl<'a> Builder<'a, InBlock> {
                 });
             }
 
-            let val_id = self.build_expr(field_expr);
+            let val_id = self.build_expr(field_expr)?;
             let val_type = self.get_value_type(&val_id).clone();
 
             resolved_fields.push(CheckedParam {
@@ -50,15 +49,11 @@ impl<'a> Builder<'a, InBlock> {
         let struct_type = Type::Struct(packed_kind.clone());
 
         let count_val = self.emit_const_number(NumberKind::USize(1));
-        let struct_ptr =
-            unwrap_or_poison!(self, self.emit_heap_alloc(struct_type, count_val));
+        let struct_ptr = self.emit_heap_alloc(struct_type, count_val)?;
 
         if let StructKind::UserDefined(sorted_fields) = packed_kind {
             for field in sorted_fields {
-                let field_ptr = unwrap_or_poison!(
-                    self,
-                    self.get_field_ptr(struct_ptr, &field.identifier)
-                );
+                let field_ptr = self.get_field_ptr(struct_ptr, &field.identifier)?;
 
                 let val_id = field_values.get(&field.identifier.name).expect(
                     "INTERNAL COMPILER ERROR: Field value missing during initialization",
@@ -68,6 +63,6 @@ impl<'a> Builder<'a, InBlock> {
             }
         }
 
-        struct_ptr
+        Ok(struct_ptr)
     }
 }

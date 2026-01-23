@@ -9,13 +9,15 @@ use crate::{
     hir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
-            InModule, Phi, Place, Projection, ValueId,
+            InModule, Phi, ValueId,
         },
         errors::{SemanticError, SemanticErrorKind},
-        types::{checked_declaration::CheckedDeclaration, checked_type::Type},
+        types::{
+            checked_declaration::CheckedDeclaration,
+            checked_type::{StructKind, Type},
+        },
         utils::try_unify_types::try_unify_types,
     },
-    unwrap_or_poison,
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -129,17 +131,63 @@ impl<'a> Builder<'a, InBlock> {
         value_id
     }
 
-    pub fn get_list_buffer_ptr(&mut self, list_ptr: ValueId, span: Span) -> ValueId {
+    pub fn get_list_buffer_ptr(
+        &mut self,
+        list_ptr: ValueId,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let list_ptr_type = self.get_value_type(&list_ptr);
+
+        let is_valid = if let Type::Pointer(inner) = &list_ptr_type {
+            match &**inner {
+                Type::Struct(StructKind::ListHeader(_)) => true,
+                Type::Struct(StructKind::StringHeader) => true,
+                _ => false,
+            }
+        } else {
+            false
+        };
+
+        if !is_valid {
+            return Err(SemanticError {
+                kind: SemanticErrorKind::CannotIndex(list_ptr_type.clone()),
+                span: span.clone(),
+            });
+        }
+
         let ptr_field_node = IdentifierNode {
             name: COMMON_IDENTIFIERS.ptr,
             span: span.clone(),
         };
-        let buffer_ptr_ptr =
-            unwrap_or_poison!(self, self.get_field_ptr(list_ptr, &ptr_field_node));
-        unwrap_or_poison!(self, self.load(buffer_ptr_ptr, span))
+
+        let buffer_ptr_ptr = self.get_field_ptr(list_ptr, &ptr_field_node)?;
+
+        self.load(buffer_ptr_ptr, span)
     }
 
-    pub fn build_place(&mut self, expr: Expr) -> Result<Place, SemanticError> {
+    /// Returns pointer to lvalue
+    pub fn build_lvalue(&mut self, expr: Expr) -> Result<ValueId, SemanticError> {
+        let mut get_base_ptr = |left: Box<Expr>| {
+            let left_span = left.span.clone();
+            let left_lvalue = self.build_lvalue(*left)?;
+            let left_lvalue_type = self.get_value_type(&left_lvalue);
+
+            match left_lvalue_type {
+                // ptr<ptr<Struct>>
+                Type::Pointer(inner) if matches!(&**inner, Type::Pointer(s) if matches!(&**s, Type::Struct(_))) => {
+                    self.load(left_lvalue, left_span)
+                }
+                // ptr<Struct>
+                Type::Pointer(inner) if matches!(&**inner, Type::Struct(_)) => {
+                    Ok(left_lvalue)
+                }
+                _ => Err(SemanticError {
+                    kind: SemanticErrorKind::InvalidLValue,
+                    span: left_span,
+                }),
+            }
+        };
+
         match expr.kind {
             ExprKind::Identifier(ident) => {
                 let decl_id =
@@ -155,10 +203,7 @@ impl<'a> Builder<'a, InBlock> {
                     .expect("INTERNAL COMPILER ERROR: Declaration not found");
 
                 match decl {
-                    CheckedDeclaration::Var(var) => Ok(Place {
-                        root: var.initial_value,
-                        projections: vec![],
-                    }),
+                    CheckedDeclaration::Var(var) => Ok(var.stack_ptr),
                     _ => Err(SemanticError {
                         kind: SemanticErrorKind::InvalidLValue,
                         span: expr.span,
@@ -166,116 +211,16 @@ impl<'a> Builder<'a, InBlock> {
                 }
             }
             ExprKind::Access { left, field } => {
-                let mut place = self.build_place(*left)?;
-                place.projections.push(Projection::Field(field));
-                Ok(place)
-            }
-            ExprKind::Index { left, index } => {
-                let mut place = self.build_place(*left)?;
+                let base_ptr = get_base_ptr(left)?;
+                let field_ptr = self.get_field_ptr(base_ptr, &field)?;
 
-                let index_span = index.span.clone();
-                let index_val = self.build_expr(*index);
-                place
-                    .projections
-                    .push(Projection::Index(index_val, index_span));
-                Ok(place)
+                Ok(field_ptr)
             }
             _ => Err(SemanticError {
                 kind: SemanticErrorKind::InvalidLValue,
                 span: expr.span,
             }),
         }
-    }
-
-    pub fn read_place(
-        &mut self,
-        place: Place,
-        span: Span,
-    ) -> Result<ValueId, SemanticError> {
-        let mut current = self.get_latest_alias(place.root);
-
-        for proj in place.projections {
-            let current_ty = self.get_value_type(&current);
-
-            match proj {
-                Projection::Field(field_node) => match current_ty {
-                    Type::Pointer(_) => {
-                        current = self.get_field_ptr(current, &field_node)?;
-                    }
-                    Type::Tag(_) => {
-                        if field_node.name == COMMON_IDENTIFIERS.value {
-                            current = self.emit_get_tag_payload(current).ok_or(
-                                SemanticError {
-                                    kind: SemanticErrorKind::AccessToUndefinedField(
-                                        field_node.clone(),
-                                    ),
-                                    span: field_node.span.clone(),
-                                },
-                            )?;
-                        }
-                    }
-                    _ => {
-                        return Err(SemanticError {
-                            kind: SemanticErrorKind::CannotAccess(current_ty.clone()),
-                            span: field_node.span,
-                        })
-                    }
-                },
-                Projection::Index(offset, s) => {
-                    let buffer_ptr = self.get_list_buffer_ptr(current, s.clone());
-                    current =
-                        unwrap_or_poison!(self, self.ptr_offset(buffer_ptr, offset, s));
-                }
-            }
-        }
-
-        if matches!(self.get_value_type(&current), Type::Pointer { .. }) {
-            Ok(unwrap_or_poison!(self, self.load(current, span)))
-        } else {
-            Ok(current)
-        }
-    }
-
-    pub fn write_place(
-        &mut self,
-        place: &Place,
-        value: ValueId,
-        span: Span,
-    ) -> Result<(), SemanticError> {
-        let mut current = self.get_latest_alias(place.root);
-
-        for projection in &place.projections {
-            let current_ty = self.get_value_type(&current);
-
-            match projection {
-                Projection::Field(field_node) => match current_ty {
-                    Type::Pointer(to) => {
-                        if let Type::Struct(s) = &**to {
-                            current = self.get_field_ptr(current, field_node)?;
-                        }
-                    }
-                    Type::Tag(_) => {
-                        if field_node.name == COMMON_IDENTIFIERS.value {
-                            todo!()
-                        }
-                    }
-                    unexpected_ty => {
-                        return Err(SemanticError {
-                            kind: SemanticErrorKind::TypeMismatchExpectedOneOf {
-                                expected: todo!(),
-                                received: todo!(),
-                            },
-                            span: field_node.span,
-                        })
-                    }
-                },
-                Projection::Index(offset, s) => {
-                    todo!()
-                }
-            }
-        }
-
-        Ok(())
     }
 
     pub fn get_latest_alias(&mut self, initial_id: ValueId) -> ValueId {
@@ -378,9 +323,9 @@ impl<'a> Builder<'a, InBlock> {
 
         let block_id = self.context.block_id;
         let incomplete = self.incomplete_phis.remove(&block_id).unwrap_or_default();
-        for (phi_val, identity_id) in incomplete {
-            self.add_phi_operands(block_id, identity_id, phi_val);
-        }
+
+        todo!();
+
         self.bb_mut().sealed = true;
     }
 
@@ -389,10 +334,5 @@ impl<'a> Builder<'a, InBlock> {
         self.context.block_id = block_id;
         self.seal();
         self.context.block_id = old_block;
-    }
-
-    pub fn report_error_and_get_poison(&mut self, error: SemanticError) -> ValueId {
-        self.as_program().errors.push(error);
-        self.new_value_id(Type::Unknown)
     }
 }

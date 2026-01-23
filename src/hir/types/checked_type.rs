@@ -1,13 +1,22 @@
 use crate::{
     compile::interner::StringId,
     globals::COMMON_IDENTIFIERS,
-    hir::types::checked_declaration::{CheckedParam, FnType, TagType},
+    hir::{
+        types::checked_declaration::{CheckedParam, FnType, TagType},
+        utils::layout::get_layout_of,
+    },
 };
-use std::hash::Hash;
+use std::{collections::BTreeSet, hash::Hash};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum StructKind {
     UserDefined(Vec<CheckedParam>), // packed
+
+    /// { id: u16, value: T }
+    Tag(TagType),
+
+    /// { id: u16, value: Buffer }
+    Union(BTreeSet<TagType>),
 
     /// { capacity: usize, len: usize, ptr: ptr<T> }
     ListHeader(Box<Type>),
@@ -35,6 +44,36 @@ impl StructKind {
                 (COMMON_IDENTIFIERS.len, Type::USize),
                 (COMMON_IDENTIFIERS.ptr, Type::Pointer(Box::new(Type::U8))),
             ],
+            StructKind::Tag(tag) => {
+                let mut fields = vec![(COMMON_IDENTIFIERS.id, Type::U16)];
+                if let Some(val) = &tag.value_type {
+                    fields.push((COMMON_IDENTIFIERS.value, *val.clone()));
+                }
+                fields
+            }
+            StructKind::Union(variants) => {
+                let mut max_size = 0;
+                let mut max_align = 1;
+
+                for tag_type in variants {
+                    if let Some(val_ty) = &tag_type.value_type {
+                        let layout = get_layout_of(val_ty);
+                        max_size = std::cmp::max(max_size, layout.size);
+                        max_align = std::cmp::max(max_align, layout.alignment);
+                    }
+                }
+
+                vec![
+                    (COMMON_IDENTIFIERS.id, Type::U16),
+                    (
+                        COMMON_IDENTIFIERS.value,
+                        Type::Buffer {
+                            size: max_size,
+                            alignment: max_align,
+                        },
+                    ),
+                ]
+            }
         }
     }
 
@@ -48,7 +87,7 @@ impl StructKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Type {
     Void,
     Bool,
@@ -66,10 +105,6 @@ pub enum Type {
     F64,
 
     Pointer(Box<Type>),
-
-    Tag(TagType),
-
-    Union(Vec<TagType>),
 
     /// Represents any block of memory with named fields
     Struct(StructKind),

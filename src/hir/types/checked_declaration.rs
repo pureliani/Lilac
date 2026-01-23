@@ -1,4 +1,7 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    cmp::Ordering,
+    hash::{Hash, Hasher},
+};
 
 use crate::{
     ast::{DeclarationId, IdentifierNode, Span},
@@ -14,6 +17,21 @@ use crate::{
 pub struct CheckedParam {
     pub identifier: IdentifierNode,
     pub ty: Type,
+}
+
+impl Ord for CheckedParam {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.ty.cmp(&other.ty) {
+            Ordering::Equal => self.identifier.cmp(&other.identifier),
+            other_order => other_order,
+        }
+    }
+}
+
+impl PartialOrd for CheckedParam {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -36,7 +54,22 @@ impl Hash for TagType {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+impl Ord for TagType {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.id.0.cmp(&other.id.0) {
+            Ordering::Equal => self.value_type.cmp(&other.value_type),
+            ord => ord,
+        }
+    }
+}
+
+impl PartialOrd for TagType {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FnType {
     pub params: Vec<CheckedParam>,
     pub return_type: Box<Type>,
@@ -69,7 +102,8 @@ impl Hash for CheckedTypeAliasDecl {
 #[derive(Clone, Debug)]
 pub struct CheckedVarDecl {
     pub id: DeclarationId,
-    pub initial_value: ValueId,
+    // Pointer to stack slot where the value is stored
+    pub stack_ptr: ValueId,
     pub identifier: IdentifierNode,
     pub documentation: Option<DocAnnotation>,
     pub constraint: Type,

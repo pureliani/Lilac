@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     hash::{Hash, Hasher},
     path::PathBuf,
     sync::Arc,
@@ -27,6 +28,18 @@ impl PartialEq for IdentifierNode {
 impl Hash for IdentifierNode {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
+    }
+}
+
+impl Ord for IdentifierNode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.name.0.cmp(&other.name.0)
+    }
+}
+
+impl PartialOrd for IdentifierNode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 

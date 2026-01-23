@@ -58,37 +58,18 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
         Type::F32 => String::from("f32"),
         Type::F64 => String::from("f64"),
         Type::Unknown => String::from("unknown"),
+        Type::Never => String::from("never"),
         Type::Struct(s) => struct_to_string(s, visited_set),
         Type::Fn(fn_type) => fn_signature_to_string(fn_type, visited_set),
-        Type::Pointer {
-            constraint,
-            narrowed_to,
-        } => {
-            if constraint == narrowed_to {
-                format!("ptr<{}>", type_to_string_recursive(constraint, visited_set))
+        Type::Pointer(to) => {
+            if std::env::var("DUMP_HIR").is_ok() {
+                format!("ptr<{}>", type_to_string_recursive(to, visited_set))
             } else {
-                format!(
-                    "ptr<{} narrowed to {}>",
-                    type_to_string_recursive(constraint, visited_set),
-                    type_to_string_recursive(narrowed_to, visited_set)
-                )
+                type_to_string_recursive(to, visited_set)
             }
         }
         Type::Buffer { size, alignment } => {
             format!("Buffer(size={}, align={})", size, alignment)
-        }
-        Type::Tag(tag_type) => tag_type_to_string(tag_type, visited_set),
-        Type::Union(variants) => {
-            if variants.is_empty() {
-                return String::from("<empty union>");
-            }
-            let variants_str = variants
-                .iter()
-                .map(|tag| tag_type_to_string(tag, visited_set))
-                .collect::<Vec<String>>()
-                .join(" | ");
-
-            variants_str
         }
     };
 
@@ -118,6 +99,19 @@ fn fn_signature_to_string(fn_type: &FnType, visited_set: &mut HashSet<Type>) -> 
 
 fn struct_to_string(s: &StructKind, visited_set: &mut HashSet<Type>) -> String {
     match s {
+        StructKind::Tag(tag_type) => tag_type_to_string(tag_type, visited_set),
+        StructKind::Union(variants) => {
+            if variants.is_empty() {
+                return String::from("<empty union>");
+            }
+            let variants_str = variants
+                .iter()
+                .map(|tag| tag_type_to_string(tag, visited_set))
+                .collect::<Vec<String>>()
+                .join(" | ");
+
+            variants_str
+        }
         StructKind::UserDefined(fields) => {
             let fields_str = fields
                 .iter()

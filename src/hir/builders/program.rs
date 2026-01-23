@@ -104,7 +104,6 @@ impl<'a> Builder<'a, InModule> {
             entry_block: BasicBlockId(0),
             blocks: HashMap::new(),
             value_definitions: HashMap::new(),
-            predicates: HashMap::new(),
         };
 
         self.program

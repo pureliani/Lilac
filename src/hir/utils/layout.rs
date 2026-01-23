@@ -28,37 +28,16 @@ const USIZE_ALIGN: usize = size_of::<usize>();
 /// IMPORTANT: Make sure user-defined and closure-environment structs are packed first before calling this function
 pub fn get_layout_of(ty: &Type) -> Layout {
     match ty {
-        Type::Tag(tag) => {
-            if let Some(payload_ty) = &tag.value_type {
-                calculate_fields_layout(&[&Type::U16, payload_ty])
-            } else {
-                Layout::new(2, 2)
-            }
-        }
-        Type::Union(variants) => {
-            let mut max_size = 0;
-            let mut max_align = 2;
-            for v in variants {
-                let l = get_layout_of(&Type::Tag(v.clone()));
-                max_size = max_size.max(l.size);
-                max_align = max_align.max(l.alignment);
-            }
-            Layout::new(max_size, max_align)
-        }
         Type::Void => Layout::new(0, 1),
         Type::Bool | Type::U8 | Type::I8 => Layout::new(1, 1),
         Type::U16 | Type::I16 => Layout::new(2, 2),
         Type::U32 | Type::I32 | Type::F32 => Layout::new(4, 4),
         Type::U64 | Type::I64 | Type::F64 => Layout::new(8, 8),
-
-        Type::Pointer { .. } | Type::Fn(_) | Type::USize | Type::ISize => {
+        Type::Pointer(_) | Type::Fn(_) | Type::USize | Type::ISize => {
             Layout::new(USIZE_SIZE, USIZE_ALIGN)
         }
-
         Type::Buffer { size, alignment } => Layout::new(*size, *alignment),
-
-        Type::Unknown => Layout::new(0, 1),
-
+        Type::Unknown | Type::Never => Layout::new(0, 1),
         Type::Struct(s) => {
             let fields = s.fields();
             let types: Vec<&Type> = fields.iter().map(|(_, ty)| ty).collect();

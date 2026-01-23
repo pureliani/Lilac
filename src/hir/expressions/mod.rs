@@ -7,7 +7,6 @@ pub mod r#fn;
 pub mod fn_call;
 pub mod identifier;
 pub mod r#if;
-pub mod index;
 pub mod is_variant;
 pub mod list_literal;
 pub mod r#match;
@@ -22,12 +21,15 @@ pub mod unary_op;
 
 use crate::{
     ast::expr::{Expr, ExprKind},
-    hir::builders::{Builder, InBlock, ValueId},
-    hir::expressions::r#if::IfContext,
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        errors::SemanticError,
+        expressions::r#if::IfContext,
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_expr(&mut self, expr: Expr) -> ValueId {
+    pub fn build_expr(&mut self, expr: Expr) -> Result<ValueId, SemanticError> {
         let span = expr.span.clone();
         match expr.kind {
             ExprKind::Not { right } => self.build_not_expr(right),
@@ -65,8 +67,6 @@ impl<'a> Builder<'a, InBlock> {
             ExprKind::StaticAccess { left, field } => {
                 self.build_static_access_expr(left, field)
             }
-            ExprKind::Index { left, index } => self.build_index_expr(left, index),
-
             ExprKind::If {
                 branches,
                 else_branch,

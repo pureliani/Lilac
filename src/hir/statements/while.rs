@@ -18,7 +18,13 @@ impl<'a> Builder<'a, InBlock> {
         self.use_basic_block(header_block_id);
 
         let condition_span = condition.span.clone();
-        let cond_id = self.build_expr(*condition);
+        let cond_id = match self.build_expr(*condition) {
+            Ok(id) => id,
+            Err(e) => {
+                self.errors.push(e);
+                return;
+            }
+        };
         let cond_ty = self.get_value_type(&cond_id);
 
         if !check_is_assignable(cond_ty, &Type::Bool) {
@@ -29,18 +35,6 @@ impl<'a> Builder<'a, InBlock> {
                     received: cond_ty.clone(),
                 },
             });
-        }
-
-        if let Some(pred) = self.get_fn().predicates.get(&cond_id).cloned() {
-            self.definitions
-                .entry(body_block_id)
-                .or_default()
-                .insert(pred.source, pred.true_id);
-
-            self.definitions
-                .entry(exit_block_id)
-                .or_default()
-                .insert(pred.source, pred.false_id);
         }
 
         self.cond_jmp(cond_id, body_block_id, exit_block_id);

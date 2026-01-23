@@ -57,7 +57,6 @@ fn suffix_bp(token_kind: &TokenKind) -> Option<(u8, ())> {
         Punctuation(LParen) => (14, ()),    // fn call
         Punctuation(Dot) => (14, ()),       // member access
         Punctuation(DoubleCol) => (14, ()), // static member accesses
-        Punctuation(LBracket) => (14, ()),  // array index
         _ => return None,
     };
 
@@ -284,20 +283,6 @@ impl Parser {
                         };
 
                         Some(new_lhs)
-                    }
-                    TokenKind::Punctuation(PunctuationKind::LBracket) => {
-                        let start_offset = self.offset;
-                        self.consume_punctuation(PunctuationKind::LBracket)?;
-                        let index = self.parse_expr(0)?;
-                        self.consume_punctuation(PunctuationKind::RBracket)?;
-
-                        Some(Expr {
-                            kind: ExprKind::Index {
-                                left: Box::new(lhs_clone),
-                                index: Box::new(index),
-                            },
-                            span: self.get_span(start_offset, self.offset - 1)?,
-                        })
                     }
                     TokenKind::Punctuation(PunctuationKind::LParen) => {
                         Some(self.parse_fn_call_expr(lhs.clone())?)

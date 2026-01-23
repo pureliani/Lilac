@@ -54,7 +54,6 @@ impl<'a> Builder<'a, InModule> {
             entry_block: entry_block_id,
             blocks: HashMap::new(),
             value_definitions: HashMap::new(),
-            predicates: HashMap::new(),
         };
 
         self.program
@@ -81,7 +80,7 @@ impl<'a> Builder<'a, InModule> {
             instructions: vec![],
             terminator: None,
             predecessors: HashSet::new(),
-            phis: vec![],
+            phis: HashMap::new(),
             sealed: true,
         };
         fn_builder.get_fn().blocks.insert(entry_block_id, entry_bb);
@@ -98,7 +97,7 @@ impl<'a> Builder<'a, InModule> {
             let param_var_id = next_declaration_id();
             let decl = CheckedVarDecl {
                 id: param_var_id,
-                initial_value: identity_id,
+                stack_ptr: identity_id,
                 identifier: param.identifier.clone(),
                 documentation: None,
                 constraint: param.ty.clone(),
@@ -115,7 +114,13 @@ impl<'a> Builder<'a, InModule> {
         }
 
         let body_span = body.span.clone();
-        let final_value = fn_builder.build_codeblock_expr(body);
+        let final_value = match fn_builder.build_codeblock_expr(body) {
+            Ok(id) => id,
+            Err(e) => {
+                self.errors.push(e);
+                return;
+            }
+        };
         let final_value_type = fn_builder.get_value_type(&final_value).clone();
 
         if !check_is_assignable(&final_value_type, &checked_return_type) {
@@ -133,9 +138,9 @@ impl<'a> Builder<'a, InModule> {
 }
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> ValueId {
+    pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> Result<ValueId, SemanticError> {
         let id = fn_decl.id;
         self.as_module().build_fn_body(fn_decl);
-        self.emit_const_fn(id)
+        Ok(self.emit_const_fn(id))
     }
 }

@@ -5,7 +5,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, Terminator},
         types::{
-            checked_declaration::{CheckedDeclaration, FnType},
+            checked_declaration::{CheckedDeclaration, FnType, TagType},
             checked_type::{StructKind, Type},
         },
         utils::{
@@ -382,6 +382,12 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     // Memory
+
+    pub fn emit_stack_alloc(&mut self, ty: Type, count: usize) -> ValueId {
+        let destination = self.new_value_id(Type::Pointer(Box::new(ty)));
+        self.push_instruction(Instruction::StackAlloc { destination, count });
+        destination
+    }
 
     pub fn emit_heap_alloc(
         &mut self,
@@ -969,19 +975,14 @@ impl<'a> Builder<'a, InBlock> {
         Ok(self.emit_load(ptr))
     }
 
-    pub fn store(
-        &mut self,
-        ptr: ValueId,
-        value: ValueId,
-        span: Span,
-    ) -> Result<ValueId, SemanticError> {
+    pub fn store(&mut self, ptr: ValueId, value: ValueId, span: Span) {
         let ptr_ty = self.get_value_type(&ptr).clone();
         let val_ty = self.get_value_type(&value).clone();
 
         match ptr_ty {
             Type::Pointer(to) => {
                 if !check_is_assignable(&val_ty, &to) {
-                    return Err(SemanticError {
+                    self.as_program().errors.push(SemanticError {
                         kind: SemanticErrorKind::TypeMismatch {
                             expected: *to.clone(),
                             received: val_ty.clone(),
@@ -992,7 +993,7 @@ impl<'a> Builder<'a, InBlock> {
                 self.emit_store(ptr, value);
             }
             _ => {
-                return Err(SemanticError {
+                self.as_program().errors.push(SemanticError {
                     kind: SemanticErrorKind::TypeMismatch {
                         expected: Type::Pointer(Box::new(Type::Unknown)),
                         received: ptr_ty.clone(),
@@ -1162,119 +1163,7 @@ impl<'a> Builder<'a, InBlock> {
         Ok(self.emit_refine_type(src, new_type))
     }
 
-    pub fn emit_assemble_tag(
-        &mut self,
-        tag_type: Type,
-        inner_value: Option<ValueId>,
-        span: Span,
-    ) -> ValueId {
-        let tag_id = match &tag_type {
-            Type::Tag(tag) => tag.id.0,
-            Type::Unknown => return self.new_value_id(Type::Unknown),
-            _ => panic!(
-                "INTERNAL COMPILER ERROR: emit_assemble_tag called with non-tag type: \
-                 {:?}",
-                tag_type
-            ),
-        };
-
-        if let Type::Tag(tag_meta) = &tag_type {
-            match (inner_value, &tag_meta.value_type) {
-                (Some(val_id), Some(expected_ty)) => {
-                    let actual_ty = self.get_value_type(&val_id);
-                    if !check_is_assignable(actual_ty, expected_ty) {
-                        self.errors.push(SemanticError {
-                            kind: SemanticErrorKind::TypeMismatch {
-                                expected: *expected_ty.clone(),
-                                received: actual_ty.clone(),
-                            },
-                            span,
-                        });
-                    }
-                }
-                (None, None) => {}
-                (Some(received_valueid), None) => {
-                    let received_type = self.get_value_type(&received_valueid);
-                    self.errors.push(SemanticError {
-                        kind: SemanticErrorKind::ExpectedTagWithoutValue {
-                            received: received_type.clone(),
-                        },
-                        span,
-                    });
-                }
-                (None, Some(expected)) => {
-                    self.errors.push(SemanticError {
-                        kind: SemanticErrorKind::ExpectedTagWithValue {
-                            expected: *expected.clone(),
-                        },
-                        span,
-                    });
-                }
-            }
-        }
-
-        let dest = self.new_value_id(tag_type);
-        self.push_instruction(Instruction::AssembleTag {
-            dest,
-            tag_id,
-            value: inner_value,
-        });
-        dest
-    }
-
-    pub fn emit_get_tag_id(&mut self, src: ValueId) -> ValueId {
-        let src_ty = self.get_value_type(&src);
-
-        if !matches!(src_ty, Type::Tag(_) | Type::Union(_) | Type::Unknown) {
-            panic!(
-                "INTERNAL COMPILER ERROR: Cannot get tag ID from non-sum type: {:?}",
-                src_ty
-            );
-        }
-
-        let dest = self.new_value_id(Type::U16);
-        self.push_instruction(Instruction::GetTagId { dest, src });
-        dest
-    }
-
-    pub fn emit_get_tag_payload(&mut self, src: ValueId) -> Option<ValueId> {
-        let src_ty = self.get_value_type(&src);
-
-        match src_ty {
-            Type::Tag(t) => {
-                if let Some(inner) = &t.value_type {
-                    let dest = self.new_value_id(*inner.clone());
-                    self.push_instruction(Instruction::GetTagPayload { dest, src });
-                    Some(dest)
-                } else {
-                    None
-                }
-            }
-            Type::Union(variants) => {
-                let mut payload_types = Vec::new();
-                for v in variants {
-                    if let Some(ty) = &v.value_type {
-                        payload_types.push((*ty.clone(), v.span.clone()));
-                    }
-                }
-
-                if payload_types.is_empty() {
-                    return None;
-                }
-
-                let payload_spanless_types: Vec<Type> =
-                    payload_types.iter().map(|pt| pt.0.clone()).collect();
-                let unified_ty = try_unify_types(&payload_spanless_types);
-
-                let dest = self.new_value_id(unified_ty);
-                self.push_instruction(Instruction::GetTagPayload { dest, src });
-                Some(dest)
-            }
-            Type::Unknown => Some(self.new_value_id(Type::Unknown)),
-            _ => panic!(
-            "INTERNAL COMPILER ERROR: Attempted to extract payload from non-sum type: {}",
-            type_to_string(src_ty)
-        ),
-        }
+    pub fn make_tag(&mut self, tag: TagType, value: ValueId) -> ValueId {
+        todo!()
     }
 }

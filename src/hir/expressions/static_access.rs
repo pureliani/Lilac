@@ -1,6 +1,9 @@
 use crate::{
     ast::{expr::Expr, IdentifierNode},
-    hir::builders::{Builder, InBlock, ValueId},
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        errors::SemanticError,
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -8,7 +11,7 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         left: Box<Expr>,
         field: IdentifierNode,
-    ) -> ValueId {
+    ) -> Result<ValueId, SemanticError> {
         todo!("Implement static access expression builder")
     }
 }

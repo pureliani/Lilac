@@ -1,14 +1,15 @@
 use crate::{
     ast::expr::Expr,
-    hir::builders::{Builder, InBlock, ValueId},
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        errors::SemanticError,
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_access_expr(&mut self, expr: Expr) -> ValueId {
+    pub fn build_access_expr(&mut self, expr: Expr) -> Result<ValueId, SemanticError> {
         let s = expr.span.clone();
-        match self.build_place(expr) {
-            Ok(place) => self.read_place(place, s),
-            Err(e) => self.report_error_and_get_poison(e),
-        }
+        let field_ptr = self.build_lvalue(expr)?;
+        self.load(field_ptr, s)
     }
 }

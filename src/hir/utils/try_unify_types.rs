@@ -1,64 +1,35 @@
+use std::collections::BTreeSet;
+
 use crate::{
     compile::interner::TagId,
-    hir::{
-        builders::Projection,
-        types::{
-            checked_declaration::TagType,
-            checked_type::{StructKind, Type},
-        },
+    hir::types::{
+        checked_declaration::TagType,
+        checked_type::{StructKind, Type},
     },
 };
-
-pub fn narrow_type_at_path(base: &Type, path: &[Projection], leaf_type: &Type) -> Type {
-    if path.is_empty() {
-        return leaf_type.clone();
-    }
-
-    match (&path[0], base) {
-        (Projection::Field(field_node), Type::Pointer(ptr_to)) => {
-            if let Type::Struct(StructKind::UserDefined(fields)) = &**ptr_to {
-                let idx = fields
-                    .iter()
-                    .position(|f| f.identifier.name == field_node.name)
-                    .expect("INTERNAL COMPILER ERROR: Field not found during narrowing");
-
-                let mut new_fields = fields.clone();
-                new_fields[idx].ty =
-                    narrow_type_at_path(&fields[idx].ty, &path[1..], leaf_type);
-
-                Type::Pointer(Box::new(Type::Struct(StructKind::UserDefined(new_fields))))
-            } else {
-                panic!("INTERNAL COMPILER ERROR: Used Projection::Field on a pointer to non-struct type")
-            }
-        }
-        (Projection::Index(..), _) => base.clone(),
-        _ => base.clone(),
-    }
-}
 
 pub fn try_unify_types(entries: &[Type]) -> Type {
     if entries.is_empty() {
         return Type::Void;
     }
 
-    let all_tags = entries
-        .iter()
-        .all(|t| matches!(t, Type::Tag(_) | Type::Union { .. }));
+    let all_tags = entries.iter().all(|t| {
+        matches!(
+            t,
+            Type::Struct(StructKind::Tag(_)) | Type::Struct(StructKind::Union(_))
+        )
+    });
 
     if all_tags {
-        let mut collected_tags: Vec<TagType> = Vec::new();
+        let mut collected_tags: BTreeSet<TagType> = BTreeSet::new();
         for ty in entries {
             match ty {
-                Type::Tag(tag) => {
-                    if !collected_tags.contains(tag) {
-                        collected_tags.push(tag.clone());
-                    }
+                Type::Struct(StructKind::Tag(tag)) => {
+                    collected_tags.insert(tag.clone());
                 }
-                Type::Union(variants) => {
+                Type::Struct(StructKind::Union(variants)) => {
                     for tag in variants {
-                        if !collected_tags.contains(tag) {
-                            collected_tags.push(tag.clone());
-                        }
+                        collected_tags.insert(tag.clone());
                     }
                 }
                 _ => unreachable!(),
@@ -77,8 +48,8 @@ pub fn subtract_types(base: &Type, to_remove: &[TagId]) -> Type {
             let subtracted_inner = subtract_types(to, to_remove);
             Type::Pointer(Box::new(subtracted_inner))
         }
-        Type::Union(variants) => {
-            let remaining: Vec<TagType> = variants
+        Type::Struct(StructKind::Union(variants)) => {
+            let remaining: BTreeSet<TagType> = variants
                 .iter()
                 .filter(|v| !to_remove.contains(&v.id))
                 .cloned()
@@ -86,7 +57,7 @@ pub fn subtract_types(base: &Type, to_remove: &[TagId]) -> Type {
 
             wrap_variants(remaining)
         }
-        Type::Tag(t) => {
+        Type::Struct(StructKind::Tag(t)) => {
             if to_remove.contains(&t.id) {
                 Type::Void
             } else {
@@ -103,8 +74,8 @@ pub fn intersect_types(base: &Type, allowed: &[TagId]) -> Type {
             let intersected_inner = intersect_types(to, allowed);
             Type::Pointer(Box::new(intersected_inner))
         }
-        Type::Union(variants) => {
-            let kept: Vec<TagType> = variants
+        Type::Struct(StructKind::Union(variants)) => {
+            let kept: BTreeSet<TagType> = variants
                 .iter()
                 .filter(|v| allowed.contains(&v.id))
                 .cloned()
@@ -112,7 +83,7 @@ pub fn intersect_types(base: &Type, allowed: &[TagId]) -> Type {
 
             wrap_variants(kept)
         }
-        Type::Tag(t) => {
+        Type::Struct(StructKind::Tag(t)) => {
             if allowed.contains(&t.id) {
                 base.clone()
             } else {
@@ -124,16 +95,14 @@ pub fn intersect_types(base: &Type, allowed: &[TagId]) -> Type {
     }
 }
 
-fn wrap_variants(mut variants: Vec<TagType>) -> Type {
+fn wrap_variants(variants: BTreeSet<TagType>) -> Type {
     if variants.is_empty() {
         return Type::Never;
     }
 
     if variants.len() == 1 {
-        return Type::Tag(variants.pop().unwrap());
+        return Type::Struct(StructKind::Tag(variants.last().cloned().unwrap()));
     }
 
-    variants.sort_by(|a, b| a.id.0.cmp(&b.id.0));
-
-    Type::Union(variants)
+    Type::Struct(StructKind::Union(variants))
 }

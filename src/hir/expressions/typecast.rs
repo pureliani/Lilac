@@ -2,6 +2,7 @@ use crate::{
     ast::{expr::Expr, type_annotation::TypeAnnotation},
     hir::{
         builders::{Builder, InBlock, ValueId},
+        errors::SemanticError,
         utils::check_type::{check_type_annotation, TypeCheckerContext},
     },
 };
@@ -11,9 +12,9 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         left: Box<Expr>,
         target: TypeAnnotation,
-    ) -> ValueId {
+    ) -> Result<ValueId, SemanticError> {
         let value_span = left.span.clone();
-        let src_id = self.build_expr(*left);
+        let src_id = self.build_expr(*left)?;
 
         let mut type_ctx = TypeCheckerContext {
             scope: self.current_scope.clone(),
@@ -22,9 +23,6 @@ impl<'a> Builder<'a, InBlock> {
         };
         let target_type = check_type_annotation(&mut type_ctx, &target);
 
-        match self.cast(src_id, target_type, value_span) {
-            Ok(id) => id,
-            Err(e) => self.report_error_and_get_poison(e),
-        }
+        self.cast(src_id, target_type, value_span)
     }
 }

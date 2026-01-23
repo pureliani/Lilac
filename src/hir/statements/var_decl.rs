@@ -23,7 +23,13 @@ impl<'a> Builder<'a, InBlock> {
 
         let initial_value_span = var_decl.value.span.clone();
 
-        let val_id = self.build_expr(var_decl.value);
+        let val_id = match self.build_expr(var_decl.value) {
+            Ok(id) => id,
+            Err(e) => {
+                self.errors.push(e);
+                return;
+            }
+        };
         let val_type = self.get_value_type(&val_id).clone();
 
         let constraint = if let Some(annotation) = &var_decl.constraint {
@@ -58,7 +64,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
-            initial_value: identity_id,
+            stack_ptr: identity_id,
             identifier: var_decl.identifier.clone(),
             documentation: var_decl.documentation,
             constraint,

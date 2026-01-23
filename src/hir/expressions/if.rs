@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     ast::{
         expr::{BlockContents, Expr},
@@ -27,10 +29,10 @@ impl<'a> Builder<'a, InBlock> {
         branches: Vec<(Box<Expr>, BlockContents)>,
         else_branch: Option<BlockContents>,
         context: IfContext,
-    ) -> ValueId {
+    ) -> Result<ValueId, SemanticError> {
         if context == IfContext::Expression && else_branch.is_none() {
             let span = branches.first().unwrap().0.span.clone();
-            return self.report_error_and_get_poison(SemanticError {
+            return Err(SemanticError {
                 kind: SemanticErrorKind::IfExpressionMissingElse,
                 span,
             });
@@ -53,7 +55,7 @@ impl<'a> Builder<'a, InBlock> {
             self.use_basic_block(current_cond_block_id);
 
             let condition_span = condition.span.clone();
-            let cond_id = self.build_expr(*condition);
+            let cond_id = self.build_expr(*condition)?;
             let cond_ty = self.get_value_type(&cond_id);
 
             if !check_is_assignable(cond_ty, &Type::Bool) {
@@ -69,24 +71,12 @@ impl<'a> Builder<'a, InBlock> {
             let then_block_id = self.as_fn().new_bb();
             let next_cond_block_id = self.as_fn().new_bb();
 
-            if let Some(pred) = self.get_fn().predicates.get(&cond_id).cloned() {
-                self.definitions
-                    .entry(then_block_id)
-                    .or_default()
-                    .insert(pred.source, pred.true_id);
-
-                self.definitions
-                    .entry(next_cond_block_id)
-                    .or_default()
-                    .insert(pred.source, pred.false_id);
-            }
-
             self.cond_jmp(cond_id, then_block_id, next_cond_block_id);
 
             self.seal_block(then_block_id);
             self.use_basic_block(then_block_id);
             let final_expr_span = get_final_expr_span(&body);
-            let then_val = self.build_codeblock_expr(body);
+            let then_val = self.build_codeblock_expr(body)?;
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, then_val, final_expr_span));
@@ -99,7 +89,7 @@ impl<'a> Builder<'a, InBlock> {
         self.use_basic_block(current_cond_block_id);
         if let Some(else_body) = else_branch {
             let final_expr_span = get_final_expr_span(&else_body);
-            let else_val = self.build_codeblock_expr(else_body);
+            let else_val = self.build_codeblock_expr(else_body)?;
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, else_val, final_expr_span));
@@ -120,24 +110,19 @@ impl<'a> Builder<'a, InBlock> {
                 .map(|(_, val, span)| (self.get_value_type(val).clone(), span.clone()))
                 .collect();
 
-            let result_type = match try_unify_types(&type_entries) {
-                Ok(ty) => ty,
-                Err(e) => {
-                    self.errors.push(e);
-                    Type::Unknown
-                }
-            };
+            // TODO: fix try_unify_types
+            let result_type = try_unify_types(&type_entries);
 
             let result_id = self.new_value_id(result_type);
-            let phi_operands: Vec<Phi> = branch_results
+            let phi_operands: HashSet<Phi> = branch_results
                 .into_iter()
                 .map(|(block, value, _)| Phi { from: block, value })
                 .collect();
 
-            self.bb_mut().phis.push((result_id, phi_operands));
-            result_id
+            self.bb_mut().phis.insert(result_id, phi_operands);
+            Ok(result_id)
         } else {
-            self.emit_const_void()
+            Ok(self.emit_const_void())
         }
     }
 }

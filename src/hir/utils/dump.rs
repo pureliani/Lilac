@@ -1,6 +1,5 @@
 use crate::{
-    compile::interner::TagId,
-    globals::{STRING_INTERNER, TAG_INTERNER},
+    globals::STRING_INTERNER,
     hir::{
         builders::{BasicBlockId, Function, Program, ValueId},
         instructions::{Instruction, Terminator},
@@ -232,12 +231,27 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
             Instruction::HeapFree { ptr } => {
                 writeln!(out, "free(v{})", ptr.0).unwrap();
             }
+            Instruction::StackAlloc { destination, count } => {
+                let inner_ty = match &p.value_types[destination] {
+                    Type::Pointer(to) => type_to_string(to),
+                    _ => "unknown".to_string(),
+                };
+                writeln!(
+                    out,
+                    "v{}: {} = stackAlloc({} x {});",
+                    destination.0,
+                    get_vt(p, destination),
+                    count,
+                    inner_ty
+                )
+                .unwrap();
+            }
             Instruction::HeapAlloc {
                 dest: destination,
                 count,
             } => {
                 let inner_ty = match &p.value_types[destination] {
-                    Type::Pointer { constraint, .. } => type_to_string(constraint),
+                    Type::Pointer(to) => type_to_string(to),
                     _ => "unknown".to_string(),
                 };
                 writeln!(
@@ -274,7 +288,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
             } => {
                 let base_ty = &p.value_types[base_ptr];
                 let field_name = match base_ty {
-                    Type::Pointer { narrowed_to, .. } => match &**narrowed_to {
+                    Type::Pointer(to) => match &**to {
                         Type::Struct(s) => {
                             STRING_INTERNER.resolve(s.fields()[*field_index].0)
                         }
@@ -340,45 +354,6 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     dest.0, &new_t, src.0, new_t
                 )
                 .unwrap();
-            }
-            Instruction::AssembleTag {
-                dest,
-                tag_id,
-                value,
-            } => {
-                let s_id = TAG_INTERNER.resolve(TagId(*tag_id));
-                let t_name = STRING_INTERNER.resolve(s_id);
-
-                let inner_value_str = value
-                    .map(|v_id| format!("(v{})", v_id.0))
-                    .unwrap_or_default();
-
-                let inner_type = value.map(|v_id| get_vt(p, &v_id)).unwrap_or_default();
-                let inner_type_str = format!("({})", inner_type);
-
-                let type_tag = format!("#{}{}", t_name, inner_type_str);
-                let value_tag = format!("#{}{}", t_name, inner_value_str);
-
-                writeln!(out, "v{}: {} = {};", dest.0, type_tag, value_tag).unwrap();
-            }
-            Instruction::GetTagId { dest, src } => {
-                let dest_ty = get_vt(p, dest);
-                let tag_id = match p.value_types.get(src) {
-                    Some(Type::Tag(t)) => t.id.0,
-                    _ => panic!("INTERNAL COMPILER ERROR: GetTagId on non tag type"),
-                };
-
-                writeln!(
-                    out,
-                    "v{}: {} = v{}::id (id is {});",
-                    dest.0, dest_ty, src.0, tag_id
-                )
-                .unwrap();
-            }
-            Instruction::GetTagPayload { dest, src } => {
-                let dest_ty = get_vt(p, dest);
-
-                writeln!(out, "v{}: {} = v{}::value;", dest.0, dest_ty, src.0,).unwrap();
             }
 
             Instruction::Nop => {}

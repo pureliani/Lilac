@@ -1,8 +1,5 @@
 use crate::{
-    ast::{
-        expr::{Expr, ExprKind},
-        IdentifierNode,
-    },
+    ast::IdentifierNode,
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
@@ -11,11 +8,14 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_identifier_expr(&mut self, identifier: IdentifierNode) -> ValueId {
+    pub fn build_identifier_expr(
+        &mut self,
+        identifier: IdentifierNode,
+    ) -> Result<ValueId, SemanticError> {
         let decl_id = match self.current_scope.lookup(identifier.name) {
             Some(id) => id,
             None => {
-                return self.report_error_and_get_poison(SemanticError {
+                return Err(SemanticError {
                     span: identifier.span.clone(),
                     kind: SemanticErrorKind::UndeclaredIdentifier(identifier),
                 });
@@ -28,23 +28,15 @@ impl<'a> Builder<'a, InBlock> {
             .get(&decl_id)
             .expect("INTERNAL COMPILER ERROR: Declaration not found");
 
-        let expr_for_place = Expr {
-            kind: ExprKind::Identifier(identifier.clone()),
-            span: identifier.span.clone(),
-        };
-
-        match decl {
-            CheckedDeclaration::Var(_) => match self.build_place(expr_for_place) {
-                Ok(place) => self.read_place(place, identifier.span.clone()),
-                Err(e) => self.report_error_and_get_poison(e),
-            },
+        Ok(match decl {
+            CheckedDeclaration::Var(var) => self.load(var.stack_ptr, identifier.span)?,
             CheckedDeclaration::Function(func) => self.emit_const_fn(func.id),
-            CheckedDeclaration::TypeAlias(alias) => {
-                self.report_error_and_get_poison(SemanticError {
+            CheckedDeclaration::TypeAlias(_) => {
+                return Err(SemanticError {
                     kind: SemanticErrorKind::CannotUseTypeDeclarationAsValue,
-                    span: alias.identifier.span.clone(),
+                    span: identifier.span,
                 })
             }
-        }
+        })
     }
 }

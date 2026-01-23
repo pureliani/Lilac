@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 
 use crate::{
     ast::{
@@ -6,7 +6,6 @@ use crate::{
         type_annotation::{TagAnnotation, TypeAnnotation, TypeAnnotationKind},
         DeclarationId, IdentifierNode,
     },
-    compile::interner::TagId,
     globals::TAG_INTERNER,
     hir::{
         errors::{SemanticError, SemanticErrorKind},
@@ -127,48 +126,30 @@ pub fn check_type_annotation(
                 return_type: Box::new(checked_return_type),
             })
         }
-        TypeAnnotationKind::Tag(t) => Type::Tag(check_tag_annotation(ctx, t)),
+        TypeAnnotationKind::Tag(t) => {
+            Type::Struct(StructKind::Tag(check_tag_annotation(ctx, t)))
+        }
         TypeAnnotationKind::Union(tag_annotations) => {
-            let mut checked_variants: Vec<TagType> =
-                Vec::with_capacity(tag_annotations.len());
-            let mut seen_tags: HashSet<TagId> = HashSet::new();
+            let mut members: BTreeSet<TagType> = BTreeSet::new();
 
             for t in tag_annotations {
-                let checked_tag = check_tag_annotation(ctx, t);
-
-                if seen_tags.insert(checked_tag.id) {
-                    checked_variants.push(checked_tag);
-                } else {
-                    ctx.errors.push(SemanticError {
-                        span: t.span.clone(),
-                        kind: SemanticErrorKind::DuplicateUnionVariant(
-                            t.identifier.clone(),
-                        ),
-                    })
-                }
+                members.insert(check_tag_annotation(ctx, t));
             }
 
-            checked_variants.sort_by(|a, b| a.id.0.cmp(&b.id.0));
-
-            Type::Union(checked_variants)
+            Type::Struct(StructKind::Union(members))
         }
-        // Passed by pointer
+        // heap-allocated, passed by pointer
         TypeAnnotationKind::String => {
             let inner = Box::new(Type::Struct(StructKind::StringHeader));
-            Type::Pointer {
-                constraint: inner.clone(),
-                narrowed_to: inner,
-            }
+            Type::Pointer(inner)
         }
         TypeAnnotationKind::List(item_type) => {
             let checked_item_type = check_type_annotation(ctx, item_type);
-            let inner =
-                Box::new(Type::Struct(StructKind::ListHeader(Box::new(checked_item_type))));
+            let inner = Box::new(Type::Struct(StructKind::ListHeader(Box::new(
+                checked_item_type,
+            ))));
 
-            Type::Pointer {
-                constraint: inner.clone(),
-                narrowed_to: inner,
-            }
+            Type::Pointer(inner)
         }
         TypeAnnotationKind::Struct(items) => {
             let checked_field_types = check_params(ctx, items);
@@ -177,10 +158,7 @@ pub fn check_type_annotation(
 
             let inner = Box::new(Type::Struct(packed));
 
-            Type::Pointer {
-                constraint: inner.clone(),
-                narrowed_to: inner,
-            }
+            Type::Pointer(inner)
         }
     };
 

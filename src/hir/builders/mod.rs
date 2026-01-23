@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{DeclarationId, IdentifierNode, ModulePath, Span},
+    ast::{DeclarationId, IdentifierNode, ModulePath},
     hir::{
         errors::SemanticError,
         instructions::{Instruction, Terminator},
@@ -12,16 +12,6 @@ use crate::{
         utils::scope::Scope,
     },
 };
-
-#[macro_export]
-macro_rules! unwrap_or_poison {
-    ($builder:expr, $result:expr) => {
-        match $result {
-            Ok(val) => val,
-            Err(e) => $builder.report_error_and_get_poison(e),
-        }
-    };
-}
 
 pub mod basic_block;
 pub mod emitters;
@@ -38,25 +28,8 @@ pub struct ValueId(pub usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ConstantId(pub usize);
 
-#[derive(Debug, Clone)]
-pub struct TypePredicate {
-    /// The original ValueId that was checked
-    pub source: ValueId,
-    /// The new ValueId to use in the true path
-    pub true_id: ValueId,
-    /// The new ValueId to use in the false path
-    pub false_id: ValueId,
-}
-
-pub struct Place {
-    pub root: ValueId,
-    pub projections: Vec<Projection>,
-}
-
-pub enum Projection {
-    Field(IdentifierNode),
-    Index(ValueId, Span),
-}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ValueNumber(pub usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LoopJumpTargets {
@@ -90,7 +63,6 @@ pub struct Function {
     pub blocks: HashMap<BasicBlockId, BasicBlock>,
 
     pub value_definitions: HashMap<ValueId, BasicBlockId>,
-    pub predicates: HashMap<ValueId, TypePredicate>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

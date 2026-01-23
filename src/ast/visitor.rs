@@ -188,11 +188,6 @@ pub trait ASTVisitor<'ast>: Sized {
         self.visit_block(block);
     }
 
-    fn visit_index_expr(&mut self, left: &'ast Expr, index: &'ast Expr) {
-        self.visit_expr(left);
-        self.visit_expr(index);
-    }
-
     fn visit_fn_expr(&mut self, decl: &'ast FnDecl) {
         self.visit_fn_decl(decl);
     }
@@ -308,7 +303,6 @@ pub fn walk_expr<'ast, V: ASTVisitor<'ast>>(v: &mut V, expr: &'ast Expr) {
         } => v.visit_if_expr(branches, else_branch.as_ref()),
         ExprKind::List(items) => v.visit_list_literal_expr(items),
         ExprKind::CodeBlock(block) => v.visit_codeblock_expr(block),
-        ExprKind::Index { left, index } => v.visit_index_expr(left, index),
         ExprKind::IsVariant { left, variants } => v.visit_is_variant_expr(left, variants),
     }
 }
