@@ -7,3 +7,4 @@ pub mod layout;
 pub mod numeric;
 pub mod scope;
 pub mod type_to_string;
+pub mod union;
