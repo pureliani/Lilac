@@ -10,11 +10,11 @@ use crate::{
 impl<'a> Builder<'a, InBlock> {
     pub fn build_typecast_expr(
         &mut self,
-        left: Box<Expr>,
+        left: Expr,
         target: TypeAnnotation,
     ) -> Result<ValueId, SemanticError> {
         let value_span = left.span.clone();
-        let src_id = self.build_expr(*left)?;
+        let src_id = self.build_expr(left)?;
 
         let mut type_ctx = TypeCheckerContext {
             scope: self.current_scope.clone(),

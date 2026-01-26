@@ -6,5 +6,4 @@ pub mod dump;
 pub mod layout;
 pub mod numeric;
 pub mod scope;
-pub mod try_unify_types;
 pub mod type_to_string;

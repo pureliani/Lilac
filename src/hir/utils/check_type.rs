@@ -1,16 +1,15 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use crate::{
     ast::{
         decl::Param,
-        type_annotation::{TagAnnotation, TypeAnnotation, TypeAnnotationKind},
+        type_annotation::{TypeAnnotation, TypeAnnotationKind},
         DeclarationId, IdentifierNode,
     },
-    globals::TAG_INTERNER,
     hir::{
         errors::{SemanticError, SemanticErrorKind},
         types::{
-            checked_declaration::{CheckedDeclaration, CheckedParam, FnType, TagType},
+            checked_declaration::{CheckedDeclaration, CheckedParam, FnType},
             checked_type::{StructKind, Type},
         },
         utils::{layout::pack_struct, scope::Scope},
@@ -76,29 +75,11 @@ pub fn check_type_identifier_annotation(
         })
 }
 
-pub fn check_tag_annotation(
-    ctx: &mut TypeCheckerContext,
-    TagAnnotation {
-        identifier,
-        value_type,
-        span,
-    }: &TagAnnotation,
-) -> TagType {
-    let tag_id = TAG_INTERNER.intern(&identifier.name);
-    let checked_value_type = value_type.as_ref().map(|v| check_type_annotation(ctx, v));
-
-    TagType {
-        id: tag_id,
-        value_type: checked_value_type.clone().map(Box::new),
-        span: span.clone(),
-    }
-}
-
 pub fn check_type_annotation(
     ctx: &mut TypeCheckerContext,
     annotation: &TypeAnnotation,
 ) -> Type {
-    let kind = match &annotation.kind {
+    match &annotation.kind {
         TypeAnnotationKind::Void => Type::Void,
         TypeAnnotationKind::Bool => Type::Bool,
         TypeAnnotationKind::U8 => Type::U8,
@@ -126,19 +107,17 @@ pub fn check_type_annotation(
                 return_type: Box::new(checked_return_type),
             })
         }
-        TypeAnnotationKind::Tag(t) => {
-            Type::Struct(StructKind::Tag(check_tag_annotation(ctx, t)))
-        }
-        TypeAnnotationKind::Union(tag_annotations) => {
-            let mut members: BTreeSet<TagType> = BTreeSet::new();
+        TypeAnnotationKind::Tag(t) => Type::Tag(*t),
+        // heap-allocated, passed by pointer
+        TypeAnnotationKind::Union(variants) => {
+            let mut checked_variants = Vec::new();
 
-            for t in tag_annotations {
-                members.insert(check_tag_annotation(ctx, t));
+            for v in variants {
+                checked_variants.push(check_type_annotation(ctx, v));
             }
 
-            Type::Struct(StructKind::Union(members))
+            Type::make_union(checked_variants)
         }
-        // heap-allocated, passed by pointer
         TypeAnnotationKind::String => {
             let inner = Box::new(Type::Struct(StructKind::StringHeader));
             Type::Pointer(inner)
@@ -160,7 +139,5 @@ pub fn check_type_annotation(
 
             Type::Pointer(inner)
         }
-    };
-
-    kind
+    }
 }

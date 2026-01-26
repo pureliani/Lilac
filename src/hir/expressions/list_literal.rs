@@ -5,7 +5,6 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         errors::SemanticError,
         types::checked_type::{StructKind, Type},
-        utils::try_unify_types::try_unify_types,
     },
     tokenize::NumberKind,
 };
@@ -28,8 +27,8 @@ impl<'a> Builder<'a, InBlock> {
             type_entries.push((ty, span));
         }
 
-        // TODO: fix try_unify_types
-        let element_type = try_unify_types(&type_entries);
+        let element_types: Vec<Type> = type_entries.iter().map(|e| e.0.clone()).collect();
+        let element_type = Type::make_union(element_types);
 
         let capacity = item_values.len();
         let capacity_val = self.emit_const_number(NumberKind::USize(capacity));

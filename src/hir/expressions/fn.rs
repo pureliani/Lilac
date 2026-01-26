@@ -4,7 +4,7 @@ use crate::{
     ast::decl::FnDecl,
     globals::{next_block_id, next_declaration_id},
     hir::{
-        builders::{BasicBlock, Builder, Function, InBlock, InModule, ValueId},
+        builders::{BasicBlock, Builder, Function, InBlock, InModule, LValue, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
         utils::{
@@ -71,8 +71,9 @@ impl<'a> Builder<'a, InModule> {
             current_scope: self
                 .current_scope
                 .enter(ScopeKind::FunctionBody, body.span.start),
-            definitions: self.definitions,
+            current_defs: self.current_defs,
             incomplete_phis: self.incomplete_phis,
+            aliases: self.aliases,
         };
 
         let entry_bb = BasicBlock {
@@ -88,29 +89,28 @@ impl<'a> Builder<'a, InModule> {
         for param in &checked_params {
             let identity_id = fn_builder.new_value_id(param.ty.clone());
 
-            fn_builder
-                .definitions
-                .entry(entry_block_id)
-                .or_default()
-                .insert(identity_id, identity_id);
-
-            let param_var_id = next_declaration_id();
+            let param_decl_id = next_declaration_id();
             let decl = CheckedVarDecl {
-                id: param_var_id,
-                stack_ptr: identity_id,
+                id: param_decl_id,
                 identifier: param.identifier.clone(),
                 documentation: None,
                 constraint: param.ty.clone(),
             };
 
             fn_builder
+                .current_defs
+                .entry(entry_block_id)
+                .or_default()
+                .insert(LValue::Variable(param_decl_id), identity_id);
+
+            fn_builder
                 .program
                 .declarations
-                .insert(param_var_id, CheckedDeclaration::Var(decl));
+                .insert(param_decl_id, CheckedDeclaration::Var(decl));
 
             fn_builder
                 .current_scope
-                .map_name_to_decl(param.identifier.name, param_var_id);
+                .map_name_to_decl(param.identifier.name, param_decl_id);
         }
 
         let body_span = body.span.clone();

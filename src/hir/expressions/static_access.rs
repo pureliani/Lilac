@@ -9,8 +9,8 @@ use crate::{
 impl<'a> Builder<'a, InBlock> {
     pub fn build_static_access_expr(
         &mut self,
-        left: Box<Expr>,
-        field: IdentifierNode,
+        _left: Expr,
+        _field: IdentifierNode,
     ) -> Result<ValueId, SemanticError> {
         todo!("Implement static access expression builder")
     }

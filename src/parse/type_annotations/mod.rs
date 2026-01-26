@@ -5,7 +5,10 @@ pub mod parse_tag_type_annotation;
 
 use super::{Parser, ParsingError, ParsingErrorKind};
 use crate::{
-    ast::type_annotation::{TypeAnnotation, TypeAnnotationKind},
+    ast::{
+        type_annotation::{TypeAnnotation, TypeAnnotationKind},
+        Span,
+    },
     tokenize::{KeywordKind, PunctuationKind, TokenKind},
 };
 
@@ -15,6 +18,18 @@ fn suffix_bp(token_kind: &TokenKind) -> Option<(u8, ())> {
 
     let priority = match token_kind {
         Punctuation(LBracket) => (3, ()),
+        _ => return None,
+    };
+
+    Some(priority)
+}
+
+fn infix_bp(token_kind: &TokenKind) -> Option<(u8, u8)> {
+    use PunctuationKind::*;
+    use TokenKind::*;
+
+    let priority = match token_kind {
+        Punctuation(Or) => (1, 2),
         _ => return None,
     };
 
@@ -207,6 +222,51 @@ impl Parser {
                              operator"
                         )
                     }
+                };
+
+                continue;
+            }
+
+            if let Some((left_prec, right_prec)) = infix_bp(&op.kind) {
+                if left_prec < min_prec {
+                    break;
+                }
+
+                let op_kind = op.kind.clone();
+                self.advance();
+
+                let rhs = self.parse_type_annotation(right_prec)?;
+
+                let start_pos = lhs.span.start;
+                let end_pos = rhs.span.end;
+                let combined_span = Span {
+                    start: start_pos,
+                    end: end_pos,
+                    path: self.path.clone(),
+                };
+
+                lhs = match op_kind {
+                    TokenKind::Punctuation(PunctuationKind::Or) => {
+                        let mut variants = match lhs.kind {
+                            TypeAnnotationKind::Union(v) => v,
+                            _ => vec![lhs],
+                        };
+
+                        match rhs.kind {
+                            TypeAnnotationKind::Union(v) => variants.extend(v),
+                            _ => variants.push(rhs),
+                        }
+
+                        TypeAnnotation {
+                            kind: TypeAnnotationKind::Union(variants),
+                            span: combined_span,
+                        }
+                    }
+
+                    _ => unreachable!(
+                        "Operator found in infix_bp but not handled in match: {:?}",
+                        op_kind
+                    ),
                 };
 
                 continue;

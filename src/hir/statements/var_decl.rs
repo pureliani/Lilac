@@ -1,7 +1,7 @@
 use crate::{
     ast::decl::VarDecl,
     hir::{
-        builders::{Builder, InBlock},
+        builders::{Builder, InBlock, LValue},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
         utils::{
@@ -12,24 +12,17 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_var_decl(&mut self, var_decl: VarDecl) {
+    pub fn build_var_decl(&mut self, var_decl: VarDecl) -> Result<(), SemanticError> {
         if self.current_scope.is_file_scope() {
-            self.errors.push(SemanticError {
+            return Err(SemanticError {
                 kind: SemanticErrorKind::CannotDeclareGlobalVariable,
                 span: var_decl.identifier.span.clone(),
             });
-            return;
         }
 
         let initial_value_span = var_decl.value.span.clone();
 
-        let val_id = match self.build_expr(var_decl.value) {
-            Ok(id) => id,
-            Err(e) => {
-                self.errors.push(e);
-                return;
-            }
-        };
+        let val_id = self.build_expr(var_decl.value)?;
         let val_type = self.get_value_type(&val_id).clone();
 
         let constraint = if let Some(annotation) = &var_decl.constraint {
@@ -55,16 +48,10 @@ impl<'a> Builder<'a, InBlock> {
             val_type.clone()
         };
 
-        let identity_id = val_id;
-
-        self.definitions
-            .entry(self.context.block_id)
-            .or_default()
-            .insert(identity_id, val_id);
-
+        let lval = LValue::Variable(var_decl.id);
+        self.write_lvalue(lval, val_id);
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
-            stack_ptr: identity_id,
             identifier: var_decl.identifier.clone(),
             documentation: var_decl.documentation,
             constraint,
@@ -76,5 +63,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.current_scope
             .map_name_to_decl(var_decl.identifier.name, var_decl.id);
+
+        Ok(())
     }
 }

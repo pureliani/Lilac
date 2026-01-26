@@ -1,9 +1,8 @@
 use crate::{
     ast::IdentifierNode,
     hir::{
-        builders::{Builder, InBlock, ValueId},
+        builders::{Builder, InBlock, LValue, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_declaration::CheckedDeclaration,
     },
 };
 
@@ -22,21 +21,12 @@ impl<'a> Builder<'a, InBlock> {
             }
         };
 
-        let decl = self
-            .program
-            .declarations
+        let lval = self
+            .aliases
             .get(&decl_id)
-            .expect("INTERNAL COMPILER ERROR: Declaration not found");
+            .cloned()
+            .unwrap_or(LValue::Variable(decl_id));
 
-        Ok(match decl {
-            CheckedDeclaration::Var(var) => self.load(var.stack_ptr, identifier.span)?,
-            CheckedDeclaration::Function(func) => self.emit_const_fn(func.id),
-            CheckedDeclaration::TypeAlias(_) => {
-                return Err(SemanticError {
-                    kind: SemanticErrorKind::CannotUseTypeDeclarationAsValue,
-                    span: identifier.span,
-                })
-            }
-        })
+        self.read_lvalue(lval, identifier.span)
     }
 }

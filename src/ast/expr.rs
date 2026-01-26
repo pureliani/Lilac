@@ -1,7 +1,6 @@
 use crate::{
-    ast::{
-        decl::FnDecl, type_annotation::TagAnnotation, IdentifierNode, Span, StringNode,
-    },
+    ast::{decl::FnDecl, IdentifierNode, Span, StringNode},
+    compile::interner::TagId,
     tokenize::NumberKind,
 };
 
@@ -99,14 +98,11 @@ pub enum ExprKind {
         left: Box<Expr>,
         target: TypeAnnotation,
     },
-    IsVariant {
+    IsType {
         left: Box<Expr>,
-        variants: Vec<TagAnnotation>,
+        ty: TypeAnnotation,
     },
-    Tag {
-        name: IdentifierNode,
-        value: Option<Box<Expr>>,
-    },
+    Tag(TagId),
     FnCall {
         left: Box<Expr>,
         args: Vec<Expr>,
@@ -116,10 +112,6 @@ pub enum ExprKind {
     String(StringNode),
     Identifier(IdentifierNode),
     Fn(Box<FnDecl>),
-    Match {
-        conditions: Vec<Expr>,
-        arms: Vec<MatchArm>,
-    },
     If {
         branches: Vec<(Box<Expr>, BlockContents)>,
         else_branch: Option<BlockContents>,

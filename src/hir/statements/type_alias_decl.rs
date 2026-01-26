@@ -9,13 +9,16 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InModule> {
-    pub fn build_type_alias_decl(&mut self, type_alias_decl: TypeAliasDecl, span: Span) {
+    pub fn build_type_alias_decl(
+        &mut self,
+        type_alias_decl: TypeAliasDecl,
+        span: Span,
+    ) -> Result<(), SemanticError> {
         if !self.current_scope.is_file_scope() {
-            self.errors.push(SemanticError {
+            return Err(SemanticError {
                 kind: SemanticErrorKind::TypeAliasMustBeDeclaredAtTopLevel,
                 span,
             });
-            return;
         }
 
         let mut type_ctx = TypeCheckerContext {
@@ -42,5 +45,7 @@ impl<'a> Builder<'a, InModule> {
 
         self.current_scope
             .map_name_to_decl(type_alias_decl.identifier.name, type_alias_decl.id);
+
+        Ok(())
     }
 }

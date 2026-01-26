@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::{
     globals::{STRING_INTERNER, TAG_INTERNER},
     hir::types::{
-        checked_declaration::{FnType, TagType},
+        checked_declaration::FnType,
         checked_type::{StructKind, Type},
     },
     tokenize::TokenKind,
@@ -18,18 +18,6 @@ pub fn token_kind_to_string(kind: &TokenKind) -> String {
         TokenKind::Number(number_kind) => number_kind.to_string(),
         TokenKind::Doc(value) => format!("---\n{}\n---", value),
     }
-}
-
-fn tag_type_to_string(tag: &TagType, visited_set: &mut HashSet<Type>) -> String {
-    let name_string_id = TAG_INTERNER.resolve(tag.id);
-    let name = STRING_INTERNER.resolve(name_string_id);
-    let value_str = tag
-        .value_type
-        .as_ref()
-        .map(|v| format!("({})", type_to_string_recursive(v, visited_set)))
-        .unwrap_or_default();
-
-    format!("#{0}{1}", name, value_str)
 }
 
 pub fn type_to_string(ty: &Type) -> String {
@@ -71,6 +59,11 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
         Type::Buffer { size, alignment } => {
             format!("Buffer(size={}, align={})", size, alignment)
         }
+        Type::Tag(tag_id) => {
+            let name_string_id = TAG_INTERNER.resolve(*tag_id);
+            let name = STRING_INTERNER.resolve(name_string_id);
+            format!("#{0}", name)
+        }
     };
 
     visited_set.remove(ty);
@@ -99,14 +92,14 @@ fn fn_signature_to_string(fn_type: &FnType, visited_set: &mut HashSet<Type>) -> 
 
 fn struct_to_string(s: &StructKind, visited_set: &mut HashSet<Type>) -> String {
     match s {
-        StructKind::Tag(tag_type) => tag_type_to_string(tag_type, visited_set),
         StructKind::Union(variants) => {
             if variants.is_empty() {
-                return String::from("<empty union>");
+                return String::from("never");
             }
+
             let variants_str = variants
                 .iter()
-                .map(|tag| tag_type_to_string(tag, visited_set))
+                .map(|tag| type_to_string_recursive(tag, visited_set))
                 .collect::<Vec<String>>()
                 .join(" | ");
 

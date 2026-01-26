@@ -3,7 +3,6 @@ pub mod parse_fn_call_expr;
 pub mod parse_fn_expr;
 pub mod parse_if_expr;
 pub mod parse_list_literal_expr;
-pub mod parse_match_expr;
 pub mod parse_parenthesized_expr;
 pub mod parse_struct_init_expr;
 pub mod parse_tag_expr;
@@ -11,7 +10,6 @@ pub mod parse_tag_expr;
 use crate::{
     ast::{
         expr::{Expr, ExprKind},
-        type_annotation::TypeAnnotationKind,
         Span,
     },
     globals::STRING_INTERNER,
@@ -72,7 +70,6 @@ pub fn is_start_of_expr(token_kind: &TokenKind) -> bool {
         | TokenKind::Keyword(KeywordKind::True)
         | TokenKind::Keyword(KeywordKind::False)
         | TokenKind::Keyword(KeywordKind::If)
-        | TokenKind::Keyword(KeywordKind::Match)
         | TokenKind::Punctuation(PunctuationKind::Hash)   // Tag expr
         | TokenKind::Punctuation(PunctuationKind::LParen)   // Parenthesized expr
         | TokenKind::Punctuation(PunctuationKind::LBrace)   // Codeblock or Struct expr
@@ -105,7 +102,6 @@ impl Parser {
                     span: token_span,
                 }
             }
-            TokenKind::Keyword(KeywordKind::Match) => self.parse_match_expr()?,
             TokenKind::Keyword(KeywordKind::Fn) => self.parse_fn_expr()?,
             TokenKind::Punctuation(PunctuationKind::Hash) => self.parse_tag_expr()?,
             TokenKind::Punctuation(PunctuationKind::LParen) => {
@@ -234,28 +230,15 @@ impl Parser {
                         let field_name = STRING_INTERNER.resolve(field.name);
 
                         let new_lhs = if field_name == "is" {
-                            // lhs::is(#A | #B)
+                            // lhs::is(i32)
                             self.consume_punctuation(PunctuationKind::LParen)?;
-                            let type_ann = self.parse_tag_type_annotation()?;
+                            let type_ann = self.parse_type_annotation(0)?;
                             self.consume_punctuation(PunctuationKind::RParen)?;
 
-                            let variants = match type_ann.kind {
-                                TypeAnnotationKind::Tag(t) => vec![t],
-                                TypeAnnotationKind::Union(tags) => tags,
-                                _ => {
-                                    return Err(ParsingError {
-                                        kind: ParsingErrorKind::ExpectedATagTypeButFound(
-                                            type_ann.clone(),
-                                        ),
-                                        span: type_ann.span,
-                                    })
-                                }
-                            };
-
                             Expr {
-                                kind: ExprKind::IsVariant {
+                                kind: ExprKind::IsType {
                                     left: Box::new(lhs.clone()),
-                                    variants,
+                                    ty: type_ann,
                                 },
                                 span: self.get_span(start_offset, self.offset - 1)?,
                             }

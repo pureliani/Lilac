@@ -1,8 +1,8 @@
 use crate::{
-    compile::interner::StringId,
+    compile::interner::{StringId, TagId},
     globals::COMMON_IDENTIFIERS,
     hir::{
-        types::checked_declaration::{CheckedParam, FnType, TagType},
+        types::checked_declaration::{CheckedParam, FnType},
         utils::layout::get_layout_of,
     },
 };
@@ -12,17 +12,73 @@ use std::{collections::BTreeSet, hash::Hash};
 pub enum StructKind {
     UserDefined(Vec<CheckedParam>), // packed
 
-    /// { id: u16, value: T }
-    Tag(TagType),
-
     /// { id: u16, value: Buffer }
-    Union(BTreeSet<TagType>),
+    Union(BTreeSet<Type>),
 
     /// { capacity: usize, len: usize, ptr: ptr<T> }
     ListHeader(Box<Type>),
 
     /// { is_heap_allocated: bool, len: usize, ptr: ptr<u8> }
     StringHeader,
+}
+
+impl Type {
+    pub fn make_union(types: impl IntoIterator<Item = Type>) -> Type {
+        let mut flat_set = BTreeSet::new();
+
+        for ty in types {
+            match ty {
+                Type::Never => continue,
+                Type::Struct(StructKind::Union(variants)) => {
+                    flat_set.extend(variants);
+                }
+                _ => {
+                    flat_set.insert(ty);
+                }
+            }
+        }
+
+        match flat_set.len() {
+            0 => Type::Never,
+            1 => flat_set.into_iter().next().unwrap(),
+            _ => Type::Struct(StructKind::Union(flat_set)),
+        }
+    }
+
+    pub fn union(self, other: Type) -> Type {
+        Type::make_union(vec![self, other])
+    }
+
+    pub fn intersect(self, other: Type) -> Type {
+        let s1 = self.into_set();
+        let s2 = other.into_set();
+        let result = s1.intersection(&s2).cloned();
+
+        Type::make_union(result)
+    }
+
+    pub fn subtract(self, other: Type) -> Type {
+        let mut s1 = self.into_set();
+        let s2 = other.into_set();
+
+        for t in s2 {
+            s1.remove(&t);
+        }
+
+        Type::make_union(s1)
+    }
+
+    fn into_set(self) -> BTreeSet<Type> {
+        match self {
+            Type::Struct(StructKind::Union(variants)) => variants,
+            Type::Never => BTreeSet::new(),
+            _ => {
+                let mut set = BTreeSet::new();
+                set.insert(self);
+                set
+            }
+        }
+    }
 }
 
 impl StructKind {
@@ -44,23 +100,18 @@ impl StructKind {
                 (COMMON_IDENTIFIERS.len, Type::USize),
                 (COMMON_IDENTIFIERS.ptr, Type::Pointer(Box::new(Type::U8))),
             ],
-            StructKind::Tag(tag) => {
-                let mut fields = vec![(COMMON_IDENTIFIERS.id, Type::U16)];
-                if let Some(val) = &tag.value_type {
-                    fields.push((COMMON_IDENTIFIERS.value, *val.clone()));
-                }
-                fields
-            }
             StructKind::Union(variants) => {
+                if variants.len() < 2 {
+                    panic!("INTERNAL COMPILER ERROR: Unflattened or empty Union detected. Always use Type::make_union()");
+                }
+
                 let mut max_size = 0;
                 let mut max_align = 1;
 
                 for tag_type in variants {
-                    if let Some(val_ty) = &tag_type.value_type {
-                        let layout = get_layout_of(val_ty);
-                        max_size = std::cmp::max(max_size, layout.size);
-                        max_align = std::cmp::max(max_align, layout.alignment);
-                    }
+                    let layout = get_layout_of(tag_type);
+                    max_size = std::cmp::max(max_size, layout.size);
+                    max_align = std::cmp::max(max_align, layout.alignment);
                 }
 
                 vec![
@@ -103,6 +154,8 @@ pub enum Type {
     I64,
     F32,
     F64,
+
+    Tag(TagId),
 
     Pointer(Box<Type>),
 

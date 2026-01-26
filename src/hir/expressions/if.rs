@@ -6,12 +6,10 @@ use crate::{
         Span,
     },
     hir::{
-        builders::{BasicBlockId, Builder, InBlock, Phi, ValueId},
+        builders::{BasicBlockId, Builder, InBlock, PhiEntry, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::Type,
-        utils::{
-            check_is_assignable::check_is_assignable, try_unify_types::try_unify_types,
-        },
+        utils::check_is_assignable::check_is_assignable,
     },
 };
 
@@ -73,7 +71,7 @@ impl<'a> Builder<'a, InBlock> {
 
             self.cond_jmp(cond_id, then_block_id, next_cond_block_id);
 
-            self.seal_block(then_block_id);
+            self.seal_block(then_block_id)?;
             self.use_basic_block(then_block_id);
             let final_expr_span = get_final_expr_span(&body);
             let then_val = self.build_codeblock_expr(body)?;
@@ -99,24 +97,23 @@ impl<'a> Builder<'a, InBlock> {
             self.jmp(merge_block_id);
         }
 
-        self.seal_block(current_cond_block_id);
+        self.seal_block(current_cond_block_id)?;
 
-        self.seal_block(merge_block_id);
+        self.seal_block(merge_block_id)?;
         self.use_basic_block(merge_block_id);
 
         if context == IfContext::Expression {
-            let type_entries: Vec<(Type, Span)> = branch_results
+            let type_entries: Vec<Type> = branch_results
                 .iter()
-                .map(|(_, val, span)| (self.get_value_type(val).clone(), span.clone()))
+                .map(|(_, val, _)| self.get_value_type(val).clone())
                 .collect();
 
-            // TODO: fix try_unify_types
-            let result_type = try_unify_types(&type_entries);
+            let result_type = Type::make_union(type_entries);
 
             let result_id = self.new_value_id(result_type);
-            let phi_operands: HashSet<Phi> = branch_results
+            let phi_operands: HashSet<PhiEntry> = branch_results
                 .into_iter()
-                .map(|(block, value, _)| Phi { from: block, value })
+                .map(|(block, value, _)| PhiEntry { from: block, value })
                 .collect();
 
             self.bb_mut().phis.insert(result_id, phi_operands);

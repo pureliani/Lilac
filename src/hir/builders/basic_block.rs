@@ -1,22 +1,18 @@
 use std::collections::HashSet;
 
 use crate::{
-    ast::{
-        expr::{Expr, ExprKind},
-        IdentifierNode, Span,
-    },
+    ast::{IdentifierNode, Span},
     globals::{next_value_id, COMMON_IDENTIFIERS},
     hir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
-            InModule, Phi, ValueId,
+            InModule, LValue, PhiEntry, ValueId,
         },
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::CheckedDeclaration,
             checked_type::{StructKind, Type},
         },
-        utils::try_unify_types::try_unify_types,
     },
 };
 
@@ -27,7 +23,8 @@ impl<'a> Builder<'a, InBlock> {
             program: self.program,
             errors: self.errors,
             current_scope: self.current_scope.clone(),
-            definitions: self.definitions,
+            current_defs: self.current_defs,
+            aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
         }
     }
@@ -40,7 +37,8 @@ impl<'a> Builder<'a, InBlock> {
             program: self.program,
             errors: self.errors,
             current_scope: self.current_scope.clone(),
-            definitions: self.definitions,
+            current_defs: self.current_defs,
+            aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
         }
     }
@@ -54,7 +52,8 @@ impl<'a> Builder<'a, InBlock> {
             program: self.program,
             errors: self.errors,
             current_scope: self.current_scope.clone(),
-            definitions: self.definitions,
+            current_defs: self.current_defs,
+            aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
         }
     }
@@ -118,6 +117,134 @@ impl<'a> Builder<'a, InBlock> {
         })
     }
 
+    pub fn read_lvalue(
+        &mut self,
+        lval: LValue,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let canonical_lval = match lval {
+            LValue::Variable(decl_id) => {
+                self.aliases.get(&decl_id).cloned().unwrap_or(lval)
+            }
+            _ => lval,
+        };
+
+        if let Some(block_defs) = self.current_defs.get(&self.context.block_id) {
+            if let Some(val) = block_defs.get(&canonical_lval) {
+                return Ok(*val);
+            }
+        }
+
+        self.read_lvalue_recursive(self.context.block_id, canonical_lval, span)
+    }
+
+    fn read_lvalue_recursive(
+        &mut self,
+        block_id: BasicBlockId,
+        lval: LValue,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let val_id: ValueId;
+
+        let predecessors: Vec<BasicBlockId> =
+            self.get_bb(block_id).predecessors.iter().cloned().collect();
+
+        if !self.get_bb(block_id).sealed {
+            val_id = self.new_value_id(Type::Unknown);
+            self.incomplete_phis.entry(block_id).or_default().push((
+                val_id,
+                lval.clone(),
+                span,
+            ));
+        } else if predecessors.len() == 1 {
+            val_id = self.read_lvalue_recursive(predecessors[0], lval.clone(), span)?;
+        } else if predecessors.is_empty() {
+            val_id = self.materialize_lvalue(lval.clone(), span)?;
+        } else {
+            val_id = self.new_value_id(Type::Unknown);
+
+            self.current_defs
+                .entry(block_id)
+                .or_default()
+                .insert(lval.clone(), val_id);
+
+            self.resolve_phi(block_id, val_id, lval.clone(), span)?;
+        }
+
+        self.current_defs
+            .entry(block_id)
+            .or_default()
+            .insert(lval, val_id);
+
+        Ok(val_id)
+    }
+
+    fn materialize_lvalue(
+        &mut self,
+        lval: LValue,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        match lval {
+            LValue::Variable(decl_id) => {
+                let ident = match self.program.declarations.get(&decl_id).unwrap() {
+                    CheckedDeclaration::Var(v) => v.identifier.clone(),
+                    _ => unreachable!(),
+                };
+                Err(SemanticError {
+                    kind: SemanticErrorKind::UndeclaredIdentifier(ident),
+                    span,
+                })
+            }
+            LValue::Field { base_ptr, field } => {
+                let field_node = IdentifierNode {
+                    name: field,
+                    span: span.clone(),
+                };
+
+                let ptr = self.get_field_ptr(base_ptr, &field_node)?;
+
+                Ok(self.emit_load(ptr))
+            }
+        }
+    }
+
+    pub fn write_lvalue(&mut self, lval: LValue, val: ValueId) {
+        self.current_defs
+            .entry(self.context.block_id)
+            .or_default()
+            .insert(lval, val);
+    }
+
+    fn resolve_phi(
+        &mut self,
+        block_id: BasicBlockId,
+        phi_id: ValueId,
+        lval: LValue,
+        span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let predecessors: Vec<BasicBlockId> =
+            self.get_bb(block_id).predecessors.iter().cloned().collect();
+        let mut phi_entries = HashSet::new();
+        let mut incoming_types = Vec::new();
+
+        for pred in predecessors {
+            let val = self.read_lvalue_recursive(pred, lval.clone(), span.clone())?;
+            phi_entries.insert(PhiEntry {
+                from: pred,
+                value: val,
+            });
+            incoming_types.push(self.get_value_type(&val).clone());
+        }
+
+        let unified_type = Type::make_union(incoming_types);
+        if let Some(ty) = self.program.value_types.get_mut(&phi_id) {
+            *ty = unified_type;
+        }
+
+        self.get_bb_mut(block_id).phis.insert(phi_id, phi_entries);
+        Ok(phi_id)
+    }
+
     pub fn new_value_id(&mut self, ty: Type) -> ValueId {
         let value_id = next_value_id();
         let this_block_id = self.context.block_id;
@@ -139,11 +266,11 @@ impl<'a> Builder<'a, InBlock> {
         let list_ptr_type = self.get_value_type(&list_ptr);
 
         let is_valid = if let Type::Pointer(inner) = &list_ptr_type {
-            match &**inner {
-                Type::Struct(StructKind::ListHeader(_)) => true,
-                Type::Struct(StructKind::StringHeader) => true,
-                _ => false,
-            }
+            matches!(
+                &**inner,
+                Type::Struct(StructKind::ListHeader(_))
+                    | Type::Struct(StructKind::StringHeader)
+            )
         } else {
             false
         };
@@ -165,174 +292,32 @@ impl<'a> Builder<'a, InBlock> {
         self.load(buffer_ptr_ptr, span)
     }
 
-    /// Returns pointer to lvalue
-    pub fn build_lvalue(&mut self, expr: Expr) -> Result<ValueId, SemanticError> {
-        let mut get_base_ptr = |left: Box<Expr>| {
-            let left_span = left.span.clone();
-            let left_lvalue = self.build_lvalue(*left)?;
-            let left_lvalue_type = self.get_value_type(&left_lvalue);
-
-            match left_lvalue_type {
-                // ptr<ptr<Struct>>
-                Type::Pointer(inner) if matches!(&**inner, Type::Pointer(s) if matches!(&**s, Type::Struct(_))) => {
-                    self.load(left_lvalue, left_span)
-                }
-                // ptr<Struct>
-                Type::Pointer(inner) if matches!(&**inner, Type::Struct(_)) => {
-                    Ok(left_lvalue)
-                }
-                _ => Err(SemanticError {
-                    kind: SemanticErrorKind::InvalidLValue,
-                    span: left_span,
-                }),
-            }
-        };
-
-        match expr.kind {
-            ExprKind::Identifier(ident) => {
-                let decl_id =
-                    self.current_scope.lookup(ident.name).ok_or(SemanticError {
-                        span: expr.span.clone(),
-                        kind: SemanticErrorKind::UndeclaredIdentifier(ident.clone()),
-                    })?;
-
-                let decl = self
-                    .program
-                    .declarations
-                    .get(&decl_id)
-                    .expect("INTERNAL COMPILER ERROR: Declaration not found");
-
-                match decl {
-                    CheckedDeclaration::Var(var) => Ok(var.stack_ptr),
-                    _ => Err(SemanticError {
-                        kind: SemanticErrorKind::InvalidLValue,
-                        span: expr.span,
-                    }),
-                }
-            }
-            ExprKind::Access { left, field } => {
-                let base_ptr = get_base_ptr(left)?;
-                let field_ptr = self.get_field_ptr(base_ptr, &field)?;
-
-                Ok(field_ptr)
-            }
-            _ => Err(SemanticError {
-                kind: SemanticErrorKind::InvalidLValue,
-                span: expr.span,
-            }),
-        }
-    }
-
-    pub fn get_latest_alias(&mut self, initial_id: ValueId) -> ValueId {
-        if let Some(defs) = self.definitions.get(&self.context.block_id) {
-            if let Some(val) = defs.get(&initial_id) {
-                return *val;
-            }
-        }
-        self.get_latest_alias_recursive(self.context.block_id, initial_id)
-    }
-
-    fn get_latest_alias_recursive(
-        &mut self,
-        block_id: BasicBlockId,
-        initial_id: ValueId,
-    ) -> ValueId {
-        if let Some(defs) = self.definitions.get(&block_id) {
-            if let Some(val) = defs.get(&initial_id) {
-                return *val;
-            }
-        }
-
-        let result_valueid: ValueId = if !self.get_bb(block_id).sealed {
-            let value_type = self.get_value_type(&initial_id).clone();
-            let placeholder_value_id = self.new_value_id(value_type);
-            self.incomplete_phis
-                .entry(block_id)
-                .or_default()
-                .push((placeholder_value_id, initial_id));
-
-            placeholder_value_id
-        } else {
-            let predecessors: Vec<BasicBlockId> =
-                self.get_bb(block_id).predecessors.iter().cloned().collect();
-
-            if predecessors.len() == 1 {
-                let latest_alias_from_pred =
-                    self.get_latest_alias_recursive(predecessors[0], initial_id);
-                self.definitions
-                    .entry(block_id)
-                    .or_default()
-                    .insert(initial_id, latest_alias_from_pred);
-
-                latest_alias_from_pred
-            } else {
-                let original_value_type = self.get_value_type(&initial_id).clone();
-                let phi_value_id = self.new_value_id(original_value_type);
-
-                let mut phi_accumulator: HashSet<Phi> = HashSet::new();
-                for pred in predecessors {
-                    let latest_alias_from_pred =
-                        self.get_latest_alias_recursive(pred, initial_id);
-
-                    let phi = Phi {
-                        from: pred,
-                        value: latest_alias_from_pred,
-                    };
-
-                    phi_accumulator.insert(phi);
-                }
-
-                let accumulated_phi_types: Vec<Type> = phi_accumulator
-                    .iter()
-                    .map(|p| self.get_value_type(&p.value).clone())
-                    .collect();
-
-                let correct_phi_type = try_unify_types(&accumulated_phi_types);
-
-                let current_phi_type = self
-                    .as_program()
-                    .program
-                    .value_types
-                    .get_mut(&phi_value_id)
-                    .unwrap();
-
-                *current_phi_type = correct_phi_type;
-
-                self.bb_mut().phis.insert(phi_value_id, phi_accumulator);
-
-                self.definitions
-                    .entry(block_id)
-                    .or_default()
-                    .insert(initial_id, phi_value_id);
-
-                phi_value_id
-            }
-        };
-
-        result_valueid
-    }
-
     pub fn use_basic_block(&mut self, block_id: BasicBlockId) {
         self.context.block_id = block_id;
     }
 
-    pub fn seal(&mut self) {
+    pub fn seal(&mut self) -> Result<(), SemanticError> {
         if self.bb().sealed {
-            return;
+            return Ok(());
         }
 
         let block_id = self.context.block_id;
         let incomplete = self.incomplete_phis.remove(&block_id).unwrap_or_default();
 
-        todo!();
+        for (phi_id, lval, span) in incomplete {
+            self.resolve_phi(block_id, phi_id, lval, span)?;
+        }
 
         self.bb_mut().sealed = true;
+
+        Ok(())
     }
 
-    pub fn seal_block(&mut self, block_id: BasicBlockId) {
+    pub fn seal_block(&mut self, block_id: BasicBlockId) -> Result<(), SemanticError> {
         let old_block = self.context.block_id;
         self.context.block_id = block_id;
-        self.seal();
+        self.seal()?;
         self.context.block_id = old_block;
+        Ok(())
     }
 }

@@ -5,15 +5,13 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, Terminator},
         types::{
-            checked_declaration::{CheckedDeclaration, FnType, TagType},
+            checked_declaration::{CheckedDeclaration, FnType},
             checked_type::{StructKind, Type},
         },
         utils::{
             check_binary_numeric_op::check_binary_numeric_operation,
             check_is_assignable::check_is_assignable,
             numeric::{get_numeric_type_rank, is_float, is_integer, is_signed},
-            try_unify_types::try_unify_types,
-            type_to_string::type_to_string,
         },
     },
     tokenize::NumberKind,
@@ -1161,9 +1159,5 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         Ok(self.emit_refine_type(src, new_type))
-    }
-
-    pub fn make_tag(&mut self, tag: TagType, value: ValueId) -> ValueId {
-        todo!()
     }
 }

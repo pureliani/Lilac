@@ -9,11 +9,11 @@ use crate::{
 impl<'a> Builder<'a, InBlock> {
     pub fn build_fn_call_expr(
         &mut self,
-        left: Box<Expr>,
+        left: Expr,
         args: Vec<Expr>,
         span: Span,
     ) -> Result<ValueId, SemanticError> {
-        let func_id = self.build_expr(*left)?;
+        let func_id = self.build_expr(left)?;
         let mut arg_ids: Vec<(ValueId, Span)> = Vec::with_capacity(args.len());
 
         for arg_expr in args {

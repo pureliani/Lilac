@@ -9,7 +9,11 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_while_stmt(&mut self, condition: Box<Expr>, body: BlockContents) {
+    pub fn build_while_stmt(
+        &mut self,
+        condition: Expr,
+        body: BlockContents,
+    ) -> Result<(), SemanticError> {
         let header_block_id = self.as_fn().new_bb();
         let body_block_id = self.as_fn().new_bb();
         let exit_block_id = self.as_fn().new_bb();
@@ -18,13 +22,7 @@ impl<'a> Builder<'a, InBlock> {
         self.use_basic_block(header_block_id);
 
         let condition_span = condition.span.clone();
-        let cond_id = match self.build_expr(*condition) {
-            Ok(id) => id,
-            Err(e) => {
-                self.errors.push(e);
-                return;
-            }
-        };
+        let cond_id = self.build_expr(condition)?;
         let cond_ty = self.get_value_type(&cond_id);
 
         if !check_is_assignable(cond_ty, &Type::Bool) {
@@ -39,7 +37,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.cond_jmp(cond_id, body_block_id, exit_block_id);
 
-        self.seal_block(body_block_id);
+        self.seal_block(body_block_id)?;
         self.use_basic_block(body_block_id);
 
         self.current_scope = self.current_scope.enter(
@@ -52,7 +50,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.build_statements(body.statements);
         if let Some(final_expr) = body.final_expr {
-            self.build_expr(*final_expr);
+            self.build_expr(*final_expr)?;
         }
 
         self.current_scope = self
@@ -64,9 +62,11 @@ impl<'a> Builder<'a, InBlock> {
             self.jmp(header_block_id);
         }
 
-        self.seal_block(header_block_id);
+        self.seal_block(header_block_id)?;
 
         self.use_basic_block(exit_block_id);
-        self.seal_block(exit_block_id);
+        self.seal_block(exit_block_id)?;
+
+        Ok(())
     }
 }

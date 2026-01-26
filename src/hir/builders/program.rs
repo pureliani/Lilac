@@ -40,10 +40,12 @@ impl<'a> Builder<'a, InGlobal> {
             for decl in &m.declarations {
                 match decl {
                     Declaration::TypeAlias(alias) => {
-                        module_builder.build_type_alias_decl(
+                        if let Err(e) = module_builder.build_type_alias_decl(
                             alias.clone(),
                             alias.identifier.span.clone(),
-                        );
+                        ) {
+                            module_builder.errors.push(e);
+                        };
                     }
                     Declaration::Fn(f) => {
                         module_builder.register_fn_signature(f);
@@ -58,7 +60,11 @@ impl<'a> Builder<'a, InGlobal> {
             for stmt in m.statements {
                 match stmt.kind {
                     StmtKind::From { path, identifiers } => {
-                        module_builder.build_from_stmt(path, identifiers, stmt.span);
+                        if let Err(e) =
+                            module_builder.build_from_stmt(path, identifiers, stmt.span)
+                        {
+                            module_builder.errors.push(e);
+                        };
                     }
                     StmtKind::Expression(expr) => {
                         if let ExprKind::Fn(f) = expr.kind {
@@ -78,7 +84,8 @@ impl<'a> Builder<'a, InGlobal> {
             program: self.program,
             errors: self.errors,
             current_scope: scope,
-            definitions: self.definitions,
+            current_defs: self.current_defs,
+            aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
         }
     }

@@ -141,7 +141,6 @@ pub enum KeywordKind {
     F32,
     F64,
     Fn,
-    Match,
     String,
 }
 
@@ -173,7 +172,6 @@ impl KeywordKind {
             KeywordKind::F32 => "f32",
             KeywordKind::F64 => "f64",
             KeywordKind::Fn => "fn",
-            KeywordKind::Match => "match",
             KeywordKind::String => "string",
         })
     }
@@ -572,7 +570,6 @@ fn is_keyword(identifier: &str) -> Option<KeywordKind> {
         "u64" => Some(KeywordKind::U64),
         "f32" => Some(KeywordKind::F32),
         "f64" => Some(KeywordKind::F64),
-        "match" => Some(KeywordKind::Match),
         "string" => Some(KeywordKind::String),
         _ => None,
     }

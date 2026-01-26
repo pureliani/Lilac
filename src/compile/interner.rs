@@ -30,7 +30,7 @@ impl Id for StringId {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TagId(pub u16);
 
 impl Id for TagId {

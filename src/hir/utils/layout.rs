@@ -1,5 +1,3 @@
-use std::panic;
-
 use crate::{
     globals::STRING_INTERNER,
     hir::types::{
@@ -8,6 +6,7 @@ use crate::{
     },
 };
 
+#[derive(Debug, Clone, Copy)]
 pub struct Layout {
     pub size: usize,
     pub alignment: usize,
@@ -19,13 +18,11 @@ impl Layout {
     }
 }
 
-// Constants for the target architecture
-const PTR_SIZE: usize = size_of::<usize>();
-const PTR_ALIGN: usize = size_of::<usize>();
-const USIZE_SIZE: usize = size_of::<usize>();
-const USIZE_ALIGN: usize = size_of::<usize>();
+const PTR_SIZE: usize = std::mem::size_of::<usize>();
+const PTR_ALIGN: usize = std::mem::align_of::<usize>();
 
-/// IMPORTANT: Make sure user-defined and closure-environment structs are packed first before calling this function
+/// IMPORTANT: Make sure user-defined structs are packed (via pack_struct)
+/// before calling this function if you want minimized padding.
 pub fn get_layout_of(ty: &Type) -> Layout {
     match ty {
         Type::Void => Layout::new(0, 1),
@@ -34,10 +31,13 @@ pub fn get_layout_of(ty: &Type) -> Layout {
         Type::U32 | Type::I32 | Type::F32 => Layout::new(4, 4),
         Type::U64 | Type::I64 | Type::F64 => Layout::new(8, 8),
         Type::Pointer(_) | Type::Fn(_) | Type::USize | Type::ISize => {
-            Layout::new(USIZE_SIZE, USIZE_ALIGN)
+            Layout::new(PTR_SIZE, PTR_ALIGN)
         }
         Type::Buffer { size, alignment } => Layout::new(*size, *alignment),
+
+        Type::Tag(_) => Layout::new(0, 1),
         Type::Unknown | Type::Never => Layout::new(0, 1),
+
         Type::Struct(s) => {
             let fields = s.fields();
             let types: Vec<&Type> = fields.iter().map(|(_, ty)| ty).collect();
@@ -51,7 +51,8 @@ pub fn get_alignment_of(ty: &Type) -> usize {
     get_layout_of(ty).alignment
 }
 
-/// Helper to calculate layout of fields placed sequentially in memory
+/// Helper to calculate layout of fields placed sequentially in memory,
+/// handles padding between fields and at the end of the struct
 fn calculate_fields_layout(field_types: &[&Type]) -> Layout {
     let mut current_offset = 0;
     let mut max_alignment = 1;
@@ -81,11 +82,7 @@ pub fn pack_struct(struct_kind: StructKind) -> StructKind {
             sort_fields(&mut fields);
             StructKind::UserDefined(fields)
         }
-        _ => {
-            panic!(
-                "INTERNAL COMPILER ERROR: Cannot pack struct that is not user defined!"
-            );
-        }
+        other => other,
     }
 }
 
@@ -94,7 +91,6 @@ fn sort_fields(fields: &mut [CheckedParam]) {
         let align_a = get_alignment_of(&field_a.ty);
         let align_b = get_alignment_of(&field_b.ty);
 
-        // Sort by Alignment (Descending) -> Name (Ascending)
         align_b.cmp(&align_a).then_with(|| {
             let name_a = STRING_INTERNER.resolve(field_a.identifier.name);
             let name_b = STRING_INTERNER.resolve(field_b.identifier.name);

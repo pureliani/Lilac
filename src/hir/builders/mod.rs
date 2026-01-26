@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{DeclarationId, IdentifierNode, ModulePath},
+    ast::{DeclarationId, IdentifierNode, ModulePath, Span},
+    compile::interner::StringId,
     hir::{
         errors::SemanticError,
         instructions::{Instruction, Terminator},
@@ -28,8 +29,11 @@ pub struct ValueId(pub usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ConstantId(pub usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ValueNumber(pub usize);
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum LValue {
+    Variable(DeclarationId),
+    Field { base_ptr: ValueId, field: StringId },
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LoopJumpTargets {
@@ -66,7 +70,7 @@ pub struct Function {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Phi {
+pub struct PhiEntry {
     pub from: BasicBlockId,
     pub value: ValueId,
 }
@@ -77,12 +81,11 @@ pub struct BasicBlock {
     pub instructions: Vec<Instruction>,
     pub terminator: Option<Terminator>,
     pub predecessors: HashSet<BasicBlockId>,
-    pub phis: HashMap<ValueId, HashSet<Phi>>,
+    pub phis: HashMap<ValueId, HashSet<PhiEntry>>,
     pub sealed: bool,
 }
 
 pub trait BuilderContext {}
-
 pub struct Builder<'a, C: BuilderContext> {
     pub context: C,
     pub program: &'a mut Program,
@@ -90,10 +93,9 @@ pub struct Builder<'a, C: BuilderContext> {
     pub errors: &'a mut Vec<SemanticError>,
     pub current_scope: Scope,
 
-    /// Block -> (Original Variable ID -> Current SSA Value ID)
-    pub definitions: &'a mut HashMap<BasicBlockId, HashMap<ValueId, ValueId>>,
-    /// Block -> List of (PhiValueId, OriginalVariableId) to be filled on seal()
-    pub incomplete_phis: &'a mut HashMap<BasicBlockId, Vec<(ValueId, ValueId)>>,
+    pub current_defs: &'a mut HashMap<BasicBlockId, HashMap<LValue, ValueId>>,
+    pub aliases: &'a mut HashMap<DeclarationId, LValue>,
+    pub incomplete_phis: &'a mut HashMap<BasicBlockId, Vec<(ValueId, LValue, Span)>>,
 }
 
 pub struct InGlobal;
