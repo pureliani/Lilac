@@ -48,8 +48,16 @@ impl<'a> Builder<'a, InBlock> {
             val_type.clone()
         };
 
+        let final_val_id = if val_type != constraint {
+            self.cast(val_id, constraint.clone(), initial_value_span)
+                .unwrap_or(val_id)
+        } else {
+            val_id
+        };
+
         let lval = LValue::Variable(var_decl.id);
-        self.write_lvalue(lval, val_id);
+        self.write_lvalue(lval, final_val_id);
+
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
             identifier: var_decl.identifier.clone(),

@@ -1,15 +1,18 @@
-type User = {
-    id: #U32(u32) | #UUID(string),
+type OptionalUser = {
+    kind: #Some,
+    id: i64,
+} | {
+    kind: #None
 };
 
-fn main(): string {
-    let u: User = { id: #U32(17u32) };
+fn main(): void {
+    let a: OptionalUser = { kind: #Some, id: 15 };
 
     if 1 > 2 {
-        u.id = #UUID("hello");
+        a = { kind: #None };
     } else {
-        u.id = #UUID("world");
+        a = { kind: #None };
     }
 
-    u.id.value
+    let b: { kind: #None } = a;
 }

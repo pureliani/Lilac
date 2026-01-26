@@ -132,21 +132,21 @@ impl<'a> Builder<'a, InBlock> {
             _ => lval,
         };
 
-        if let Some(block_defs) = self.current_defs.get(&self.context.block_id) {
-            if let Some(val) = block_defs.get(&canonical_lval) {
-                return Ok(*val);
-            }
-        }
-
-        self.read_lvalue_recursive(self.context.block_id, canonical_lval, span)
+        self.read_lvalue_from_block(self.context.block_id, canonical_lval, span)
     }
 
-    fn read_lvalue_recursive(
+    fn read_lvalue_from_block(
         &mut self,
         block_id: BasicBlockId,
         lval: LValue,
         span: Span,
     ) -> Result<ValueId, SemanticError> {
+        if let Some(block_defs) = self.current_defs.get(&block_id) {
+            if let Some(val) = block_defs.get(&lval) {
+                return Ok(*val);
+            }
+        }
+
         let val_id: ValueId;
 
         let predecessors: Vec<BasicBlockId> =
@@ -160,7 +160,7 @@ impl<'a> Builder<'a, InBlock> {
                 span,
             ));
         } else if predecessors.len() == 1 {
-            val_id = self.read_lvalue_recursive(predecessors[0], lval.clone(), span)?;
+            val_id = self.read_lvalue_from_block(predecessors[0], lval.clone(), span)?;
         } else if predecessors.is_empty() {
             val_id = self.materialize_lvalue(lval.clone(), span)?;
         } else {
@@ -231,7 +231,7 @@ impl<'a> Builder<'a, InBlock> {
         let mut incoming_types = Vec::new();
 
         for pred in predecessors {
-            let val = self.read_lvalue_recursive(pred, lval.clone(), span.clone())?;
+            let val = self.read_lvalue_from_block(pred, lval.clone(), span.clone())?;
             phi_entries.insert(PhiEntry {
                 from: pred,
                 value: val,
