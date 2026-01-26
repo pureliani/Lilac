@@ -6,7 +6,7 @@ use crate::{
         Span,
     },
     hir::{
-        builders::{BasicBlockId, Builder, InBlock, PhiEntry, ValueId},
+        builders::{BasicBlockId, Builder, InBlock, LValue, PhiEntry, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::Type,
         utils::check_is_assignable::check_is_assignable,
@@ -73,12 +73,27 @@ impl<'a> Builder<'a, InBlock> {
 
             self.seal_block(then_block_id)?;
             self.use_basic_block(then_block_id);
+
+            if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
+                if let Some(ty) = pred.on_true_type {
+                    self.apply_narrowing(&pred.lvalue, ty);
+                }
+            }
+
             let final_expr_span = get_final_expr_span(&body);
             let then_val = self.build_codeblock_expr(body)?;
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, then_val, final_expr_span));
                 self.jmp(merge_block_id);
+            }
+
+            self.use_basic_block(next_cond_block_id);
+
+            if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
+                if let Some(ty) = pred.on_false_type {
+                    self.apply_narrowing(&pred.lvalue, ty);
+                }
             }
 
             current_cond_block_id = next_cond_block_id;
@@ -120,6 +135,14 @@ impl<'a> Builder<'a, InBlock> {
             Ok(result_id)
         } else {
             Ok(self.emit_const_void())
+        }
+    }
+
+    fn apply_narrowing(&mut self, lvalue: &LValue, new_type: Type) {
+        if let Ok(current_val) = self.read_lvalue(lvalue.clone(), Span::default()) {
+            let refined_val =
+                self.refine(current_val, new_type, Span::default()).unwrap();
+            self.write_lvalue(lvalue.clone(), refined_val);
         }
     }
 }

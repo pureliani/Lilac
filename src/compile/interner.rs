@@ -3,10 +3,6 @@ use std::{
 };
 
 pub trait Id: Copy + Eq + Hash {
-    type BaseType: Copy + Eq + Hash;
-
-    fn from_base(id: Self::BaseType) -> Self;
-    fn to_base(&self) -> Self::BaseType;
     fn from_usize(index: usize) -> Self;
     fn to_usize(&self) -> usize;
 }
@@ -15,13 +11,6 @@ pub trait Id: Copy + Eq + Hash {
 pub struct StringId(pub usize);
 
 impl Id for StringId {
-    type BaseType = usize;
-    fn from_base(id: Self::BaseType) -> Self {
-        StringId(id)
-    }
-    fn to_base(&self) -> Self::BaseType {
-        self.0
-    }
     fn from_usize(index: usize) -> Self {
         StringId(index)
     }
@@ -31,21 +20,14 @@ impl Id for StringId {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TagId(pub u16);
+pub struct TagId(pub usize);
 
 impl Id for TagId {
-    type BaseType = u16;
-    fn from_base(id: Self::BaseType) -> Self {
-        TagId(id)
-    }
-    fn to_base(&self) -> Self::BaseType {
-        self.0
-    }
     fn from_usize(index: usize) -> Self {
-        TagId(u16::try_from(index).expect("TagId overflow"))
+        TagId(index)
     }
     fn to_usize(&self) -> usize {
-        self.0 as usize
+        self.0
     }
 }
 
@@ -55,7 +37,7 @@ where
     T: Eq + Hash + Clone,
     I: Id,
 {
-    pub forward: HashMap<T, I::BaseType>,
+    pub forward: HashMap<T, usize>,
     backward: Vec<T>,
     _marker: PhantomData<I>,
 }
@@ -88,8 +70,8 @@ where
         T: Borrow<Q>,
         Q: ?Sized + Hash + Eq + ToOwned<Owned = T>,
     {
-        if let Some(id) = self.forward.get(key) {
-            return I::from_base(*id);
+        if let Some(index) = self.forward.get(key) {
+            return I::from_usize(*index);
         }
 
         let owned_key: T = key.to_owned();
@@ -97,7 +79,7 @@ where
         let id = I::from_usize(index);
 
         self.backward.push(owned_key.clone());
-        self.forward.insert(owned_key, id.to_base());
+        self.forward.insert(owned_key, index);
 
         id
     }
@@ -148,14 +130,14 @@ where
         Q: ?Sized + Hash + Eq + ToOwned<Owned = T>,
     {
         let reader = self.interner.read().unwrap();
-        if let Some(id) = reader.forward.get(key) {
-            return I::from_base(*id);
+        if let Some(index) = reader.forward.get(key) {
+            return I::from_usize(*index);
         }
         drop(reader);
 
         let mut writer = self.interner.write().unwrap();
-        if let Some(id) = writer.forward.get(key) {
-            return I::from_base(*id);
+        if let Some(index) = writer.forward.get(key) {
+            return I::from_usize(*index);
         }
 
         writer.intern(key)

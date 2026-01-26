@@ -10,6 +10,7 @@ impl<'a> Builder<'a, InModule> {
             current_defs: self.current_defs,
             aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
+            type_predicates: self.type_predicates,
         }
     }
 

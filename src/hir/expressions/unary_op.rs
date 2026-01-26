@@ -1,7 +1,7 @@
 use crate::{
     ast::expr::Expr,
     hir::{
-        builders::{Builder, InBlock, ValueId},
+        builders::{Builder, InBlock, TypePredicate, ValueId},
         errors::SemanticError,
     },
 };
@@ -12,6 +12,17 @@ impl<'a> Builder<'a, InBlock> {
         let operand_id = self.build_expr(expr)?;
 
         let result_id = self.not(operand_id, span)?;
+
+        if let Some(pred) = self.type_predicates.get(&operand_id).cloned() {
+            self.type_predicates.insert(
+                result_id,
+                TypePredicate {
+                    lvalue: pred.lvalue,
+                    on_true_type: pred.on_false_type,
+                    on_false_type: pred.on_true_type,
+                },
+            );
+        }
 
         Ok(result_id)
     }

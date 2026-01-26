@@ -74,6 +74,7 @@ impl<'a> Builder<'a, InModule> {
             current_defs: self.current_defs,
             incomplete_phis: self.incomplete_phis,
             aliases: self.aliases,
+            type_predicates: self.type_predicates,
         };
 
         let entry_bb = BasicBlock {

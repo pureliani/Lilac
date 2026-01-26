@@ -35,6 +35,13 @@ pub enum LValue {
     Field { base_ptr: ValueId, field: StringId },
 }
 
+#[derive(Debug, Clone)]
+pub struct TypePredicate {
+    pub lvalue: LValue,
+    pub on_true_type: Option<Type>,
+    pub on_false_type: Option<Type>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LoopJumpTargets {
     pub on_break: BasicBlockId,
@@ -93,6 +100,7 @@ pub struct Builder<'a, C: BuilderContext> {
     pub errors: &'a mut Vec<SemanticError>,
     pub current_scope: Scope,
 
+    pub type_predicates: &'a mut HashMap<ValueId, TypePredicate>,
     pub current_defs: &'a mut HashMap<BasicBlockId, HashMap<LValue, ValueId>>,
     pub aliases: &'a mut HashMap<DeclarationId, LValue>,
     pub incomplete_phis: &'a mut HashMap<BasicBlockId, Vec<(ValueId, LValue, Span)>>,

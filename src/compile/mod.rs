@@ -108,6 +108,7 @@ impl Compiler {
         let mut current_defs = HashMap::new();
         let mut incomplete_phis = HashMap::new();
         let mut aliases = HashMap::new();
+        let mut type_predicates = HashMap::new();
 
         let mut program = Program {
             constant_data: HashMap::new(),
@@ -126,6 +127,7 @@ impl Compiler {
             current_defs: &mut current_defs,
             incomplete_phis: &mut incomplete_phis,
             aliases: &mut aliases,
+            type_predicates: &mut type_predicates,
         };
 
         program_builder.build(modules_to_compile);
