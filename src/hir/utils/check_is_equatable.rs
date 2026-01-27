@@ -1,6 +1,8 @@
-use super::check_is_assignable::check_is_assignable;
 use super::numeric::is_integer;
-use crate::hir::types::checked_type::{StructKind, Type};
+use crate::hir::{
+    types::checked_type::{StructKind, Type},
+    utils::adjustments::check_is_assignable,
+};
 
 pub fn check_is_equatable(left: &Type, right: &Type) -> bool {
     if let (Type::Pointer(l), Type::Pointer(r)) = (left, right) {

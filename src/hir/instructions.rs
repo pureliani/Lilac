@@ -1,15 +1,11 @@
 use crate::{
     ast::DeclarationId,
-    hir::{
-        builders::{BasicBlockId, ConstantId, ValueId},
-        types::checked_type::Type,
-    },
+    hir::builders::{BasicBlockId, ConstantId, ValueId},
     tokenize::NumberKind,
 };
 
 #[derive(Clone, Debug)]
 pub enum Instruction {
-    // Constants
     ConstNumber {
         dest: ValueId,
         val: NumberKind,
@@ -92,12 +88,10 @@ pub enum Instruction {
     FExt {
         dest: ValueId,
         src: ValueId,
-        target_ty: Type,
     },
     FTrunc {
         dest: ValueId,
         src: ValueId,
-        target_ty: Type,
     },
     IEq {
         dest: ValueId,
@@ -194,29 +188,23 @@ pub enum Instruction {
     IToF {
         dest: ValueId,
         src: ValueId,
-        target_ty: Type,
     },
     FToI {
         dest: ValueId,
         src: ValueId,
-        target_ty: Type,
     },
     SExt {
         dest: ValueId,
         src: ValueId,
-        target_ty: Type,
     },
     ZExt {
         dest: ValueId,
         src: ValueId,
-        target_ty: Type,
     },
     Trunc {
         dest: ValueId,
         src: ValueId,
-        target_ty: Type,
     },
-    // Memory
     StackAlloc {
         destination: ValueId,
         count: usize,
@@ -236,7 +224,10 @@ pub enum Instruction {
         dest: ValueId,
         ptr: ValueId,
     },
-    // Access
+    MemCpy {
+        dest: ValueId,
+        src: ValueId,
+    },
     GetFieldPtr {
         dest: ValueId,
         base_ptr: ValueId,
@@ -247,17 +238,20 @@ pub enum Instruction {
         base_ptr: ValueId,
         index: ValueId,
     },
-    // Calls
     FunctionCall {
         dest: ValueId,
         func: ValueId,
         args: Vec<ValueId>,
     },
-    // Other
+    Select {
+        dest: ValueId,
+        cond: ValueId,
+        true_val: ValueId,
+        false_val: ValueId,
+    },
     RefineType {
         dest: ValueId,
         src: ValueId,
-        new_type: Type,
     },
     Nop,
 }

@@ -211,7 +211,7 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn write_lvalue(&mut self, lval: LValue, val: ValueId) {
+    pub fn remap_lvalue(&mut self, lval: LValue, val: ValueId) {
         self.current_defs
             .entry(self.context.block_id)
             .or_default()

@@ -1,5 +1,5 @@
+pub mod adjustments;
 pub mod check_binary_numeric_op;
-pub mod check_is_assignable;
 pub mod check_is_equatable;
 pub mod check_type;
 pub mod dump;

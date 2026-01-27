@@ -11,8 +11,8 @@ use crate::{
             checked_type::{StructKind, Type},
         },
         utils::{
+            adjustments::check_is_assignable,
             check_binary_numeric_op::check_binary_numeric_operation,
-            check_is_assignable::check_is_assignable,
             numeric::{get_numeric_type_rank, is_float, is_integer, is_signed},
         },
     },
@@ -197,21 +197,13 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn emit_fext(&mut self, src: ValueId, target_ty: Type) -> ValueId {
         let dest = self.new_value_id(target_ty.clone());
-        self.push_instruction(Instruction::FExt {
-            dest,
-            src,
-            target_ty,
-        });
+        self.push_instruction(Instruction::FExt { dest, src });
         dest
     }
 
     pub fn emit_ftrunc(&mut self, src: ValueId, target_ty: Type) -> ValueId {
         let dest = self.new_value_id(target_ty.clone());
-        self.push_instruction(Instruction::FTrunc {
-            dest,
-            src,
-            target_ty,
-        });
+        self.push_instruction(Instruction::FTrunc { dest, src });
         dest
     }
 
@@ -333,55 +325,33 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn emit_itof(&mut self, src: ValueId, target_ty: Type) -> ValueId {
         let dest = self.new_value_id(target_ty.clone());
-        self.push_instruction(Instruction::IToF {
-            dest,
-            src,
-            target_ty,
-        });
+        self.push_instruction(Instruction::IToF { dest, src });
         dest
     }
 
     pub fn emit_ftoi(&mut self, src: ValueId, target_ty: Type) -> ValueId {
         let dest = self.new_value_id(target_ty.clone());
-        self.push_instruction(Instruction::FToI {
-            dest,
-            src,
-            target_ty,
-        });
+        self.push_instruction(Instruction::FToI { dest, src });
         dest
     }
 
     pub fn emit_sext(&mut self, src: ValueId, target_ty: Type) -> ValueId {
         let dest = self.new_value_id(target_ty.clone());
-        self.push_instruction(Instruction::SExt {
-            dest,
-            src,
-            target_ty,
-        });
+        self.push_instruction(Instruction::SExt { dest, src });
         dest
     }
 
     pub fn emit_zext(&mut self, src: ValueId, target_ty: Type) -> ValueId {
         let dest = self.new_value_id(target_ty.clone());
-        self.push_instruction(Instruction::ZExt {
-            dest,
-            src,
-            target_ty,
-        });
+        self.push_instruction(Instruction::ZExt { dest, src });
         dest
     }
 
     pub fn emit_trunc(&mut self, src: ValueId, target_ty: Type) -> ValueId {
         let dest = self.new_value_id(target_ty.clone());
-        self.push_instruction(Instruction::Trunc {
-            dest,
-            src,
-            target_ty,
-        });
+        self.push_instruction(Instruction::Trunc { dest, src });
         dest
     }
-
-    // Memory
 
     pub fn emit_stack_alloc(&mut self, ty: Type, count: usize) -> ValueId {
         let destination = self.new_value_id(Type::Pointer(Box::new(ty)));
@@ -423,13 +393,7 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn emit_refine_type(&mut self, src: ValueId, new_type: Type) -> ValueId {
         let dest = self.new_value_id(new_type.clone());
-
-        self.push_instruction(Instruction::RefineType {
-            dest,
-            src,
-            new_type,
-        });
-
+        self.push_instruction(Instruction::RefineType { dest, src });
         dest
     }
 

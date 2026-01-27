@@ -4,7 +4,7 @@ use crate::{
         builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::Type,
-        utils::{check_is_assignable::check_is_assignable, scope::ScopeKind},
+        utils::{adjustments::check_is_assignable, scope::ScopeKind},
     },
 };
 
@@ -26,7 +26,7 @@ impl<'a> Builder<'a, InBlock> {
         let cond_ty = self.get_value_type(&cond_id);
 
         if !check_is_assignable(cond_ty, &Type::Bool) {
-            self.errors.push(SemanticError {
+            return Err(SemanticError {
                 span: condition_span,
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,

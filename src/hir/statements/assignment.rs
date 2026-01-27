@@ -7,7 +7,7 @@ use crate::{
         builders::{Builder, InBlock, LValue},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::CheckedDeclaration,
-        utils::check_is_assignable::check_is_assignable,
+        utils::adjustments::check_is_assignable,
     },
 };
 
@@ -65,7 +65,7 @@ impl<'a> Builder<'a, InBlock> {
 
                 if let CheckedDeclaration::Var(var_decl) = decl {
                     if !check_is_assignable(&val_type, &var_decl.constraint) {
-                        self.errors.push(SemanticError {
+                        return Err(SemanticError {
                             kind: SemanticErrorKind::TypeMismatch {
                                 expected: var_decl.constraint.clone(),
                                 received: val_type.clone(),
@@ -75,10 +75,10 @@ impl<'a> Builder<'a, InBlock> {
                     }
                 }
 
-                self.write_lvalue(lval.clone(), val_id);
+                self.remap_lvalue(lval.clone(), val_id);
             }
             LValue::Field { base_ptr, field } => {
-                self.write_lvalue(lval.clone(), val_id);
+                self.remap_lvalue(lval.clone(), val_id);
 
                 let field_node = IdentifierNode {
                     name: *field,

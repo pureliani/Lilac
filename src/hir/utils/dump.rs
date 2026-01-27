@@ -342,16 +342,12 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 )
                 .unwrap();
             }
-            Instruction::RefineType {
-                dest,
-                src,
-                new_type,
-            } => {
-                let new_t = type_to_string(new_type);
+            Instruction::RefineType { dest, src } => {
+                let new_t = get_vt(p, dest);
                 writeln!(
                     out,
                     "v{}: {} = v{}::refineType({});",
-                    dest.0, &new_t, src.0, new_t
+                    dest.0, new_t, src.0, new_t
                 )
                 .unwrap();
             }

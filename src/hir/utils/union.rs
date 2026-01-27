@@ -4,7 +4,7 @@ use crate::{
     compile::interner::StringId,
     hir::{
         types::checked_type::{StructKind, Type},
-        utils::check_is_assignable::check_is_assignable,
+        utils::adjustments::check_is_assignable,
     },
 };
 

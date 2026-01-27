@@ -9,7 +9,7 @@ use crate::{
         builders::{BasicBlockId, Builder, InBlock, LValue, PhiEntry, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::Type,
-        utils::check_is_assignable::check_is_assignable,
+        utils::adjustments::check_is_assignable,
     },
 };
 
@@ -57,7 +57,7 @@ impl<'a> Builder<'a, InBlock> {
             let cond_ty = self.get_value_type(&cond_id);
 
             if !check_is_assignable(cond_ty, &Type::Bool) {
-                self.errors.push(SemanticError {
+                return Err(SemanticError {
                     span: condition_span,
                     kind: SemanticErrorKind::TypeMismatch {
                         expected: Type::Bool,
@@ -142,7 +142,7 @@ impl<'a> Builder<'a, InBlock> {
         if let Ok(current_val) = self.read_lvalue(lvalue.clone(), Span::default()) {
             let refined_val =
                 self.refine(current_val, new_type, Span::default()).unwrap();
-            self.write_lvalue(lvalue.clone(), refined_val);
+            self.remap_lvalue(lvalue.clone(), refined_val);
         }
     }
 }

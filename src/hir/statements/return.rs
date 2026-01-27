@@ -4,7 +4,7 @@ use crate::{
         builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::CheckedDeclaration,
-        utils::check_is_assignable::check_is_assignable,
+        utils::adjustments::check_is_assignable,
     },
 };
 
@@ -29,7 +29,7 @@ impl<'a> Builder<'a, InBlock> {
         let actual_type = self.get_value_type(&val_id);
 
         if !check_is_assignable(actual_type, &expected_return_type) {
-            self.errors.push(SemanticError {
+            return Err(SemanticError {
                 kind: SemanticErrorKind::ReturnTypeMismatch {
                     expected: expected_return_type.clone(),
                     received: actual_type.clone(),

@@ -68,7 +68,9 @@ impl<'a> Builder<'a, InGlobal> {
                     }
                     StmtKind::Expression(expr) => {
                         if let ExprKind::Fn(f) = expr.kind {
-                            module_builder.build_fn_body(*f);
+                            if let Err(e) = module_builder.build_fn_body(*f) {
+                                module_builder.errors.push(e);
+                            };
                         }
                     }
                     _ => {}

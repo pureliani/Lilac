@@ -8,11 +8,7 @@ type OptionalUser = {
 fn main(): void {
     let a: OptionalUser = { kind: #Some, id: 15 };
 
-    if 1 > 2 {
-        a = { kind: #None };
-    } else {
-        a = { kind: #None };
-    }
-
-    let b: { kind: #None } = a;
+    if a::is({ kind: #None }) {
+        a.id = 11;
+    };
 }

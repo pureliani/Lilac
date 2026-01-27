@@ -8,7 +8,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
         utils::{
-            check_is_assignable::check_is_assignable,
+            adjustments::check_is_assignable,
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
             scope::ScopeKind,
         },
@@ -16,13 +16,12 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InModule> {
-    pub fn build_fn_body(&mut self, fn_decl: FnDecl) {
+    pub fn build_fn_body(&mut self, fn_decl: FnDecl) -> Result<(), SemanticError> {
         if !self.current_scope.is_file_scope() {
-            self.errors.push(SemanticError {
+            return Err(SemanticError {
                 kind: SemanticErrorKind::ClosuresNotSupportedYet,
                 span: fn_decl.identifier.span.clone(),
             });
-            return;
         }
 
         let FnDecl {
@@ -115,17 +114,11 @@ impl<'a> Builder<'a, InModule> {
         }
 
         let body_span = body.span.clone();
-        let final_value = match fn_builder.build_codeblock_expr(body) {
-            Ok(id) => id,
-            Err(e) => {
-                self.errors.push(e);
-                return;
-            }
-        };
+        let final_value = fn_builder.build_codeblock_expr(body)?;
         let final_value_type = fn_builder.get_value_type(&final_value).clone();
 
         if !check_is_assignable(&final_value_type, &checked_return_type) {
-            fn_builder.errors.push(SemanticError {
+            return Err(SemanticError {
                 span: body_span,
                 kind: SemanticErrorKind::ReturnTypeMismatch {
                     expected: checked_return_type.clone(),
@@ -135,13 +128,15 @@ impl<'a> Builder<'a, InModule> {
         }
 
         fn_builder.emit_return_terminator(final_value);
+
+        Ok(())
     }
 }
 
 impl<'a> Builder<'a, InBlock> {
     pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> Result<ValueId, SemanticError> {
         let id = fn_decl.id;
-        self.as_module().build_fn_body(fn_decl);
+        self.as_module().build_fn_body(fn_decl)?;
         Ok(self.emit_const_fn(id))
     }
 }
