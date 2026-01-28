@@ -16,7 +16,7 @@ use crate::{
         types::checked_type::Type,
         utils::{
             adjustments::check_is_assignable,
-            check_binary_numeric_op::check_binary_numeric_operation,
+            check_type::check_arithmetic_op_type,
             numeric::{is_float, is_signed},
         },
     },
@@ -103,12 +103,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let target_ty = check_binary_numeric_operation(
-            lhs_ty,
-            lhs_span.clone(),
-            rhs_ty,
-            rhs_span.clone(),
-        )?;
+        let target_ty =
+            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
         let lhs = if self.get_value_type(&lhs) != &target_ty {
             self.cast(lhs, target_ty.clone(), lhs_span)?
@@ -139,12 +135,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let target_ty = check_binary_numeric_operation(
-            lhs_ty,
-            lhs_span.clone(),
-            rhs_ty,
-            rhs_span.clone(),
-        )?;
+        let target_ty =
+            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
         let lhs = if self.get_value_type(&lhs) != &target_ty {
             self.cast(lhs, target_ty.clone(), lhs_span)?
@@ -175,12 +167,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let target_ty = check_binary_numeric_operation(
-            lhs_ty,
-            lhs_span.clone(),
-            rhs_ty,
-            rhs_span.clone(),
-        )?;
+        let target_ty =
+            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
         let lhs = if self.get_value_type(&lhs) != &target_ty {
             self.cast(lhs, target_ty.clone(), lhs_span)?
@@ -211,12 +199,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let target_ty = check_binary_numeric_operation(
-            lhs_ty,
-            lhs_span.clone(),
-            rhs_ty,
-            rhs_span.clone(),
-        )?;
+        let target_ty =
+            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
         let lhs = if self.get_value_type(&lhs) != &target_ty {
             self.cast(lhs, target_ty.clone(), lhs_span)?
@@ -249,12 +233,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let target_ty = check_binary_numeric_operation(
-            lhs_ty,
-            lhs_span.clone(),
-            rhs_ty,
-            rhs_span.clone(),
-        )?;
+        let target_ty =
+            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
         let lhs = if self.get_value_type(&lhs) != &target_ty {
             self.cast(lhs, target_ty.clone(), lhs_span)?
@@ -341,12 +321,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let target_ty = check_binary_numeric_operation(
-            lhs_ty,
-            lhs_span.clone(),
-            rhs_ty,
-            rhs_span.clone(),
-        )?;
+        let target_ty =
+            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
         let lhs = if self.get_value_type(&lhs) != &target_ty {
             self.cast(lhs, target_ty.clone(), lhs_span)?
@@ -379,12 +355,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let target_ty = check_binary_numeric_operation(
-            lhs_ty,
-            lhs_span.clone(),
-            rhs_ty,
-            rhs_span.clone(),
-        )?;
+        let target_ty =
+            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
         let lhs = if self.get_value_type(&lhs) != &target_ty {
             self.cast(lhs, target_ty.clone(), lhs_span)?
@@ -417,12 +389,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let target_ty = check_binary_numeric_operation(
-            lhs_ty,
-            lhs_span.clone(),
-            rhs_ty,
-            rhs_span.clone(),
-        )?;
+        let target_ty =
+            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
         let lhs = if self.get_value_type(&lhs) != &target_ty {
             self.cast(lhs, target_ty.clone(), lhs_span)?
@@ -455,12 +423,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        let target_ty = check_binary_numeric_operation(
-            lhs_ty,
-            lhs_span.clone(),
-            rhs_ty,
-            rhs_span.clone(),
-        )?;
+        let target_ty =
+            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
         let lhs = if self.get_value_type(&lhs) != &target_ty {
             self.cast(lhs, target_ty.clone(), lhs_span)?

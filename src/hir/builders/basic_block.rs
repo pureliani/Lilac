@@ -2,17 +2,14 @@ use std::collections::HashSet;
 
 use crate::{
     ast::{IdentifierNode, Span},
-    globals::{next_value_id, COMMON_IDENTIFIERS},
+    globals::next_value_id,
     hir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
             InModule, LValue, PhiEntry, ValueId,
         },
         errors::{SemanticError, SemanticErrorKind},
-        types::{
-            checked_declaration::CheckedDeclaration,
-            checked_type::{StructKind, Type},
-        },
+        types::{checked_declaration::CheckedDeclaration, checked_type::Type},
     },
 };
 
