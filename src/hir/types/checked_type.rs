@@ -27,21 +27,24 @@ impl Type {
         let mut flat_set = BTreeSet::new();
 
         for ty in types {
-            match ty {
-                Type::Never => continue,
-                Type::Struct(StructKind::Union(variants)) => {
-                    flat_set.extend(variants);
-                }
-                _ => {
-                    flat_set.insert(ty);
+            if matches!(ty, Type::Never) {
+                continue;
+            }
+
+            if let Type::Pointer(inner) = &ty {
+                if let Type::Struct(StructKind::Union(variants)) = &**inner {
+                    flat_set.extend(variants.clone());
+                    continue;
                 }
             }
+
+            flat_set.insert(ty);
         }
 
         match flat_set.len() {
             0 => Type::Never,
             1 => flat_set.into_iter().next().unwrap(),
-            _ => Type::Struct(StructKind::Union(flat_set)),
+            _ => Type::Pointer(Box::new(Type::Struct(StructKind::Union(flat_set)))),
         }
     }
 
@@ -69,15 +72,19 @@ impl Type {
     }
 
     fn into_set(self) -> BTreeSet<Type> {
-        match self {
-            Type::Struct(StructKind::Union(variants)) => variants,
-            Type::Never => BTreeSet::new(),
-            _ => {
-                let mut set = BTreeSet::new();
-                set.insert(self);
-                set
+        if matches!(self, Type::Never) {
+            return BTreeSet::new();
+        }
+
+        if let Type::Pointer(inner) = &self {
+            if let Type::Struct(StructKind::Union(variants)) = &**inner {
+                return variants.clone();
             }
         }
+
+        let mut set = BTreeSet::new();
+        set.insert(self);
+        set
     }
 }
 
@@ -102,7 +109,10 @@ impl StructKind {
             ],
             StructKind::Union(variants) => {
                 if variants.len() < 2 {
-                    panic!("INTERNAL COMPILER ERROR: Unflattened or empty Union detected. Always use Type::make_union()");
+                    panic!(
+                        "INTERNAL COMPILER ERROR: Unflattened or empty Union detected. \
+                         Always use Type::make_union()"
+                    );
                 }
 
                 let mut max_size = 0;

@@ -68,7 +68,10 @@ impl<'a> Builder<'a, InBlock> {
                 }
                 ExprKind::Identifier(ident) => {
                     if let Some(decl_id) = self.current_scope.lookup(ident.name) {
-                        let decl = self.program.declarations.get(&decl_id).expect("INTERNAL COMPILER ERROR: Expected declaration id entry to exist");
+                        let decl = self.program.declarations.get(&decl_id).expect(
+                            "INTERNAL COMPILER ERROR: Expected declaration id entry to \
+                             exist",
+                        );
                         if let CheckedDeclaration::Var(_) = decl {
                             let lvalue = self
                                 .aliases

@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::Span;
-use crate::hir::builders::{Builder, InBlock, ValueId};
+use crate::globals::COMMON_IDENTIFIERS;
+use crate::hir::builders::{Builder, InBlock, LValue, ValueId};
 use crate::hir::errors::{SemanticError, SemanticErrorKind};
 use crate::hir::types::checked_type::{StructKind, Type};
 use crate::hir::utils::numeric::{
     get_numeric_type_rank, is_float, is_integer, is_signed,
 };
+use crate::tokenize::NumberKind;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValueAdjustment {
@@ -88,17 +90,22 @@ pub fn analyze_value_adjustment(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum MemoryAdjustment {
-    Compatible,
-    StoreVariantInUnion { discriminator: u16 },
-    RemapUnionDiscriminator { remap: HashMap<u16, u16> },
+pub enum MemoryWriteAdjustment {
+    DirectStore,
+    AssignVariantToUnion {
+        discriminator: u16,
+    },
+    AssignUnionToUnion {
+        remap_discriminators: HashMap<u16, u16>,
+    },
 }
 
+/// target _must_ be a pointer
 pub fn analyze_memory_adjustment(
     source: &Type,
     source_span: Span,
     target: &Type,
-) -> Result<MemoryAdjustment, SemanticError> {
+) -> Result<MemoryWriteAdjustment, SemanticError> {
     let casting_err = Err(SemanticError {
         kind: SemanticErrorKind::CannotCastType {
             source_type: source.clone(),
@@ -107,42 +114,62 @@ pub fn analyze_memory_adjustment(
         span: source_span,
     });
 
-    if check_structural_compatibility(source, target) {
-        return Ok(MemoryAdjustment::Compatible);
-    }
-
-    if let Type::Struct(StructKind::Union(t_variants)) = target {
-        // Variant -> Union
-        if !matches!(source, Type::Struct(StructKind::Union(_))) {
-            if let Some(index) = t_variants
-                .iter()
-                .position(|v| check_structural_compatibility(source, v))
-            {
-                return Ok(MemoryAdjustment::StoreVariantInUnion {
-                    discriminator: index as u16,
-                });
-            }
+    let target_inner = if let Type::Pointer(target_inner) = target {
+        if check_structural_compatibility(source, target_inner) {
+            return Ok(MemoryWriteAdjustment::DirectStore);
         }
-        // Union -> Union (Widening/Reordering)
-        else if let Type::Struct(StructKind::Union(s_variants)) = source {
-            let mut remap = HashMap::new();
-            let mut possible = true;
 
-            for (s_idx, s_variant) in s_variants.iter().enumerate() {
-                let match_idx = t_variants.iter().position(|t_variant| {
-                    check_structural_compatibility(s_variant, t_variant)
-                });
+        &**target_inner
+    } else {
+        panic!("INTERNAL COMPILER ERROR: analyze_memory_adjustment expected the target to be a pointer");
+    };
 
-                if let Some(t_idx) = match_idx {
-                    remap.insert(s_idx as u16, t_idx as u16);
-                } else {
-                    possible = false;
-                    break;
+    if let Type::Struct(StructKind::Union(t_variants)) = target_inner {
+        let s_variants = if let Type::Pointer(inner) = source {
+            if let Type::Struct(StructKind::Union(s_variants)) = &**inner {
+                Some(s_variants)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        match s_variants {
+            // Variant -> Union
+            None => {
+                if let Some(index) = t_variants
+                    .iter()
+                    .position(|v| check_structural_compatibility(source, v))
+                {
+                    return Ok(MemoryWriteAdjustment::AssignVariantToUnion {
+                        discriminator: index as u16,
+                    });
                 }
             }
+            // Union -> Union (Widening/Reordering)
+            Some(s_variants) => {
+                let mut remap = HashMap::new();
+                let mut possible = true;
 
-            if possible {
-                return Ok(MemoryAdjustment::RemapUnionDiscriminator { remap });
+                for (s_idx, s_variant) in s_variants.iter().enumerate() {
+                    let match_idx = t_variants.iter().position(|t_variant| {
+                        check_structural_compatibility(s_variant, t_variant)
+                    });
+
+                    if let Some(t_idx) = match_idx {
+                        remap.insert(s_idx as u16, t_idx as u16);
+                    } else {
+                        possible = false;
+                        break;
+                    }
+                }
+
+                if possible {
+                    return Ok(MemoryWriteAdjustment::AssignUnionToUnion {
+                        remap_discriminators: remap,
+                    });
+                }
             }
         }
     }
@@ -365,5 +392,46 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     /// This function expects the memory slot to be allocated beforehand
-    pub fn apply_memory_adjustment(source: ValueId) {}
+    pub fn adjust_memory_and_write(
+        &mut self,
+        source: ValueId,
+        source_span: Span,
+        target: LValue,
+    ) -> Result<(), SemanticError> {
+        let source_type = self.get_value_type(&source).clone();
+        let target_ptr = self.read_lvalue(target, source_span.clone()).unwrap();
+        let target_ptr_type = self.get_value_type(&target_ptr);
+
+        let adjustment = analyze_memory_adjustment(
+            &source_type,
+            source_span.clone(),
+            target_ptr_type,
+        )?;
+
+        match adjustment {
+            MemoryWriteAdjustment::DirectStore => {
+                self.emit_store(target_ptr, source, source_span);
+            }
+            MemoryWriteAdjustment::AssignVariantToUnion { discriminator } => {
+                let id_ptr = self.get_field_ptr(target_ptr, COMMON_IDENTIFIERS.id);
+                let discriminator_value =
+                    self.emit_const_number(NumberKind::U16(discriminator));
+                self.emit_store(id_ptr, discriminator_value, source_span.clone());
+
+                let value_ptr = self.get_field_ptr(target_ptr, COMMON_IDENTIFIERS.value);
+                let value_ptr_bitcast = self.emit_bitcast(
+                    value_ptr,
+                    Type::Pointer(Box::new(source_type.clone())),
+                );
+                self.emit_store(value_ptr_bitcast, source, source_span);
+            }
+            MemoryWriteAdjustment::AssignUnionToUnion {
+                remap_discriminators: remap,
+            } => {
+                todo!("Implement union remapping copy");
+            }
+        }
+
+        Ok(())
+    }
 }

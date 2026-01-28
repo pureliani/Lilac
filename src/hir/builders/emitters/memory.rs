@@ -7,7 +7,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, MemoryInstr},
         types::checked_type::{StructKind, Type},
-        utils::adjustments::check_is_assignable,
+        utils::adjustments::{check_is_assignable, check_structural_compatibility},
     },
 };
 
@@ -41,6 +41,21 @@ impl<'a> Builder<'a, InBlock> {
         let dest = self.new_value_id(dest_ty);
         self.push_instruction(Instruction::Memory(MemoryInstr::Load { dest, ptr }));
         dest
+    }
+
+    pub fn emit_memcopy(&mut self, src: ValueId, dest: ValueId) {
+        let src_ty = self.get_value_type(&src);
+        let dest_ty = self.get_value_type(&dest);
+
+        let compatible = matches!((src_ty, dest_ty), (Type::Pointer(src_ptr), Type::Pointer(dest_ptr)) if check_structural_compatibility(src_ptr, dest_ptr));
+        if !compatible {
+            panic!(
+                "INTERNAL COMPILER ERROR: MemCopy expected source and destination to be \
+                 pointers to the same inner type"
+            );
+        }
+
+        self.push_instruction(Instruction::Memory(MemoryInstr::MemCopy { dest, src }));
     }
 
     pub fn emit_store(&mut self, ptr: ValueId, value: ValueId, span: Span) {
@@ -170,7 +185,10 @@ impl<'a> Builder<'a, InBlock> {
         };
 
         if !is_valid {
-            panic!("INTERNAL COMPILER ERROR: Tried to get list buffer pointer from an invalid header type");
+            panic!(
+                "INTERNAL COMPILER ERROR: Tried to get list buffer pointer from an \
+                 invalid header type"
+            );
         }
 
         let buffer_ptr_ptr = self.get_field_ptr(list_header_ptr, COMMON_IDENTIFIERS.ptr);

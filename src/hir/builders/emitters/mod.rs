@@ -33,8 +33,8 @@ impl<'a> Builder<'a, InBlock> {
 
         if bb.terminator.is_some() {
             panic!(
-                "INTERNAL COMPILER ERROR: Tried re-set terminator or tried to add an instruction to a basic block \
-                 (ID: {}) that has already been terminated",
+                "INTERNAL COMPILER ERROR: Tried re-set terminator or tried to add an \
+                 instruction to a basic block (ID: {}) that has already been terminated",
                 bb.id.0
             );
         }

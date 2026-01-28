@@ -63,7 +63,11 @@ impl<'a> Builder<'a, InBlock> {
     pub fn emit_bitcast(&mut self, src: ValueId, target_ty: Type) -> ValueId {
         let src_ty = self.get_value_type(&src);
         if !check_structural_compatibility(src_ty, &target_ty) {
-            panic!("INTERNAL COMPILER ERROR: Tried a bitcast to structurally incompatible type, from {:?} to {:?}", src_ty, &target_ty);
+            panic!(
+                "INTERNAL COMPILER ERROR: Tried a bitcast to structurally incompatible \
+                 type, from {:?} to {:?}",
+                src_ty, &target_ty
+            );
         }
 
         let dest = self.new_value_id(target_ty);

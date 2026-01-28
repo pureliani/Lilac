@@ -29,7 +29,7 @@ pub struct ValueId(pub usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ConstantId(pub usize);
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LValue {
     Variable(DeclarationId),
     Field { base_ptr: ValueId, field: StringId },

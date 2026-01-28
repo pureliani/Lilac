@@ -203,11 +203,20 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     writeln!(out, "v{}: void = void;", dest.0).unwrap();
                 }
                 ConstInstr::ConstFn { dest, decl_id } => {
-                    let decl = p.declarations.get(decl_id).unwrap_or_else(||panic!("INTERNAL COMPILER ERROR: No corresponding for DeclarationId({})", decl_id.0));
+                    let decl = p.declarations.get(decl_id).unwrap_or_else(|| {
+                        panic!(
+                            "INTERNAL COMPILER ERROR: No corresponding for \
+                             DeclarationId({})",
+                            decl_id.0
+                        )
+                    });
                     let fn_identifier = if let CheckedDeclaration::Function(f) = decl {
                         f.identifier.clone()
                     } else {
-                        panic!("INTERNAL COMPILER ERROR: Expected declaration id to correspond to a function")
+                        panic!(
+                            "INTERNAL COMPILER ERROR: Expected declaration id to \
+                             correspond to a function"
+                        )
                     };
 
                     writeln!(
