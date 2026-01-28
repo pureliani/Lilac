@@ -85,7 +85,8 @@ impl<'a> Builder<'a, InBlock> {
                     span: target_span.clone(),
                 };
 
-                let ptr_id = self.try_get_field_ptr(*base_ptr, &field_node)?;
+                let ptr_id =
+                    self.try_get_user_struct_field_ptr(*base_ptr, &field_node)?;
                 self.emit_store(ptr_id, val_id, target_span);
             }
         }
