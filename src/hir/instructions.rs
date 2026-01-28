@@ -184,8 +184,10 @@ pub enum UnaryInstr {
 
 #[derive(Clone, Debug)]
 pub enum CastInstr {
-    IToF { dest: ValueId, src: ValueId },
-    FToI { dest: ValueId, src: ValueId },
+    SIToF { dest: ValueId, src: ValueId },
+    UIToF { dest: ValueId, src: ValueId },
+    FToSI { dest: ValueId, src: ValueId },
+    FToUI { dest: ValueId, src: ValueId },
     FExt { dest: ValueId, src: ValueId },
     FTrunc { dest: ValueId, src: ValueId },
     Trunc { dest: ValueId, src: ValueId },

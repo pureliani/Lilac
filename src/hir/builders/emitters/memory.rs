@@ -1,5 +1,5 @@
 use crate::{
-    ast::Span,
+    ast::{IdentifierNode, Span},
     compile::interner::StringId,
     globals::{COMMON_IDENTIFIERS, STRING_INTERNER},
     hir::{
@@ -102,7 +102,11 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn get_field_ptr(&mut self, base_ptr: ValueId, field_name: StringId) -> ValueId {
+    pub fn try_get_field_ptr(
+        &mut self,
+        base_ptr: ValueId,
+        field: &IdentifierNode,
+    ) -> Result<ValueId, SemanticError> {
         let current_ty = self.get_value_type(&base_ptr);
 
         let struct_kind = match current_ty {
@@ -116,12 +120,14 @@ impl<'a> Builder<'a, InBlock> {
         };
 
         let (field_index, field_type) =
-            struct_kind.get_field(&field_name).unwrap_or_else(|| {
-                panic!(
-                    "INTERNAL COMPILER ERROR: Expected field {} to be defined",
-                    STRING_INTERNER.resolve(field_name)
-                )
-            });
+            if let Some(v) = struct_kind.get_field(&field.name) {
+                v
+            } else {
+                return Err(SemanticError {
+                    span: field.span.clone(),
+                    kind: SemanticErrorKind::AccessToUndefinedField(field.clone()),
+                });
+            };
 
         let dest = self.new_value_id(Type::Pointer(Box::new(field_type)));
 
@@ -131,7 +137,23 @@ impl<'a> Builder<'a, InBlock> {
             field_index,
         }));
 
-        dest
+        Ok(dest)
+    }
+
+    pub fn get_field_ptr(&mut self, base_ptr: ValueId, field_name: StringId) -> ValueId {
+        self.try_get_field_ptr(
+            base_ptr,
+            &IdentifierNode {
+                name: field_name,
+                span: Span::default(),
+            },
+        )
+        .unwrap_or_else(|_| {
+            panic!(
+                "INTERNAL COMPILER ERROR: Expected field {} to be defined",
+                STRING_INTERNER.resolve(field_name)
+            )
+        })
     }
 
     pub fn get_list_buffer_ptr(&mut self, list_header_ptr: ValueId) -> ValueId {

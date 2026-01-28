@@ -1,31 +1,39 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::hir::errors::SemanticErrorKind;
+use crate::ast::Span;
+use crate::hir::builders::{Builder, InBlock, ValueId};
+use crate::hir::errors::{SemanticError, SemanticErrorKind};
 use crate::hir::types::checked_type::{StructKind, Type};
 use crate::hir::utils::numeric::{
     get_numeric_type_rank, is_float, is_integer, is_signed,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Adjustment {
-    Identity,
-    IntExtend { target: Type, is_signed: bool },
-    IntTruncate { target: Type },
-    FloatExtend { target: Type },
-    FloatTruncate { target: Type },
-    IntToFloat { target: Type, is_signed: bool },
-    FloatToInt { target: Type, is_signed: bool },
-
-    StoreVariantInUnion { discriminator: u16 },
-
-    RemapUnionDiscriminator { remap: HashMap<u16, u16> },
-
-    Incompatible,
+pub enum ValueAdjustment {
+    Compatible,
+    IntExtend { target_type: Type, is_signed: bool },
+    IntTruncate { target_type: Type },
+    FloatExtend { target_type: Type },
+    FloatTruncate { target_type: Type },
+    IntToFloat { target_type: Type, is_signed: bool },
+    FloatToInt { target_type: Type, is_signed: bool },
 }
 
-pub fn analyze_adjustment(source: &Type, target: &Type) -> Adjustment {
+pub fn analyze_value_adjustment(
+    source: &Type,
+    source_span: Span,
+    target: &Type,
+) -> Result<ValueAdjustment, SemanticError> {
+    let casting_err = Err(SemanticError {
+        kind: SemanticErrorKind::CannotCastType {
+            source_type: source.clone(),
+            target_type: target.clone(),
+        },
+        span: source_span,
+    });
+
     if check_structural_compatibility(source, target) {
-        return Adjustment::Identity;
+        return Ok(ValueAdjustment::Compatible);
     }
 
     if is_integer(source) && is_integer(target) {
@@ -33,17 +41,17 @@ pub fn analyze_adjustment(source: &Type, target: &Type) -> Adjustment {
         let t_rank = get_numeric_type_rank(target);
 
         if t_rank > s_rank {
-            return Adjustment::IntExtend {
-                target: target.clone(),
+            return Ok(ValueAdjustment::IntExtend {
+                target_type: target.clone(),
                 is_signed: is_signed(source),
-            };
+            });
         } else if t_rank < s_rank {
-            return Adjustment::IntTruncate {
-                target: target.clone(),
-            };
+            return Ok(ValueAdjustment::IntTruncate {
+                target_type: target.clone(),
+            });
         }
 
-        return Adjustment::Incompatible;
+        return casting_err;
     }
 
     if is_float(source) && is_float(target) {
@@ -51,29 +59,56 @@ pub fn analyze_adjustment(source: &Type, target: &Type) -> Adjustment {
         let t_rank = get_numeric_type_rank(target);
 
         if t_rank > s_rank {
-            return Adjustment::FloatExtend {
-                target: target.clone(),
-            };
+            return Ok(ValueAdjustment::FloatExtend {
+                target_type: target.clone(),
+            });
         } else if t_rank < s_rank {
-            return Adjustment::FloatTruncate {
-                target: target.clone(),
-            };
+            return Ok(ValueAdjustment::FloatTruncate {
+                target_type: target.clone(),
+            });
         }
-        return Adjustment::Incompatible;
+        return casting_err;
     }
 
     if is_integer(source) && is_float(target) {
-        return Adjustment::IntToFloat {
-            target: target.clone(),
+        return Ok(ValueAdjustment::IntToFloat {
+            target_type: target.clone(),
             is_signed: is_signed(source),
-        };
+        });
     }
 
     if is_float(source) && is_integer(target) {
-        return Adjustment::FloatToInt {
-            target: target.clone(),
+        return Ok(ValueAdjustment::FloatToInt {
+            target_type: target.clone(),
             is_signed: is_signed(target),
-        };
+        });
+    }
+
+    casting_err
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MemoryAdjustment {
+    Compatible,
+    StoreVariantInUnion { discriminator: u16 },
+    RemapUnionDiscriminator { remap: HashMap<u16, u16> },
+}
+
+pub fn analyze_memory_adjustment(
+    source: &Type,
+    source_span: Span,
+    target: &Type,
+) -> Result<MemoryAdjustment, SemanticError> {
+    let casting_err = Err(SemanticError {
+        kind: SemanticErrorKind::CannotCastType {
+            source_type: source.clone(),
+            target_type: target.clone(),
+        },
+        span: source_span,
+    });
+
+    if check_structural_compatibility(source, target) {
+        return Ok(MemoryAdjustment::Compatible);
     }
 
     if let Type::Struct(StructKind::Union(t_variants)) = target {
@@ -83,9 +118,9 @@ pub fn analyze_adjustment(source: &Type, target: &Type) -> Adjustment {
                 .iter()
                 .position(|v| check_structural_compatibility(source, v))
             {
-                return Adjustment::StoreVariantInUnion {
+                return Ok(MemoryAdjustment::StoreVariantInUnion {
                     discriminator: index as u16,
-                };
+                });
             }
         }
         // Union -> Union (Widening/Reordering)
@@ -107,41 +142,71 @@ pub fn analyze_adjustment(source: &Type, target: &Type) -> Adjustment {
             }
 
             if possible {
-                return Adjustment::RemapUnionDiscriminator { remap };
+                return Ok(MemoryAdjustment::RemapUnionDiscriminator { remap });
             }
         }
     }
 
-    Adjustment::Incompatible
+    casting_err
 }
 
-pub fn resolve_binary_op_type(lhs: &Type, rhs: &Type) -> Result<Type, SemanticErrorKind> {
-    let lhs_numeric = is_integer(lhs) || is_float(lhs);
-    let rhs_numeric = is_integer(rhs) || is_float(rhs);
+pub fn arithmetic_supertype(
+    left: &Type,
+    left_span: Span,
+    right: &Type,
+    right_span: Span,
+) -> Result<Type, SemanticError> {
+    let span = Span {
+        start: left_span.start,
+        end: right_span.end,
+        path: left_span.path.clone(),
+    };
 
-    if !lhs_numeric || !rhs_numeric {
-        return Err(SemanticErrorKind::ExpectedANumericOperand);
-    }
-
-    if lhs == rhs {
-        return Ok(lhs.clone());
-    }
-
-    if is_float(lhs) != is_float(rhs) {
-        return Err(SemanticErrorKind::MixedFloatAndInteger);
-    }
-
-    if is_signed(lhs) != is_signed(rhs) {
-        return Err(SemanticErrorKind::MixedSignedAndUnsigned);
-    }
-
-    let l_rank = get_numeric_type_rank(lhs);
-    let r_rank = get_numeric_type_rank(rhs);
-
-    if l_rank >= r_rank {
-        Ok(lhs.clone())
+    let left_type = if is_float(left) || is_integer(left) {
+        left
     } else {
-        Ok(rhs.clone())
+        return Err(SemanticError {
+            kind: SemanticErrorKind::ExpectedANumericOperand,
+            span: left_span,
+        });
+    };
+
+    let right_type = if is_float(right) || is_integer(right) {
+        right
+    } else {
+        return Err(SemanticError {
+            kind: SemanticErrorKind::ExpectedANumericOperand,
+            span: right_span,
+        });
+    };
+
+    if (is_float(left_type) && is_integer(right_type))
+        || (is_integer(left_type) && is_float(right_type))
+    {
+        return Err(SemanticError {
+            kind: SemanticErrorKind::MixedFloatAndInteger,
+            span,
+        });
+    }
+
+    if is_signed(left_type) != is_signed(right_type) {
+        return Err(SemanticError {
+            kind: SemanticErrorKind::MixedSignedAndUnsigned,
+            span,
+        });
+    }
+
+    if right_type == left_type {
+        return Ok(left_type.clone());
+    }
+
+    let left_rank = get_numeric_type_rank(left_type);
+    let right_rank = get_numeric_type_rank(right_type);
+
+    if left_rank > right_rank {
+        Ok(left_type.clone())
+    } else {
+        Ok(right_type.clone())
     }
 }
 
@@ -235,5 +300,70 @@ fn check_recursive<'a>(
 }
 
 pub fn check_is_assignable(source: &Type, target: &Type) -> bool {
-    analyze_adjustment(source, target) != Adjustment::Incompatible
+    analyze_value_adjustment(source, Default::default(), target).is_ok()
+}
+
+impl<'a> Builder<'a, InBlock> {
+    pub fn apply_value_adjustment(
+        &mut self,
+        source: ValueId,
+        adjustment: ValueAdjustment,
+    ) -> ValueId {
+        match adjustment {
+            ValueAdjustment::Compatible => source,
+            ValueAdjustment::IntTruncate { target_type } => {
+                self.emit_trunc(source, target_type)
+            }
+            ValueAdjustment::FloatExtend { target_type } => {
+                self.emit_fext(source, target_type)
+            }
+            ValueAdjustment::FloatTruncate { target_type } => {
+                self.emit_ftrunc(source, target_type)
+            }
+            ValueAdjustment::IntExtend {
+                is_signed,
+                target_type,
+            } => {
+                if is_signed {
+                    self.emit_sext(source, target_type)
+                } else {
+                    self.emit_zext(source, target_type)
+                }
+            }
+            ValueAdjustment::IntToFloat {
+                is_signed,
+                target_type,
+            } => {
+                if is_signed {
+                    self.emit_sitof(source, target_type)
+                } else {
+                    self.emit_uitof(source, target_type)
+                }
+            }
+            ValueAdjustment::FloatToInt {
+                is_signed,
+                target_type,
+            } => {
+                if is_signed {
+                    self.emit_ftosi(source, target_type)
+                } else {
+                    self.emit_ftoui(source, target_type)
+                }
+            }
+        }
+    }
+
+    pub fn adjust_value(
+        &mut self,
+        source: ValueId,
+        source_span: Span,
+        target_type: &Type,
+    ) -> Result<ValueId, SemanticError> {
+        let source_type = self.get_value_type(&source);
+        let adjustment = analyze_value_adjustment(source_type, source_span, target_type)?;
+        Ok(self.apply_value_adjustment(source, adjustment))
+    }
+
+    /// This function expects the memory slot to be allocated beforehand
+    pub fn apply_memory_adjustment(source: ValueId) {}
 }

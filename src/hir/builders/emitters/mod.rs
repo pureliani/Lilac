@@ -15,8 +15,7 @@ use crate::{
         instructions::{Instruction, Terminator},
         types::checked_type::Type,
         utils::{
-            adjustments::check_is_assignable,
-            check_type::check_arithmetic_op_type,
+            adjustments::{arithmetic_supertype, check_is_assignable},
             numeric::{is_float, is_signed},
         },
     },
@@ -104,19 +103,10 @@ impl<'a> Builder<'a, InBlock> {
         let rhs_ty = self.get_value_type(&rhs);
 
         let target_ty =
-            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = if self.get_value_type(&lhs) != &target_ty {
-            self.cast(lhs, target_ty.clone(), lhs_span)?
-        } else {
-            lhs
-        };
-
-        let rhs = if self.get_value_type(&rhs) != &target_ty {
-            self.cast(rhs, target_ty.clone(), rhs_span)?
-        } else {
-            rhs
-        };
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fadd(lhs, rhs))
@@ -136,19 +126,10 @@ impl<'a> Builder<'a, InBlock> {
         let rhs_ty = self.get_value_type(&rhs);
 
         let target_ty =
-            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = if self.get_value_type(&lhs) != &target_ty {
-            self.cast(lhs, target_ty.clone(), lhs_span)?
-        } else {
-            lhs
-        };
-
-        let rhs = if self.get_value_type(&rhs) != &target_ty {
-            self.cast(rhs, target_ty.clone(), rhs_span)?
-        } else {
-            rhs
-        };
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fsub(lhs, rhs))
@@ -168,19 +149,10 @@ impl<'a> Builder<'a, InBlock> {
         let rhs_ty = self.get_value_type(&rhs);
 
         let target_ty =
-            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = if self.get_value_type(&lhs) != &target_ty {
-            self.cast(lhs, target_ty.clone(), lhs_span)?
-        } else {
-            lhs
-        };
-
-        let rhs = if self.get_value_type(&rhs) != &target_ty {
-            self.cast(rhs, target_ty.clone(), rhs_span)?
-        } else {
-            rhs
-        };
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fmul(lhs, rhs))
@@ -200,19 +172,10 @@ impl<'a> Builder<'a, InBlock> {
         let rhs_ty = self.get_value_type(&rhs);
 
         let target_ty =
-            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = if self.get_value_type(&lhs) != &target_ty {
-            self.cast(lhs, target_ty.clone(), lhs_span)?
-        } else {
-            lhs
-        };
-
-        let rhs = if self.get_value_type(&rhs) != &target_ty {
-            self.cast(rhs, target_ty.clone(), rhs_span)?
-        } else {
-            rhs
-        };
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fdiv(lhs, rhs))
@@ -234,19 +197,10 @@ impl<'a> Builder<'a, InBlock> {
         let rhs_ty = self.get_value_type(&rhs);
 
         let target_ty =
-            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = if self.get_value_type(&lhs) != &target_ty {
-            self.cast(lhs, target_ty.clone(), lhs_span)?
-        } else {
-            lhs
-        };
-
-        let rhs = if self.get_value_type(&rhs) != &target_ty {
-            self.cast(rhs, target_ty.clone(), rhs_span)?
-        } else {
-            rhs
-        };
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_frem(lhs, rhs))
@@ -322,19 +276,10 @@ impl<'a> Builder<'a, InBlock> {
         let rhs_ty = self.get_value_type(&rhs);
 
         let target_ty =
-            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = if self.get_value_type(&lhs) != &target_ty {
-            self.cast(lhs, target_ty.clone(), lhs_span)?
-        } else {
-            lhs
-        };
-
-        let rhs = if self.get_value_type(&rhs) != &target_ty {
-            self.cast(rhs, target_ty.clone(), rhs_span)?
-        } else {
-            rhs
-        };
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_flt(lhs, rhs))
@@ -356,19 +301,10 @@ impl<'a> Builder<'a, InBlock> {
         let rhs_ty = self.get_value_type(&rhs);
 
         let target_ty =
-            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = if self.get_value_type(&lhs) != &target_ty {
-            self.cast(lhs, target_ty.clone(), lhs_span)?
-        } else {
-            lhs
-        };
-
-        let rhs = if self.get_value_type(&rhs) != &target_ty {
-            self.cast(rhs, target_ty.clone(), rhs_span)?
-        } else {
-            rhs
-        };
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fle(lhs, rhs))
@@ -390,19 +326,10 @@ impl<'a> Builder<'a, InBlock> {
         let rhs_ty = self.get_value_type(&rhs);
 
         let target_ty =
-            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = if self.get_value_type(&lhs) != &target_ty {
-            self.cast(lhs, target_ty.clone(), lhs_span)?
-        } else {
-            lhs
-        };
-
-        let rhs = if self.get_value_type(&rhs) != &target_ty {
-            self.cast(rhs, target_ty.clone(), rhs_span)?
-        } else {
-            rhs
-        };
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fgt(lhs, rhs))
@@ -424,19 +351,10 @@ impl<'a> Builder<'a, InBlock> {
         let rhs_ty = self.get_value_type(&rhs);
 
         let target_ty =
-            check_arithmetic_op_type(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = if self.get_value_type(&lhs) != &target_ty {
-            self.cast(lhs, target_ty.clone(), lhs_span)?
-        } else {
-            lhs
-        };
-
-        let rhs = if self.get_value_type(&rhs) != &target_ty {
-            self.cast(rhs, target_ty.clone(), rhs_span)?
-        } else {
-            rhs
-        };
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fge(lhs, rhs))

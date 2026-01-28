@@ -163,14 +163,16 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
     };
 
     let get_cast_name = |instr: &CastInstr| match instr {
-        CastInstr::IToF { .. } => "IToF",
-        CastInstr::FToI { .. } => "FToI",
+        CastInstr::SIToF { .. } => "SIToF",
+        CastInstr::FToSI { .. } => "FToSI",
         CastInstr::FExt { .. } => "FExt",
         CastInstr::FTrunc { .. } => "FTrunc",
         CastInstr::Trunc { .. } => "Trunc",
         CastInstr::SExt { .. } => "SExt",
         CastInstr::ZExt { .. } => "ZExt",
         CastInstr::BitCast { .. } => "BitCast",
+        CastInstr::UIToF { .. } => "UIToF",
+        CastInstr::FToUI { .. } => "FToUI",
     };
 
     for instruction in instrs {
@@ -220,8 +222,10 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 }
             },
             Instruction::Cast(kind) => match kind {
-                CastInstr::IToF { dest, src }
-                | CastInstr::FToI { dest, src }
+                CastInstr::SIToF { dest, src }
+                | CastInstr::UIToF { dest, src }
+                | CastInstr::FToSI { dest, src }
+                | CastInstr::FToUI { dest, src }
                 | CastInstr::FExt { dest, src }
                 | CastInstr::FTrunc { dest, src }
                 | CastInstr::Trunc { dest, src }
