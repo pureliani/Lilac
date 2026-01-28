@@ -86,7 +86,7 @@ impl<'a> Builder<'a, InBlock> {
                 };
 
                 let ptr_id = self.get_field_ptr(*base_ptr, &field_node)?;
-                self.store(ptr_id, val_id, target_span);
+                self.emit_store(ptr_id, val_id, target_span);
             }
         }
 

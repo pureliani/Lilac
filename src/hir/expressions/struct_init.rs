@@ -59,7 +59,7 @@ impl<'a> Builder<'a, InBlock> {
                     "INTERNAL COMPILER ERROR: Field value missing during initialization",
                 );
 
-                self.store(field_ptr, *val_id, field.identifier.span.clone());
+                self.emit_store(field_ptr, *val_id, field.identifier.span.clone());
             }
         }
 

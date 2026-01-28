@@ -5,7 +5,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub enum Instruction {
+pub enum ConstInstr {
     ConstNumber {
         dest: ValueId,
         val: NumberKind,
@@ -25,6 +25,10 @@ pub enum Instruction {
     ConstVoid {
         dest: ValueId,
     },
+}
+
+#[derive(Clone, Debug)]
+pub enum BinaryInstr {
     IAdd {
         dest: ValueId,
         lhs: ValueId,
@@ -85,14 +89,10 @@ pub enum Instruction {
         lhs: ValueId,
         rhs: ValueId,
     },
-    FExt {
-        dest: ValueId,
-        src: ValueId,
-    },
-    FTrunc {
-        dest: ValueId,
-        src: ValueId,
-    },
+}
+
+#[derive(Clone, Debug)]
+pub enum CompInstr {
     IEq {
         dest: ValueId,
         lhs: ValueId,
@@ -173,40 +173,31 @@ pub enum Instruction {
         lhs: ValueId,
         rhs: ValueId,
     },
-    INeg {
-        dest: ValueId,
-        src: ValueId,
-    },
-    FNeg {
-        dest: ValueId,
-        src: ValueId,
-    },
-    BNot {
-        dest: ValueId,
-        src: ValueId,
-    },
-    IToF {
-        dest: ValueId,
-        src: ValueId,
-    },
-    FToI {
-        dest: ValueId,
-        src: ValueId,
-    },
-    SExt {
-        dest: ValueId,
-        src: ValueId,
-    },
-    ZExt {
-        dest: ValueId,
-        src: ValueId,
-    },
-    Trunc {
-        dest: ValueId,
-        src: ValueId,
-    },
+}
+
+#[derive(Clone, Debug)]
+pub enum UnaryInstr {
+    INeg { dest: ValueId, src: ValueId },
+    FNeg { dest: ValueId, src: ValueId },
+    BNot { dest: ValueId, src: ValueId },
+}
+
+#[derive(Clone, Debug)]
+pub enum CastInstr {
+    IToF { dest: ValueId, src: ValueId },
+    FToI { dest: ValueId, src: ValueId },
+    FExt { dest: ValueId, src: ValueId },
+    FTrunc { dest: ValueId, src: ValueId },
+    Trunc { dest: ValueId, src: ValueId },
+    SExt { dest: ValueId, src: ValueId },
+    ZExt { dest: ValueId, src: ValueId },
+    BitCast { dest: ValueId, src: ValueId },
+}
+
+#[derive(Clone, Debug)]
+pub enum MemoryInstr {
     StackAlloc {
-        destination: ValueId,
+        dest: ValueId,
         count: usize,
     },
     HeapAlloc {
@@ -224,7 +215,7 @@ pub enum Instruction {
         dest: ValueId,
         ptr: ValueId,
     },
-    MemCpy {
+    MemCopy {
         dest: ValueId,
         src: ValueId,
     },
@@ -238,7 +229,17 @@ pub enum Instruction {
         base_ptr: ValueId,
         index: ValueId,
     },
-    FunctionCall {
+}
+
+#[derive(Clone, Debug)]
+pub enum Instruction {
+    Binary(BinaryInstr),
+    Unary(UnaryInstr),
+    Cast(CastInstr),
+    Memory(MemoryInstr),
+    Const(ConstInstr),
+    Comp(CompInstr),
+    Call {
         dest: ValueId,
         func: ValueId,
         args: Vec<ValueId>,
@@ -249,11 +250,6 @@ pub enum Instruction {
         true_val: ValueId,
         false_val: ValueId,
     },
-    RefineType {
-        dest: ValueId,
-        src: ValueId,
-    },
-    Nop,
 }
 
 #[derive(Clone, Debug)]

@@ -231,16 +231,16 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
             Instruction::HeapFree { ptr } => {
                 writeln!(out, "free(v{})", ptr.0).unwrap();
             }
-            Instruction::StackAlloc { destination, count } => {
-                let inner_ty = match &p.value_types[destination] {
+            Instruction::StackAlloc { dest, count } => {
+                let inner_ty = match &p.value_types[dest] {
                     Type::Pointer(to) => type_to_string(to),
                     _ => "unknown".to_string(),
                 };
                 writeln!(
                     out,
                     "v{}: {} = stackAlloc({} x {});",
-                    destination.0,
-                    get_vt(p, destination),
+                    dest.0,
+                    get_vt(p, dest),
                     count,
                     inner_ty
                 )

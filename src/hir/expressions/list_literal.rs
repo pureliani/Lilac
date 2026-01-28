@@ -51,7 +51,7 @@ impl<'a> Builder<'a, InBlock> {
                 span: span.clone(),
             };
             let field_ptr = builder.get_field_ptr(list_header_ptr, &field_node)?;
-            builder.store(field_ptr, val, span.clone());
+            builder.emit_store(field_ptr, val, span.clone());
             Ok(())
         };
 
@@ -65,7 +65,7 @@ impl<'a> Builder<'a, InBlock> {
 
             let elem_ptr = self.ptr_offset(buffer_ptr, index_val, item_span.clone())?;
 
-            self.store(elem_ptr, val_id, item_span);
+            self.emit_store(elem_ptr, val_id, item_span);
         }
 
         Ok(list_header_ptr)
