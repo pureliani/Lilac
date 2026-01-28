@@ -23,6 +23,6 @@ impl<'a> Builder<'a, InBlock> {
         };
         let target_type = check_type_annotation(&mut type_ctx, &target);
 
-        self.cast(src_id, target_type, value_span)
+        todo!()
     }
 }

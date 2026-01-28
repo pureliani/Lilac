@@ -261,40 +261,6 @@ impl<'a> Builder<'a, InBlock> {
         value_id
     }
 
-    pub fn get_list_buffer_ptr(
-        &mut self,
-        list_ptr: ValueId,
-        span: Span,
-    ) -> Result<ValueId, SemanticError> {
-        let list_ptr_type = self.get_value_type(&list_ptr);
-
-        let is_valid = if let Type::Pointer(inner) = &list_ptr_type {
-            matches!(
-                &**inner,
-                Type::Struct(StructKind::ListHeader(_))
-                    | Type::Struct(StructKind::StringHeader)
-            )
-        } else {
-            false
-        };
-
-        if !is_valid {
-            return Err(SemanticError {
-                kind: SemanticErrorKind::CannotIndex(list_ptr_type.clone()),
-                span: span.clone(),
-            });
-        }
-
-        let ptr_field_node = IdentifierNode {
-            name: COMMON_IDENTIFIERS.ptr,
-            span: span.clone(),
-        };
-
-        let buffer_ptr_ptr = self.get_field_ptr(list_ptr, &ptr_field_node)?;
-
-        self.load(buffer_ptr_ptr, span)
-    }
-
     pub fn use_basic_block(&mut self, block_id: BasicBlockId) {
         self.context.block_id = block_id;
     }

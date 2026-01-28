@@ -2,7 +2,7 @@ use crate::{
     ast::{
         expr::{Expr, ExprKind},
         type_annotation::TypeAnnotation,
-        IdentifierNode, Span,
+        Span,
     },
     compile::interner::StringId,
     globals::COMMON_IDENTIFIERS,
@@ -37,11 +37,7 @@ impl<'a> Builder<'a, InBlock> {
             return Ok(self.emit_const_bool(true));
         }
 
-        let id_field_node = IdentifierNode {
-            name: COMMON_IDENTIFIERS.id,
-            span: Span::default(),
-        };
-        let id_ptr = self.get_field_ptr(root_val_id, &id_field_node)?;
+        let id_ptr = self.get_field_ptr(root_val_id, COMMON_IDENTIFIERS.id);
         let active_id = self.emit_load(id_ptr);
 
         let mut iter = matching_indices.iter();

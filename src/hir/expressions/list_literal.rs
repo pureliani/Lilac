@@ -1,5 +1,5 @@
 use crate::{
-    ast::{expr::Expr, IdentifierNode, Span},
+    ast::{expr::Expr, Span},
     globals::COMMON_IDENTIFIERS,
     hir::{
         builders::{Builder, InBlock, ValueId},
@@ -33,31 +33,23 @@ impl<'a> Builder<'a, InBlock> {
         let capacity = item_values.len();
         let capacity_val = self.emit_const_number(NumberKind::USize(capacity));
 
-        let buffer_ptr = self.emit_heap_alloc(element_type.clone(), capacity_val)?;
+        let buffer_ptr = self.emit_heap_alloc(element_type.clone(), capacity_val);
 
         let list_header_type =
             Type::Struct(StructKind::ListHeader(Box::new(element_type.clone())));
         let const_one = self.emit_const_number(NumberKind::USize(1));
 
-        let list_header_ptr = self.emit_heap_alloc(list_header_type, const_one)?;
+        let list_header_ptr = self.emit_heap_alloc(list_header_type, const_one);
 
-        let set_header_field = |builder: &mut Builder<'_, InBlock>,
-                                name,
-                                val,
-                                span: &Span|
-         -> Result<(), SemanticError> {
-            let field_node = IdentifierNode {
-                name,
-                span: span.clone(),
+        let set_header_field =
+            |builder: &mut Builder<'_, InBlock>, name, val, span: &Span| {
+                let field_ptr = builder.get_field_ptr(list_header_ptr, name);
+                builder.emit_store(field_ptr, val, span.clone());
             };
-            let field_ptr = builder.get_field_ptr(list_header_ptr, &field_node)?;
-            builder.emit_store(field_ptr, val, span.clone());
-            Ok(())
-        };
 
-        set_header_field(self, COMMON_IDENTIFIERS.capacity, capacity_val, &expr_span)?;
-        set_header_field(self, COMMON_IDENTIFIERS.len, capacity_val, &expr_span)?;
-        set_header_field(self, COMMON_IDENTIFIERS.ptr, buffer_ptr, &expr_span)?;
+        set_header_field(self, COMMON_IDENTIFIERS.capacity, capacity_val, &expr_span);
+        set_header_field(self, COMMON_IDENTIFIERS.len, capacity_val, &expr_span);
+        set_header_field(self, COMMON_IDENTIFIERS.ptr, buffer_ptr, &expr_span);
 
         for (i, val_id) in item_values.into_iter().enumerate() {
             let index_val = self.emit_const_number(NumberKind::USize(i));

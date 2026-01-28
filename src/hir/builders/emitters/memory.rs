@@ -1,10 +1,12 @@
 use crate::{
-    ast::{IdentifierNode, Span},
+    ast::Span,
+    compile::interner::StringId,
+    globals::{COMMON_IDENTIFIERS, STRING_INTERNER},
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, MemoryInstr},
-        types::checked_type::Type,
+        types::checked_type::{StructKind, Type},
         utils::adjustments::check_is_assignable,
     },
 };
@@ -100,11 +102,7 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn get_field_ptr(
-        &mut self,
-        base_ptr: ValueId,
-        field_name: &IdentifierNode,
-    ) -> Result<ValueId, SemanticError> {
+    pub fn get_field_ptr(&mut self, base_ptr: ValueId, field_name: StringId) -> ValueId {
         let current_ty = self.get_value_type(&base_ptr);
 
         let struct_kind = match current_ty {
@@ -117,17 +115,13 @@ impl<'a> Builder<'a, InBlock> {
             }
         };
 
-        let field_index = match struct_kind.get_field(&field_name.name) {
-            Some((idx, _)) => idx,
-            None => {
-                return Err(SemanticError {
-                    span: field_name.span.clone(),
-                    kind: SemanticErrorKind::AccessToUndefinedField(field_name.clone()),
-                });
-            }
-        };
-
-        let (_, field_type) = struct_kind.fields()[field_index].clone();
+        let (field_index, field_type) =
+            struct_kind.get_field(&field_name).unwrap_or_else(|| {
+                panic!(
+                    "INTERNAL COMPILER ERROR: Expected field {} to be defined",
+                    STRING_INTERNER.resolve(field_name)
+                )
+            });
 
         let dest = self.new_value_id(Type::Pointer(Box::new(field_type)));
 
@@ -137,6 +131,28 @@ impl<'a> Builder<'a, InBlock> {
             field_index,
         }));
 
-        Ok(dest)
+        dest
+    }
+
+    pub fn get_list_buffer_ptr(&mut self, list_header_ptr: ValueId) -> ValueId {
+        let list_ptr_type = self.get_value_type(&list_header_ptr);
+
+        let is_valid = if let Type::Pointer(inner) = &list_ptr_type {
+            !matches!(
+                &**inner,
+                Type::Struct(StructKind::ListHeader(_))
+                    | Type::Struct(StructKind::StringHeader)
+            )
+        } else {
+            false
+        };
+
+        if !is_valid {
+            panic!("INTERNAL COMPILER ERROR: Tried to get list buffer pointer from an invalid header type");
+        }
+
+        let buffer_ptr_ptr = self.get_field_ptr(list_header_ptr, COMMON_IDENTIFIERS.ptr);
+
+        self.emit_load(buffer_ptr_ptr)
     }
 }

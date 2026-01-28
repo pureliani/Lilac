@@ -145,7 +145,7 @@ pub fn resolve_binary_op_type(lhs: &Type, rhs: &Type) -> Result<Type, SemanticEr
     }
 }
 
-fn check_structural_compatibility<'a>(source: &'a Type, target: &'a Type) -> bool {
+pub fn check_structural_compatibility<'a>(source: &'a Type, target: &'a Type) -> bool {
     let mut visited = HashSet::new();
     check_recursive(source, target, &mut visited)
 }

@@ -49,11 +49,11 @@ impl<'a> Builder<'a, InBlock> {
         let struct_type = Type::Struct(packed_kind.clone());
 
         let count_val = self.emit_const_number(NumberKind::USize(1));
-        let struct_ptr = self.emit_heap_alloc(struct_type, count_val)?;
+        let struct_ptr = self.emit_heap_alloc(struct_type, count_val);
 
         if let StructKind::UserDefined(sorted_fields) = packed_kind {
             for field in sorted_fields {
-                let field_ptr = self.get_field_ptr(struct_ptr, &field.identifier)?;
+                let field_ptr = self.get_field_ptr(struct_ptr, field.identifier.name);
 
                 let val_id = field_values.get(&field.identifier.name).expect(
                     "INTERNAL COMPILER ERROR: Field value missing during initialization",

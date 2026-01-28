@@ -2,7 +2,10 @@ use crate::{
     globals::STRING_INTERNER,
     hir::{
         builders::{BasicBlockId, Function, Program, ValueId},
-        instructions::{Instruction, Terminator},
+        instructions::{
+            BinaryInstr, CastInstr, CompInstr, ConstInstr, Instruction, MemoryInstr,
+            Terminator, UnaryInstr,
+        },
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::type_to_string::type_to_string,
     },
@@ -129,203 +132,287 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
 }
 
 pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) {
-    let get_binary_op_sign = |instr: &Instruction| {
-        String::from(match instr {
-            Instruction::IAdd { .. } | Instruction::FAdd { .. } => "+",
-            Instruction::ISub { .. } | Instruction::FSub { .. } => "-",
-            Instruction::SDiv { .. }
-            | Instruction::UDiv { .. }
-            | Instruction::FDiv { .. } => "/",
-            Instruction::SRem { .. }
-            | Instruction::URem { .. }
-            | Instruction::FRem { .. } => "%",
-            Instruction::IMul { .. } | Instruction::FMul { .. } => "*",
-            Instruction::IEq { .. } | Instruction::FEq { .. } => "==",
-            Instruction::INe { .. } | Instruction::FNe { .. } => "!=",
-            Instruction::SLt { .. }
-            | Instruction::ULt { .. }
-            | Instruction::FLt { .. } => "<",
-            Instruction::SLe { .. }
-            | Instruction::ULe { .. }
-            | Instruction::FLe { .. } => "<=",
-            Instruction::UGt { .. }
-            | Instruction::SGt { .. }
-            | Instruction::FGt { .. } => ">",
-            Instruction::SGe { .. }
-            | Instruction::UGe { .. }
-            | Instruction::FGe { .. } => ">=",
-            _ => panic!("Cannot get sign for non binary instructions"),
-        })
+    let get_binary_sign = |instr: &BinaryInstr| match instr {
+        BinaryInstr::IAdd { .. } | BinaryInstr::FAdd { .. } => "+",
+
+        BinaryInstr::ISub { .. } | BinaryInstr::FSub { .. } => "-",
+
+        BinaryInstr::IMul { .. } | BinaryInstr::FMul { .. } => "*",
+
+        BinaryInstr::SDiv { .. }
+        | BinaryInstr::FDiv { .. }
+        | BinaryInstr::UDiv { .. } => "/",
+
+        BinaryInstr::SRem { .. }
+        | BinaryInstr::URem { .. }
+        | BinaryInstr::FRem { .. } => "%",
+    };
+
+    let get_comp_sign = |instr: &CompInstr| match instr {
+        CompInstr::IEq { .. } | CompInstr::FEq { .. } => "==",
+
+        CompInstr::INe { .. } | CompInstr::FNe { .. } => "!=",
+
+        CompInstr::SLt { .. } | CompInstr::ULt { .. } | CompInstr::FLt { .. } => "<",
+
+        CompInstr::SLe { .. } | CompInstr::FLe { .. } | CompInstr::ULe { .. } => "<=",
+
+        CompInstr::SGt { .. } | CompInstr::FGt { .. } | CompInstr::UGt { .. } => ">",
+
+        CompInstr::FGe { .. } | CompInstr::UGe { .. } | CompInstr::SGe { .. } => ">=",
+    };
+
+    let get_cast_name = |instr: &CastInstr| match instr {
+        CastInstr::IToF { .. } => "IToF",
+        CastInstr::FToI { .. } => "FToI",
+        CastInstr::FExt { .. } => "FExt",
+        CastInstr::FTrunc { .. } => "FTrunc",
+        CastInstr::Trunc { .. } => "Trunc",
+        CastInstr::SExt { .. } => "SExt",
+        CastInstr::ZExt { .. } => "ZExt",
+        CastInstr::BitCast { .. } => "BitCast",
     };
 
     for instruction in instrs {
         write!(out, "    ").unwrap();
         match instruction {
-            Instruction::ConstNumber { dest, val } => {
-                writeln!(
-                    out,
-                    "v{}: {} = {};",
-                    dest.0,
-                    number_kind_to_suffix(val),
-                    val.to_string()
-                )
-                .unwrap();
-            }
-            Instruction::ConstBool { dest, val } => {
-                writeln!(out, "v{}: bool = {};", dest.0, val).unwrap();
-            }
-            Instruction::ConstString { dest, constant_id } => {
-                let literal =
-                    String::from_utf8(p.constant_data.get(constant_id).unwrap().clone())
+            Instruction::Const(kind) => match kind {
+                ConstInstr::ConstNumber { dest, val } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = {};",
+                        dest.0,
+                        number_kind_to_suffix(val),
+                        val.to_string()
+                    )
+                    .unwrap();
+                }
+                ConstInstr::ConstBool { dest, val } => {
+                    writeln!(out, "v{}: bool = {};", dest.0, val).unwrap();
+                }
+                ConstInstr::ConstString { dest, constant_id } => {
+                    let literal = String::from_utf8(
+                        p.constant_data.get(constant_id).unwrap().clone(),
+                    )
+                    .unwrap();
+                    writeln!(out, "v{}: string = \"{}\";", dest.0, literal).unwrap();
+                }
+                ConstInstr::ConstVoid { dest } => {
+                    writeln!(out, "v{}: void = void;", dest.0).unwrap();
+                }
+                ConstInstr::ConstFn { dest, decl_id } => {
+                    let decl = p.declarations.get(decl_id).unwrap_or_else(||panic!("INTERNAL COMPILER ERROR: No corresponding for DeclarationId({})", decl_id.0));
+                    let fn_identifier = if let CheckedDeclaration::Function(f) = decl {
+                        f.identifier.clone()
+                    } else {
+                        panic!("INTERNAL COMPILER ERROR: Expected declaration id to correspond to a function")
+                    };
+
+                    writeln!(
+                        out,
+                        "v{}: {} = <function {} from {}>;",
+                        dest.0,
+                        get_vt(p, dest),
+                        STRING_INTERNER.resolve(fn_identifier.name),
+                        fn_identifier.span.path.0.display()
+                    )
+                    .unwrap();
+                }
+            },
+            Instruction::Cast(kind) => match kind {
+                CastInstr::IToF { dest, src }
+                | CastInstr::FToI { dest, src }
+                | CastInstr::FExt { dest, src }
+                | CastInstr::FTrunc { dest, src }
+                | CastInstr::Trunc { dest, src }
+                | CastInstr::SExt { dest, src }
+                | CastInstr::ZExt { dest, src }
+                | CastInstr::BitCast { dest, src } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = {}({})",
+                        dest.0,
+                        get_vt(p, dest),
+                        get_cast_name(kind),
+                        src.0
+                    )
+                    .unwrap();
+                }
+            },
+            Instruction::Unary(kind) => match kind {
+                UnaryInstr::INeg { dest, src } | UnaryInstr::FNeg { dest, src } => {
+                    writeln!(out, "v{}: {} = -{};", dest.0, get_vt(p, dest), src.0)
                         .unwrap();
-                writeln!(out, "v{}: string = \"{}\";", dest.0, literal).unwrap();
-            }
-            Instruction::ConstVoid { dest } => {
-                writeln!(out, "v{}: void = void;", dest.0).unwrap();
-            }
-            Instruction::IAdd { dest, lhs, rhs }
-            | Instruction::ISub { dest, lhs, rhs }
-            | Instruction::IMul { dest, lhs, rhs }
-            | Instruction::SDiv { dest, lhs, rhs }
-            | Instruction::UDiv { dest, lhs, rhs }
-            | Instruction::SRem { dest, lhs, rhs }
-            | Instruction::URem { dest, lhs, rhs }
-            | Instruction::FRem { dest, lhs, rhs }
-            | Instruction::FAdd { dest, lhs, rhs }
-            | Instruction::FSub { dest, lhs, rhs }
-            | Instruction::FMul { dest, lhs, rhs }
-            | Instruction::FDiv { dest, lhs, rhs }
-            | Instruction::IEq { dest, lhs, rhs }
-            | Instruction::INe { dest, lhs, rhs }
-            | Instruction::SLt { dest, lhs, rhs }
-            | Instruction::SLe { dest, lhs, rhs }
-            | Instruction::SGt { dest, lhs, rhs }
-            | Instruction::SGe { dest, lhs, rhs }
-            | Instruction::ULt { dest, lhs, rhs }
-            | Instruction::ULe { dest, lhs, rhs }
-            | Instruction::UGt { dest, lhs, rhs }
-            | Instruction::UGe { dest, lhs, rhs }
-            | Instruction::FEq { dest, lhs, rhs }
-            | Instruction::FNe { dest, lhs, rhs }
-            | Instruction::FLt { dest, lhs, rhs }
-            | Instruction::FLe { dest, lhs, rhs }
-            | Instruction::FGt { dest, lhs, rhs }
-            | Instruction::FGe { dest, lhs, rhs } => {
+                }
+                UnaryInstr::BNot { dest, src } => {
+                    writeln!(out, "v{}: {} = !{};", dest.0, get_vt(p, dest), src.0)
+                        .unwrap();
+                }
+            },
+            Instruction::Binary(kind) => match kind {
+                BinaryInstr::IAdd { dest, lhs, rhs }
+                | BinaryInstr::ISub { dest, lhs, rhs }
+                | BinaryInstr::IMul { dest, lhs, rhs }
+                | BinaryInstr::SDiv { dest, lhs, rhs }
+                | BinaryInstr::UDiv { dest, lhs, rhs }
+                | BinaryInstr::SRem { dest, lhs, rhs }
+                | BinaryInstr::URem { dest, lhs, rhs }
+                | BinaryInstr::FRem { dest, lhs, rhs }
+                | BinaryInstr::FAdd { dest, lhs, rhs }
+                | BinaryInstr::FSub { dest, lhs, rhs }
+                | BinaryInstr::FMul { dest, lhs, rhs }
+                | BinaryInstr::FDiv { dest, lhs, rhs } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = v{} {} v{};",
+                        dest.0,
+                        get_vt(p, dest),
+                        lhs.0,
+                        get_binary_sign(kind),
+                        rhs.0
+                    )
+                    .unwrap();
+                }
+            },
+            Instruction::Comp(kind) => match kind {
+                CompInstr::IEq { dest, lhs, rhs }
+                | CompInstr::INe { dest, lhs, rhs }
+                | CompInstr::SLt { dest, lhs, rhs }
+                | CompInstr::SLe { dest, lhs, rhs }
+                | CompInstr::SGt { dest, lhs, rhs }
+                | CompInstr::SGe { dest, lhs, rhs }
+                | CompInstr::ULt { dest, lhs, rhs }
+                | CompInstr::ULe { dest, lhs, rhs }
+                | CompInstr::UGt { dest, lhs, rhs }
+                | CompInstr::UGe { dest, lhs, rhs }
+                | CompInstr::FEq { dest, lhs, rhs }
+                | CompInstr::FNe { dest, lhs, rhs }
+                | CompInstr::FLt { dest, lhs, rhs }
+                | CompInstr::FLe { dest, lhs, rhs }
+                | CompInstr::FGt { dest, lhs, rhs }
+                | CompInstr::FGe { dest, lhs, rhs } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = v{} {} v{};",
+                        dest.0,
+                        get_vt(p, dest),
+                        lhs.0,
+                        get_comp_sign(kind),
+                        rhs.0
+                    )
+                    .unwrap();
+                }
+            },
+            Instruction::Memory(kind) => match kind {
+                MemoryInstr::StackAlloc { dest, count } => {
+                    let inner_ty = match &p.value_types[dest] {
+                        Type::Pointer(to) => type_to_string(to),
+                        _ => "unknown".to_string(),
+                    };
+                    writeln!(
+                        out,
+                        "v{}: {} = stackAlloc({} x {});",
+                        dest.0,
+                        get_vt(p, dest),
+                        count,
+                        inner_ty
+                    )
+                    .unwrap();
+                }
+                MemoryInstr::HeapAlloc { dest, count } => {
+                    let inner_ty = match &p.value_types[dest] {
+                        Type::Pointer(to) => type_to_string(to),
+                        _ => "unknown".to_string(),
+                    };
+                    writeln!(
+                        out,
+                        "v{}: {} = heapAlloc(v{} x {});",
+                        dest.0,
+                        get_vt(p, dest),
+                        count.0,
+                        inner_ty
+                    )
+                    .unwrap();
+                }
+                MemoryInstr::HeapFree { ptr } => {
+                    writeln!(out, "free(v{})", ptr.0).unwrap();
+                }
+                MemoryInstr::Store { ptr, value } => {
+                    writeln!(out, "*v{} = v{};", ptr.0, value.0).unwrap();
+                }
+                MemoryInstr::Load { dest, ptr } => {
+                    writeln!(out, "v{}: {} = *v{};", dest.0, get_vt(p, dest), ptr.0)
+                        .unwrap();
+                }
+                MemoryInstr::MemCopy { dest, src } => {
+                    writeln!(
+                        out,
+                        "memcopy from address v{} to address v{};",
+                        dest.0, src.0
+                    )
+                    .unwrap();
+                }
+                MemoryInstr::GetFieldPtr {
+                    dest,
+                    base_ptr,
+                    field_index,
+                } => {
+                    let base_ty = &p.value_types[base_ptr];
+                    let field_name = match base_ty {
+                        Type::Pointer(to) => match &**to {
+                            Type::Struct(s) => {
+                                STRING_INTERNER.resolve(s.fields()[*field_index].0)
+                            }
+                            _ => format!("{}", field_index),
+                        },
+                        _ => format!("{}", field_index),
+                    };
+                    writeln!(
+                        out,
+                        "v{}: {} = &v{}.{};",
+                        dest.0,
+                        get_vt(p, dest),
+                        base_ptr.0,
+                        field_name
+                    )
+                    .unwrap();
+                }
+                MemoryInstr::PtrOffset {
+                    dest,
+                    base_ptr,
+                    index,
+                } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = {} + {};",
+                        dest.0,
+                        get_vt(p, dest),
+                        base_ptr.0,
+                        index.0
+                    )
+                    .unwrap();
+                }
+            },
+
+            Instruction::Select {
+                dest,
+                cond,
+                true_val,
+                false_val,
+            } => {
                 writeln!(
                     out,
-                    "v{}: {} = {} {} {};",
+                    "v{}: {} = v{} ? v{} : v{};",
                     dest.0,
                     get_vt(p, dest),
-                    lhs.0,
-                    get_binary_op_sign(instruction),
-                    rhs.0
-                )
-                .unwrap();
-            }
-            Instruction::INeg { dest, src } | Instruction::FNeg { dest, src } => {
-                writeln!(out, "v{}: {} = -{};", dest.0, get_vt(p, dest), src.0).unwrap();
-            }
-            Instruction::BNot { dest, src } => {
-                writeln!(out, "v{}: {} = !{};", dest.0, get_vt(p, dest), src.0).unwrap();
-            }
-            Instruction::HeapFree { ptr } => {
-                writeln!(out, "free(v{})", ptr.0).unwrap();
-            }
-            Instruction::StackAlloc { dest, count } => {
-                let inner_ty = match &p.value_types[dest] {
-                    Type::Pointer(to) => type_to_string(to),
-                    _ => "unknown".to_string(),
-                };
-                writeln!(
-                    out,
-                    "v{}: {} = stackAlloc({} x {});",
-                    dest.0,
-                    get_vt(p, dest),
-                    count,
-                    inner_ty
-                )
-                .unwrap();
-            }
-            Instruction::HeapAlloc {
-                dest: destination,
-                count,
-            } => {
-                let inner_ty = match &p.value_types[destination] {
-                    Type::Pointer(to) => type_to_string(to),
-                    _ => "unknown".to_string(),
-                };
-                writeln!(
-                    out,
-                    "v{}: {} = heapAlloc(v{} x {});",
-                    destination.0,
-                    get_vt(p, destination),
-                    count.0,
-                    inner_ty
-                )
-                .unwrap();
-            }
-            Instruction::Store { ptr, value } => {
-                writeln!(out, "*v{} = v{};", ptr.0, value.0).unwrap();
-            }
-            Instruction::Load {
-                dest: destination,
-                ptr,
-            } => {
-                writeln!(
-                    out,
-                    "v{}: {} = *v{};",
-                    destination.0,
-                    get_vt(p, destination),
-                    ptr.0
+                    cond.0,
+                    true_val.0,
+                    false_val.0
                 )
                 .unwrap();
             }
 
-            Instruction::GetFieldPtr {
-                dest: destination,
-                base_ptr,
-                field_index,
-            } => {
-                let base_ty = &p.value_types[base_ptr];
-                let field_name = match base_ty {
-                    Type::Pointer(to) => match &**to {
-                        Type::Struct(s) => {
-                            STRING_INTERNER.resolve(s.fields()[*field_index].0)
-                        }
-                        _ => format!("{}", field_index),
-                    },
-                    _ => format!("{}", field_index),
-                };
-                writeln!(
-                    out,
-                    "v{}: {} = &v{}.{};",
-                    destination.0,
-                    get_vt(p, destination),
-                    base_ptr.0,
-                    field_name
-                )
-                .unwrap();
-            }
-            Instruction::PtrOffset {
-                dest: destination,
-                base_ptr,
-                index,
-            } => {
-                writeln!(
-                    out,
-                    "v{}: {} = {} + {};",
-                    destination.0,
-                    get_vt(p, destination),
-                    base_ptr.0,
-                    index.0
-                )
-                .unwrap();
-            }
-            Instruction::FunctionCall {
-                dest: destination,
-                func,
-                args,
-            } => {
+            Instruction::Call { dest, func, args } => {
                 let args = args
                     .iter()
                     .map(|a| format!("v{}", a.0))
@@ -335,26 +422,13 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 writeln!(
                     out,
                     "v{}: {} = call v{}({});",
-                    destination.0,
-                    get_vt(p, destination),
+                    dest.0,
+                    get_vt(p, dest),
                     func.0,
                     args
                 )
                 .unwrap();
             }
-            Instruction::RefineType { dest, src } => {
-                let new_t = get_vt(p, dest);
-                writeln!(
-                    out,
-                    "v{}: {} = v{}::refineType({});",
-                    dest.0, new_t, src.0, new_t
-                )
-                .unwrap();
-            }
-
-            Instruction::Nop => {}
-
-            x => writeln!(out, "{:?}", x).unwrap(),
         }
     }
 }
