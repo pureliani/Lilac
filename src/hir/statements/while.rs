@@ -18,7 +18,7 @@ impl<'a> Builder<'a, InBlock> {
         let body_block_id = self.as_fn().new_bb();
         let exit_block_id = self.as_fn().new_bb();
 
-        self.jmp(header_block_id);
+        self.emit_jmp(header_block_id);
         self.use_basic_block(header_block_id);
 
         let condition_span = condition.span.clone();
@@ -35,7 +35,7 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
-        self.cond_jmp(cond_id, body_block_id, exit_block_id);
+        self.emit_cond_jmp(cond_id, body_block_id, exit_block_id);
 
         self.seal_block(body_block_id)?;
         self.use_basic_block(body_block_id);
@@ -59,7 +59,7 @@ impl<'a> Builder<'a, InBlock> {
             .expect("INTERNAL COMPILER ERROR: Scope mismatch");
 
         if self.bb().terminator.is_none() {
-            self.jmp(header_block_id);
+            self.emit_jmp(header_block_id);
         }
 
         self.seal_block(header_block_id)?;

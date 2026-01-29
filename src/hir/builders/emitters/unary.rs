@@ -1,7 +1,15 @@
-use crate::hir::{
-    builders::{Builder, InBlock, ValueId},
-    instructions::{Instruction, UnaryInstr},
-    types::checked_type::Type,
+use crate::{
+    ast::Span,
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        errors::{SemanticError, SemanticErrorKind},
+        instructions::{Instruction, UnaryInstr},
+        types::checked_type::Type,
+        utils::{
+            adjustments::check_is_assignable,
+            numeric::{is_float, is_signed},
+        },
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -23,5 +31,37 @@ impl<'a> Builder<'a, InBlock> {
         let dest = self.new_value_id(Type::Bool);
         self.push_instruction(Instruction::Unary(UnaryInstr::BNot { dest, src }));
         dest
+    }
+}
+impl<'a> Builder<'a, InBlock> {
+    pub fn neg(&mut self, src: ValueId, span: Span) -> Result<ValueId, SemanticError> {
+        let ty = self.get_value_type(&src);
+
+        if is_float(ty) {
+            Ok(self.emit_fneg(src))
+        } else if is_signed(ty) {
+            Ok(self.emit_ineg(src))
+        } else {
+            Err(SemanticError {
+                kind: SemanticErrorKind::ExpectedANumericOperand,
+                span,
+            })
+        }
+    }
+
+    pub fn not(&mut self, src: ValueId, span: Span) -> Result<ValueId, SemanticError> {
+        let ty = self.get_value_type(&src);
+
+        if !check_is_assignable(ty, &Type::Bool) {
+            return Err(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: Type::Bool,
+                    received: ty.clone(),
+                },
+                span,
+            });
+        }
+
+        Ok(self.emit_bnot(src))
     }
 }

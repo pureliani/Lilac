@@ -86,7 +86,7 @@ impl<'a> Builder<'a, InBlock> {
         left: Expr,
         right: Expr,
     ) -> Result<ValueId, SemanticError> {
-        self.build_binary_expr(left, right, |b, l, ls, r, rs| b.ne(l, ls, r, rs))
+        self.build_binary_expr(left, right, |b, l, ls, r, rs| b.neq(l, ls, r, rs))
     }
 
     pub fn build_lt_expr(
@@ -102,7 +102,7 @@ impl<'a> Builder<'a, InBlock> {
         left: Expr,
         right: Expr,
     ) -> Result<ValueId, SemanticError> {
-        self.build_binary_expr(left, right, |b, l, ls, r, rs| b.le(l, ls, r, rs))
+        self.build_binary_expr(left, right, |b, l, ls, r, rs| b.lte(l, ls, r, rs))
     }
 
     pub fn build_gt_expr(
@@ -118,6 +118,6 @@ impl<'a> Builder<'a, InBlock> {
         left: Expr,
         right: Expr,
     ) -> Result<ValueId, SemanticError> {
-        self.build_binary_expr(left, right, |b, l, ls, r, rs| b.ge(l, ls, r, rs))
+        self.build_binary_expr(left, right, |b, l, ls, r, rs| b.gte(l, ls, r, rs))
     }
 }

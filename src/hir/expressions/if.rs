@@ -69,7 +69,7 @@ impl<'a> Builder<'a, InBlock> {
             let then_block_id = self.as_fn().new_bb();
             let next_cond_block_id = self.as_fn().new_bb();
 
-            self.cond_jmp(cond_id, then_block_id, next_cond_block_id);
+            self.emit_cond_jmp(cond_id, then_block_id, next_cond_block_id);
 
             self.seal_block(then_block_id)?;
             self.use_basic_block(then_block_id);
@@ -85,7 +85,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, then_val, final_expr_span));
-                self.jmp(merge_block_id);
+                self.emit_jmp(merge_block_id);
             }
 
             self.use_basic_block(next_cond_block_id);
@@ -106,10 +106,10 @@ impl<'a> Builder<'a, InBlock> {
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, else_val, final_expr_span));
-                self.jmp(merge_block_id);
+                self.emit_jmp(merge_block_id);
             }
         } else {
-            self.jmp(merge_block_id);
+            self.emit_jmp(merge_block_id);
         }
 
         self.seal_block(current_cond_block_id)?;

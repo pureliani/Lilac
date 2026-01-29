@@ -38,7 +38,7 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
-        self.emit_return_terminator(val_id);
+        self.emit_return(val_id);
 
         Ok(())
     }

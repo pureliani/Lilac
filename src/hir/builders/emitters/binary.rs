@@ -1,6 +1,14 @@
-use crate::hir::{
-    builders::{Builder, InBlock, ValueId},
-    instructions::{BinaryInstr, Instruction},
+use crate::{
+    ast::Span,
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        errors::SemanticError,
+        instructions::{BinaryInstr, Instruction},
+        utils::{
+            adjustments::arithmetic_supertype,
+            numeric::{is_float, is_signed},
+        },
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -86,5 +94,126 @@ impl<'a> Builder<'a, InBlock> {
         let dest = self.new_value_id(ty);
         self.push_instruction(Instruction::Binary(BinaryInstr::FDiv { dest, lhs, rhs }));
         dest
+    }
+}
+
+impl<'a> Builder<'a, InBlock> {
+    pub fn add(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        let target_ty =
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+
+        if is_float(&target_ty) {
+            Ok(self.emit_fadd(lhs, rhs))
+        } else {
+            Ok(self.emit_iadd(lhs, rhs))
+        }
+    }
+
+    pub fn sub(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        let target_ty =
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+
+        if is_float(&target_ty) {
+            Ok(self.emit_fsub(lhs, rhs))
+        } else {
+            Ok(self.emit_isub(lhs, rhs))
+        }
+    }
+
+    pub fn mul(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        let target_ty =
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+
+        if is_float(&target_ty) {
+            Ok(self.emit_fmul(lhs, rhs))
+        } else {
+            Ok(self.emit_imul(lhs, rhs))
+        }
+    }
+
+    pub fn div(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        let target_ty =
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+
+        if is_float(&target_ty) {
+            Ok(self.emit_fdiv(lhs, rhs))
+        } else if is_signed(&target_ty) {
+            Ok(self.emit_sdiv(lhs, rhs))
+        } else {
+            Ok(self.emit_udiv(lhs, rhs))
+        }
+    }
+
+    pub fn rem(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        let target_ty =
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+
+        if is_float(&target_ty) {
+            Ok(self.emit_frem(lhs, rhs))
+        } else if is_signed(&target_ty) {
+            Ok(self.emit_srem(lhs, rhs))
+        } else {
+            Ok(self.emit_urem(lhs, rhs))
+        }
     }
 }

@@ -1,7 +1,15 @@
-use crate::hir::{
-    builders::{Builder, InBlock, ValueId},
-    instructions::{CompInstr, Instruction},
-    types::checked_type::Type,
+use crate::{
+    ast::Span,
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        errors::{SemanticError, SemanticErrorKind},
+        instructions::{CompInstr, Instruction},
+        types::checked_type::Type,
+        utils::{
+            adjustments::{arithmetic_supertype, check_is_assignable},
+            numeric::{is_float, is_signed},
+        },
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -99,5 +107,161 @@ impl<'a> Builder<'a, InBlock> {
         let dest = self.new_value_id(Type::Bool);
         self.push_instruction(Instruction::Comp(CompInstr::FGe { dest, lhs, rhs }));
         dest
+    }
+}
+
+impl<'a> Builder<'a, InBlock> {
+    pub fn eq(
+        &mut self,
+        lhs: ValueId,
+        _lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        if !check_is_assignable(lhs_ty, rhs_ty) && !check_is_assignable(rhs_ty, lhs_ty) {
+            return Err(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: lhs_ty.clone(),
+                    received: rhs_ty.clone(),
+                },
+                span: rhs_span,
+            });
+        }
+
+        if is_float(lhs_ty) {
+            Ok(self.emit_feq(lhs, rhs))
+        } else {
+            Ok(self.emit_ieq(lhs, rhs))
+        }
+    }
+
+    pub fn neq(
+        &mut self,
+        lhs: ValueId,
+        _lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        if !check_is_assignable(lhs_ty, rhs_ty) && !check_is_assignable(rhs_ty, lhs_ty) {
+            return Err(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: lhs_ty.clone(),
+                    received: rhs_ty.clone(),
+                },
+                span: rhs_span,
+            });
+        }
+
+        if is_float(lhs_ty) {
+            Ok(self.emit_fne(lhs, rhs))
+        } else {
+            Ok(self.emit_ine(lhs, rhs))
+        }
+    }
+
+    pub fn lt(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        let target_ty =
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+
+        if is_float(&target_ty) {
+            Ok(self.emit_flt(lhs, rhs))
+        } else if is_signed(&target_ty) {
+            Ok(self.emit_slt(lhs, rhs))
+        } else {
+            Ok(self.emit_ult(lhs, rhs))
+        }
+    }
+
+    pub fn lte(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        let target_ty =
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+
+        if is_float(&target_ty) {
+            Ok(self.emit_fle(lhs, rhs))
+        } else if is_signed(&target_ty) {
+            Ok(self.emit_sle(lhs, rhs))
+        } else {
+            Ok(self.emit_ule(lhs, rhs))
+        }
+    }
+
+    pub fn gt(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        let target_ty =
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+
+        if is_float(&target_ty) {
+            Ok(self.emit_fgt(lhs, rhs))
+        } else if is_signed(&target_ty) {
+            Ok(self.emit_sgt(lhs, rhs))
+        } else {
+            Ok(self.emit_ugt(lhs, rhs))
+        }
+    }
+
+    pub fn gte(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> Result<ValueId, SemanticError> {
+        let lhs_ty = self.get_value_type(&lhs);
+        let rhs_ty = self.get_value_type(&rhs);
+
+        let target_ty =
+            arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
+
+        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
+        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+
+        if is_float(&target_ty) {
+            Ok(self.emit_fge(lhs, rhs))
+        } else if is_signed(&target_ty) {
+            Ok(self.emit_sge(lhs, rhs))
+        } else {
+            Ok(self.emit_uge(lhs, rhs))
+        }
     }
 }

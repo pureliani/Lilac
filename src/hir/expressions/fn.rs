@@ -127,7 +127,7 @@ impl<'a> Builder<'a, InModule> {
             });
         }
 
-        fn_builder.emit_return_terminator(final_value);
+        fn_builder.emit_return(final_value);
 
         Ok(())
     }

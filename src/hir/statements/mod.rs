@@ -60,7 +60,7 @@ impl<'a> Builder<'a, InBlock> {
                 }
                 StmtKind::Break => {
                     if let Some(targets) = self.current_scope.within_loop_body() {
-                        self.jmp(targets.on_break);
+                        self.emit_jmp(targets.on_break);
                         Ok(())
                     } else {
                         Err(SemanticError {
@@ -71,7 +71,7 @@ impl<'a> Builder<'a, InBlock> {
                 }
                 StmtKind::Continue => {
                     if let Some(targets) = self.current_scope.within_loop_body() {
-                        self.jmp(targets.on_continue);
+                        self.emit_jmp(targets.on_continue);
                         Ok(())
                     } else {
                         Err(SemanticError {
