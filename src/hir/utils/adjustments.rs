@@ -428,7 +428,32 @@ impl<'a> Builder<'a, InBlock> {
             MemoryWriteAdjustment::AssignUnionToUnion {
                 remap_discriminators: remap,
             } => {
-                todo!("Implement union remapping copy");
+                let source_id_ptr = self.get_field_ptr(source, COMMON_IDENTIFIERS.id);
+                let source_id_val = self.emit_load(source_id_ptr);
+
+                let mut sorted_remap: Vec<_> = remap.into_iter().collect();
+                sorted_remap.sort_by_key(|(src, _)| *src);
+
+                let mut calculated_target_id = self.emit_const_number(NumberKind::U16(0));
+
+                for (src_idx, tgt_idx) in sorted_remap {
+                    let src_idx_val = self.emit_const_number(NumberKind::U16(src_idx));
+                    let tgt_idx_val = self.emit_const_number(NumberKind::U16(tgt_idx));
+
+                    let is_match = self.emit_ieq(source_id_val, src_idx_val);
+                    calculated_target_id =
+                        self.emit_select(is_match, tgt_idx_val, calculated_target_id);
+                }
+
+                let target_id_ptr = self.get_field_ptr(target_ptr, COMMON_IDENTIFIERS.id);
+                self.emit_store(target_id_ptr, calculated_target_id, source_span.clone());
+
+                let source_value_ptr =
+                    self.get_field_ptr(source, COMMON_IDENTIFIERS.value);
+                let target_value_ptr =
+                    self.get_field_ptr(target_ptr, COMMON_IDENTIFIERS.value);
+
+                self.emit_memcopy(source_value_ptr, target_value_ptr);
             }
         }
 

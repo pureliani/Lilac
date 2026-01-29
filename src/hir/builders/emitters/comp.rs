@@ -6,7 +6,9 @@ use crate::{
         instructions::{CompInstr, Instruction},
         types::checked_type::Type,
         utils::{
-            adjustments::{arithmetic_supertype, check_is_assignable},
+            adjustments::{
+                arithmetic_supertype, check_is_assignable, check_structural_compatibility,
+            },
             numeric::{is_float, is_signed},
         },
     },
@@ -111,6 +113,36 @@ impl<'a> Builder<'a, InBlock> {
 }
 
 impl<'a> Builder<'a, InBlock> {
+    pub fn emit_select(
+        &mut self,
+        condition: ValueId,
+        true_value: ValueId,
+        false_value: ValueId,
+    ) -> ValueId {
+        let condition_type = self.get_value_type(&condition);
+
+        if !check_is_assignable(condition_type, &Type::Bool) {
+            panic!("INTERNAL COMPILER ERROR: Select instruction expected the condition to be a boolean value");
+        }
+
+        let true_value_type = self.get_value_type(&true_value);
+        let false_value_type = self.get_value_type(&false_value);
+
+        if !check_structural_compatibility(true_value_type, false_value_type) {
+            panic!("INTERNAL COMPILER ERROR: Select instruction expected both operands to have the same type");
+        }
+
+        let dest = self.new_value_id(true_value_type.clone());
+        self.push_instruction(Instruction::Select {
+            dest,
+            cond: condition,
+            true_val: true_value,
+            false_val: false_value,
+        });
+
+        dest
+    }
+
     pub fn eq(
         &mut self,
         lhs: ValueId,
