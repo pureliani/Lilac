@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ast::Span;
 use crate::globals::COMMON_IDENTIFIERS;
-use crate::hir::builders::{Builder, InBlock, LValue, ValueId};
+use crate::hir::builders::{Builder, InBlock, ValueId};
 use crate::hir::errors::{SemanticError, SemanticErrorKind};
 use crate::hir::types::checked_type::{StructKind, Type};
 use crate::hir::utils::numeric::{
@@ -396,17 +396,10 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         source: ValueId,
         source_span: Span,
-        target: LValue,
+        target_ptr: ValueId,
+        adjustment: MemoryWriteAdjustment,
     ) -> Result<(), SemanticError> {
         let source_type = self.get_value_type(&source).clone();
-        let target_ptr = self.read_lvalue(target, source_span.clone()).unwrap();
-        let target_ptr_type = self.get_value_type(&target_ptr);
-
-        let adjustment = analyze_memory_adjustment(
-            &source_type,
-            source_span.clone(),
-            target_ptr_type,
-        )?;
 
         match adjustment {
             MemoryWriteAdjustment::DirectStore => {
