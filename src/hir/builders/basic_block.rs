@@ -151,24 +151,23 @@ impl<'a> Builder<'a, InBlock> {
 
         if !self.get_bb(block_id).sealed {
             val_id = self.new_value_id(Type::Unknown);
-            self.incomplete_phis.entry(block_id).or_default().push((
-                val_id,
-                lval.clone(),
-                span,
-            ));
+            self.incomplete_phis
+                .entry(block_id)
+                .or_default()
+                .push((val_id, lval, span));
         } else if predecessors.len() == 1 {
-            val_id = self.read_lvalue_from_block(predecessors[0], lval.clone(), span)?;
+            val_id = self.read_lvalue_from_block(predecessors[0], lval, span)?;
         } else if predecessors.is_empty() {
-            val_id = self.materialize_lvalue(lval.clone(), span)?;
+            val_id = self.materialize_lvalue(lval, span)?;
         } else {
             val_id = self.new_value_id(Type::Unknown);
 
             self.current_defs
                 .entry(block_id)
                 .or_default()
-                .insert(lval.clone(), val_id);
+                .insert(lval, val_id);
 
-            self.resolve_phi(block_id, val_id, lval.clone(), span)?;
+            self.resolve_phi(block_id, val_id, lval, span)?;
         }
 
         self.current_defs
@@ -228,7 +227,7 @@ impl<'a> Builder<'a, InBlock> {
         let mut incoming_types = Vec::new();
 
         for pred in predecessors {
-            let val = self.read_lvalue_from_block(pred, lval.clone(), span.clone())?;
+            let val = self.read_lvalue_from_block(pred, lval, span.clone())?;
             phi_entries.insert(PhiEntry {
                 from: pred,
                 value: val,

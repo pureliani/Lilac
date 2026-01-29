@@ -155,7 +155,7 @@ impl<'a> Builder<'a, InBlock> {
             }
         };
 
-        let val_id = self.read_lvalue(lvalue.clone(), span.clone())?;
+        let val_id = self.read_lvalue(lvalue, span.clone())?;
         let val_ty = self.get_value_type(&val_id).clone();
 
         let variants = match &val_ty {

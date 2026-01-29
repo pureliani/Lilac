@@ -76,7 +76,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_true_type {
-                    self.apply_narrowing(&pred.lvalue, ty);
+                    self.apply_narrowing(pred.lvalue, ty);
                 }
             }
 
@@ -92,7 +92,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_false_type {
-                    self.apply_narrowing(&pred.lvalue, ty);
+                    self.apply_narrowing(pred.lvalue, ty);
                 }
             }
 
@@ -138,10 +138,10 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    fn apply_narrowing(&mut self, lvalue: &LValue, new_type: Type) {
-        if let Ok(current_val) = self.read_lvalue(lvalue.clone(), Span::default()) {
+    fn apply_narrowing(&mut self, lvalue: LValue, new_type: Type) {
+        if let Ok(current_val) = self.read_lvalue(lvalue, Span::default()) {
             let refined_val = self.emit_bitcast(current_val, new_type);
-            self.remap_lvalue(lvalue.clone(), refined_val);
+            self.remap_lvalue(lvalue, refined_val);
         }
     }
 }
