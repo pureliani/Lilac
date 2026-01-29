@@ -75,11 +75,9 @@ impl<'a> Builder<'a, InBlock> {
                     }
                 }
 
-                self.remap_lvalue(lval.clone(), val_id);
+                self.remap_lvalue(lval, val_id);
             }
             LValue::Field { base_ptr, field } => {
-                self.remap_lvalue(lval.clone(), val_id);
-
                 let field_node = IdentifierNode {
                     name: *field,
                     span: target_span.clone(),
@@ -88,6 +86,8 @@ impl<'a> Builder<'a, InBlock> {
                 let ptr_id =
                     self.try_get_user_struct_field_ptr(*base_ptr, &field_node)?;
                 self.emit_store(ptr_id, val_id, target_span);
+
+                self.remap_lvalue(lval, val_id);
             }
         }
 

@@ -452,4 +452,49 @@ impl<'a> Builder<'a, InBlock> {
 
         Ok(())
     }
+
+    pub fn adjust_initial_value(
+        &mut self,
+        value: ValueId,
+        value_span: Span,
+        constraint: &Type,
+    ) -> Result<ValueId, SemanticError> {
+        let value_type = self.get_value_type(&value).clone();
+
+        let value_adjustment =
+            analyze_value_adjustment(&value_type, value_span.clone(), constraint);
+
+        let final_val_id = if let Ok(adj) = value_adjustment {
+            self.apply_value_adjustment(value, adj)
+        } else if let Type::Pointer(constraint_ptr_inner) = constraint {
+            let usize_one = self.emit_const_number(NumberKind::USize(1));
+            let heap_ptr = self.emit_heap_alloc(*constraint_ptr_inner.clone(), usize_one);
+            let heap_ptr_type = self.get_value_type(&heap_ptr);
+
+            let memory_adjustment = analyze_memory_adjustment(
+                &value_type,
+                value_span.clone(),
+                heap_ptr_type,
+            )?;
+
+            self.adjust_memory_and_write(
+                value,
+                value_span.clone(),
+                heap_ptr,
+                memory_adjustment,
+            )?;
+
+            heap_ptr
+        } else {
+            return Err(SemanticError {
+                span: value_span.clone(),
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: constraint.clone(),
+                    received: value_type.clone(),
+                },
+            });
+        };
+
+        Ok(final_val_id)
+    }
 }

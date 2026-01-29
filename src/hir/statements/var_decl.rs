@@ -3,18 +3,12 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, LValue},
         errors::{SemanticError, SemanticErrorKind},
-        types::{
-            checked_declaration::{CheckedDeclaration, CheckedVarDecl},
-            checked_type::Type,
-        },
+        types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
         utils::{
-            adjustments::{
-                analyze_memory_adjustment, analyze_value_adjustment, check_is_assignable,
-            },
+            adjustments::check_is_assignable,
             check_type::{check_type_annotation, TypeCheckerContext},
         },
     },
-    tokenize::NumberKind,
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -26,7 +20,7 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
-        let initial_value_span = var_decl.value.span.clone();
+        let value_span = var_decl.value.span.clone();
 
         let val_id = self.build_expr(var_decl.value)?;
         let val_type = self.get_value_type(&val_id).clone();
@@ -42,7 +36,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if !check_is_assignable(&val_type, &expected) {
                 return Err(SemanticError {
-                    span: initial_value_span.clone(),
+                    span: value_span.clone(),
                     kind: SemanticErrorKind::TypeMismatch {
                         expected: expected.clone(),
                         received: val_type.clone(),
@@ -54,39 +48,7 @@ impl<'a> Builder<'a, InBlock> {
             val_type.clone()
         };
 
-        let value_adjustment =
-            analyze_value_adjustment(&val_type, initial_value_span.clone(), &constraint);
-
-        let final_val_id = if let Ok(adj) = value_adjustment {
-            self.apply_value_adjustment(val_id, adj)
-        } else if let Type::Pointer(constraint_ptr_inner) = &constraint {
-            let usize_one = self.emit_const_number(NumberKind::USize(1));
-            let heap_ptr = self.emit_heap_alloc(*constraint_ptr_inner.clone(), usize_one);
-            let heap_ptr_type = self.get_value_type(&heap_ptr);
-
-            let memory_adjustment = analyze_memory_adjustment(
-                &val_type,
-                initial_value_span.clone(),
-                heap_ptr_type,
-            )?;
-
-            self.adjust_memory_and_write(
-                val_id,
-                initial_value_span.clone(),
-                heap_ptr,
-                memory_adjustment,
-            )?;
-
-            heap_ptr
-        } else {
-            return Err(SemanticError {
-                span: initial_value_span.clone(),
-                kind: SemanticErrorKind::TypeMismatch {
-                    expected: constraint.clone(),
-                    received: val_type.clone(),
-                },
-            });
-        };
+        let final_val_id = self.adjust_initial_value(val_id, value_span, &constraint)?;
 
         let lval = LValue::Variable(var_decl.id);
         self.remap_lvalue(lval, final_val_id);
