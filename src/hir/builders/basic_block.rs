@@ -200,7 +200,7 @@ impl<'a> Builder<'a, InBlock> {
                     span: span.clone(),
                 };
 
-                let ptr = self.try_get_user_struct_field_ptr(base_ptr, &field_node)?;
+                let ptr = self.try_get_field_ptr(base_ptr, &field_node)?;
 
                 Ok(self.emit_load(ptr))
             }

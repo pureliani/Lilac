@@ -117,7 +117,7 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn try_get_user_struct_field_ptr(
+    pub fn try_get_field_ptr(
         &mut self,
         base_ptr: ValueId,
         field: &IdentifierNode,
@@ -126,7 +126,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let struct_kind = match current_ty {
             Type::Pointer(to) => match &**to {
-                Type::Struct(s) if matches!(s, StructKind::UserDefined(_)) => s,
+                Type::Struct(s) => s,
                 _ => panic!("Expected pointer to struct, found {:?}", current_ty),
             },
             _ => {
@@ -156,7 +156,7 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn get_field_ptr(&mut self, base_ptr: ValueId, field_name: StringId) -> ValueId {
-        self.try_get_user_struct_field_ptr(
+        self.try_get_field_ptr(
             base_ptr,
             &IdentifierNode {
                 name: field_name,

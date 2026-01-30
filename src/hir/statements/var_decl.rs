@@ -4,10 +4,7 @@ use crate::{
         builders::{Builder, InBlock, LValue},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
-        utils::{
-            adjustments::check_is_assignable,
-            check_type::{check_type_annotation, TypeCheckerContext},
-        },
+        utils::check_type::{check_type_annotation, TypeCheckerContext},
     },
 };
 
@@ -32,18 +29,7 @@ impl<'a> Builder<'a, InBlock> {
                 errors: self.errors,
             };
 
-            let expected = check_type_annotation(&mut type_ctx, annotation);
-
-            if !check_is_assignable(&val_type, &expected) {
-                return Err(SemanticError {
-                    span: value_span.clone(),
-                    kind: SemanticErrorKind::TypeMismatch {
-                        expected: expected.clone(),
-                        received: val_type.clone(),
-                    },
-                });
-            }
-            expected
+            check_type_annotation(&mut type_ctx, annotation)
         } else {
             val_type.clone()
         };

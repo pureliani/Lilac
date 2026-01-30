@@ -5,6 +5,7 @@ use crate::globals::COMMON_IDENTIFIERS;
 use crate::hir::builders::{Builder, InBlock, ValueId};
 use crate::hir::errors::{SemanticError, SemanticErrorKind};
 use crate::hir::types::checked_type::{StructKind, Type};
+use crate::hir::utils::layout::get_layout_of;
 use crate::hir::utils::numeric::{
     get_numeric_type_rank, is_float, is_integer, is_signed,
 };
@@ -318,6 +319,18 @@ fn check_recursive<'a>(
 
             params_ok && return_ok
         }
+        (
+            Buffer {
+                size: buffer_size,
+                alignment: buffer_alignment,
+            },
+            target,
+        ) => {
+            let target_layout = get_layout_of(target);
+
+            target_layout.size == *buffer_size
+                && target_layout.alignment == *buffer_alignment
+        }
 
         _ => false,
     };
@@ -328,6 +341,7 @@ fn check_recursive<'a>(
 
 pub fn check_is_assignable(source: &Type, target: &Type) -> bool {
     analyze_value_adjustment(source, Default::default(), target).is_ok()
+        || analyze_memory_adjustment(source, Default::default(), target).is_ok()
 }
 
 impl<'a> Builder<'a, InBlock> {
