@@ -106,8 +106,8 @@ fn parse_number(full_number_str: &str) -> Result<NumberKind, TokenizationErrorKi
             .or(Err(TokenizationErrorKind::InvalidFloatingNumber))
     } else {
         full_number_str
-            .parse::<i64>()
-            .map(NumberKind::I64)
+            .parse::<i32>()
+            .map(NumberKind::I32)
             .or(Err(TokenizationErrorKind::InvalidIntegerNumber))
     }
 }
