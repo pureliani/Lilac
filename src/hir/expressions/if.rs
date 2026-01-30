@@ -146,19 +146,8 @@ impl<'a> Builder<'a, InBlock> {
         new_type: Type,
         span: Span,
     ) -> Result<(), SemanticError> {
-        let current_val = self.read_lvalue(lvalue, Span::default())?;
+        let current_val = self.read_lvalue(lvalue, span)?;
         let current_ty = self.get_value_type(&current_val).clone();
-
-        dbg!(type_to_string(&new_type));
-
-        if let Type::Pointer(inner) = &new_type {
-            if let Type::Struct(StructKind::Union(_)) = &**inner {
-                return Err(SemanticError {
-                    kind: SemanticErrorKind::UnsupportedUnionNarrowing,
-                    span,
-                });
-            }
-        }
 
         let refined_val = if let Type::Pointer(inner) = &current_ty {
             if let Type::Struct(StructKind::Union(_)) = &**inner {

@@ -176,6 +176,15 @@ impl<'a> Builder<'a, InBlock> {
         };
         let target_type = check_type_annotation(&mut type_ctx, &ty);
 
+        if let Type::Pointer(to) = &target_type {
+            if let Type::Struct(StructKind::Union(_)) = &**to {
+                return Err(SemanticError {
+                    kind: SemanticErrorKind::UnsupportedUnionNarrowing,
+                    span: ty.span.clone(),
+                });
+            }
+        }
+
         let match_indices = get_matching_variant_indices(variants, &path, &target_type);
         let non_match_indices =
             get_non_matching_variant_indices(variants, &path, &target_type);
