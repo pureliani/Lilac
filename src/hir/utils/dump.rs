@@ -1,5 +1,5 @@
 use crate::{
-    globals::STRING_INTERNER,
+    globals::{STRING_INTERNER, TAG_INTERNER},
     hir::{
         builders::{BasicBlockId, Function, Program, ValueId},
         instructions::{
@@ -229,6 +229,13 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     )
                     .unwrap();
                 }
+                ConstInstr::ConstTag { dest, val } => {
+                    let string_id = TAG_INTERNER.resolve(*val);
+                    let name = STRING_INTERNER.resolve(string_id);
+
+                    writeln!(out, "v{}: {} = #{};", dest.0, get_vt(p, dest), name)
+                        .unwrap();
+                }
             },
             Instruction::Cast(kind) => match kind {
                 CastInstr::SIToF { dest, src }
@@ -243,7 +250,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 | CastInstr::BitCast { dest, src } => {
                     writeln!(
                         out,
-                        "v{}: {} = {}({})",
+                        "v{}: {} = {}(v{})",
                         dest.0,
                         get_vt(p, dest),
                         get_cast_name(kind),

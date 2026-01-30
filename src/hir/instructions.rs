@@ -1,11 +1,16 @@
 use crate::{
     ast::DeclarationId,
+    compile::interner::TagId,
     hir::builders::{BasicBlockId, ConstantId, ValueId},
     tokenize::NumberKind,
 };
 
 #[derive(Clone, Debug)]
 pub enum ConstInstr {
+    ConstTag {
+        dest: ValueId,
+        val: TagId,
+    },
     ConstNumber {
         dest: ValueId,
         val: NumberKind,
