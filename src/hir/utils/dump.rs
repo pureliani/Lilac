@@ -331,7 +331,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     };
                     writeln!(
                         out,
-                        "v{}: {} = stackAlloc({} x {});",
+                        "v{}: {} = stackAlloc(v{} x {});",
                         dest.0,
                         get_vt(p, dest),
                         count,
