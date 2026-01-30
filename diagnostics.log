@@ -1,0 +1,39 @@
+error[S10]: Type mismatch
+   ┌─ /home/gabriel/Desktop/WillowLang/code.wl:15:14
+   │
+ 7 │ 
+ 8 │ fn main() {
+ 9 │     let user: OptionalUser = { kind: #Some, id: 15 };
+10 │ 
+11 │     let condition = user::is({ kind: #Some, id: i32 });
+12 │     let condition_alias = condition;
+13 │ 
+14 │     if (condition_alias) {
+15 │         user.id = 10i64;
+   │              ^^
+   │              │
+   │              Expected `i32`, found `i64`
+16 │     };
+17 │ 
+18 │     15
+19 │ }
+20 │ 
+
+error[S12]: Function return type mismatch
+   ┌─ /home/gabriel/Desktop/WillowLang/code.wl:18:5
+   │
+10 │ 
+11 │     let condition = user::is({ kind: #Some, id: i32 });
+12 │     let condition_alias = condition;
+13 │ 
+14 │     if (condition_alias) {
+15 │         user.id = 10i64;
+16 │     };
+17 │ 
+18 │     15
+   │     ^^
+   │     │
+   │     Expected the returned value to have a type that is assignable to `void`, but found `i32`
+19 │ }
+20 │ 
+
