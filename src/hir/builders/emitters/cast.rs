@@ -2,7 +2,9 @@ use crate::hir::{
     builders::{Builder, InBlock, ValueId},
     instructions::{CastInstr, Instruction},
     types::checked_type::Type,
-    utils::adjustments::check_structural_compatibility,
+    utils::{
+        adjustments::check_structural_compatibility, type_to_string::type_to_string,
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -65,8 +67,9 @@ impl<'a> Builder<'a, InBlock> {
         if !check_structural_compatibility(src_ty, &target_ty) {
             panic!(
                 "INTERNAL COMPILER ERROR: Tried a bitcast to structurally incompatible \
-                 type, from {:?} to {:?}",
-                src_ty, &target_ty
+                 type, from {} to {}",
+                type_to_string(src_ty),
+                type_to_string(&target_ty)
             );
         }
 

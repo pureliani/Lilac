@@ -159,7 +159,13 @@ impl<'a> Builder<'a, InBlock> {
         let val_ty = self.get_value_type(&val_id).clone();
 
         let variants = match &val_ty {
-            Type::Struct(StructKind::Union(variants)) => variants,
+            Type::Pointer(to) => {
+                if let Type::Struct(StructKind::Union(variants)) = &**to {
+                    variants
+                } else {
+                    return self.build_is_type_fallback(left, ty, span);
+                }
+            }
             _ => return self.build_is_type_fallback(left, ty, span),
         };
 
