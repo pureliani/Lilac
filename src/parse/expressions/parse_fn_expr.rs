@@ -2,6 +2,7 @@ use crate::{
     ast::{
         decl::{FnDecl, Param},
         expr::{Expr, ExprKind},
+        type_annotation::{TypeAnnotation, TypeAnnotationKind},
     },
     globals::next_declaration_id,
     parse::{Parser, ParsingError},
@@ -39,8 +40,17 @@ impl Parser {
             |p| p.match_token(0, TokenKind::Punctuation(PunctuationKind::RParen)),
         )?;
         self.consume_punctuation(PunctuationKind::RParen)?;
-        self.consume_punctuation(PunctuationKind::Col)?;
-        let return_type = self.parse_type_annotation(0)?;
+
+        let return_type =
+            if self.match_token(0, TokenKind::Punctuation(PunctuationKind::Col)) {
+                self.consume_punctuation(PunctuationKind::Col)?;
+                self.parse_type_annotation(0)?
+            } else {
+                TypeAnnotation {
+                    kind: TypeAnnotationKind::Void,
+                    span: self.get_span(start_offset, self.offset - 1)?,
+                }
+            };
 
         let body = self.parse_codeblock_expr()?;
 

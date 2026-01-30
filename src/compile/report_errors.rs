@@ -62,10 +62,10 @@ impl Compiler {
                         }
                         TokenizationErrorKind::UnknownToken(ref char_str) => {
                             let readable_char = match char_str.as_str() {
-                                "\n" => "\"\\n\"".to_string(),
-                                "\r" => "\"\\r\"".to_string(),
-                                "\t" => "\"\\t\"".to_string(),
-                                " " => "\"<whitespace>\"".to_string(),
+                                "\n" => "`\\n`".to_string(),
+                                "\r" => "`\\r`".to_string(),
+                                "\t" => "`\\t`".to_string(),
+                                " " => "`<whitespace>`".to_string(),
                                 _ => format!("'{}'", char_str),
                             };
                             report.with_message("Unknown token").with_label(
@@ -120,7 +120,7 @@ impl Compiler {
                             ParsingErrorKind::ExpectedAnExpressionButFound(token) => {
                                 report.with_message("Expected an expression").with_label(
                                     label.with_message(format!(
-                                        "Found token \"{}\"",
+                                        "Found token `{}`",
                                         token_kind_to_string(&token.kind)
                                     )),
                                 )
@@ -128,13 +128,13 @@ impl Compiler {
                             ParsingErrorKind::ExpectedATypeButFound(token) => report
                                 .with_message("Expected a type")
                                 .with_label(label.with_message(format!(
-                                    "Found token \"{}\"",
+                                    "Found token `{}`",
                                     token_kind_to_string(&token.kind)
                                 ))),
                             ParsingErrorKind::InvalidSuffixOperator(token) => report
                                 .with_message("Invalid suffix operator")
                                 .with_label(label.with_message(format!(
-                                    "Token \"{}\" cannot be used as a suffix",
+                                    "Token `{}` cannot be used as a suffix",
                                     token_kind_to_string(&token.kind)
                                 ))),
                             ParsingErrorKind::UnexpectedEndOfInput => report
@@ -146,13 +146,13 @@ impl Compiler {
                             ParsingErrorKind::ExpectedAPunctuationMark(p) => report
                                 .with_message("Expected punctuation")
                                 .with_label(label.with_message(format!(
-                                    "Expected \"{}\"",
+                                    "Expected `{}`",
                                     p.to_string()
                                 ))),
                             ParsingErrorKind::ExpectedAKeyword(k) => report
                                 .with_message("Expected keyword")
                                 .with_label(label.with_message(format!(
-                                    "Expected \"{}\"",
+                                    "Expected `{}`",
                                     k.to_string()
                                 ))),
                             ParsingErrorKind::ExpectedAStringValue => report
@@ -165,7 +165,7 @@ impl Compiler {
                                 let name = STRING_INTERNER.resolve(id.name);
                                 report.with_message("Unknown static method").with_label(
                                     label.with_message(format!(
-                                        "Method \"{}\" doesn't exist",
+                                        "Method `{}` doesn't exist",
                                         name
                                     )),
                                 )
@@ -181,7 +181,7 @@ impl Compiler {
                                 report
                                     .with_message("Expected statement or expression")
                                     .with_label(label.with_message(format!(
-                                        "Found \"{}\"",
+                                        "Found `{}`",
                                         token_kind_to_string(&found.kind)
                                     )))
                             }
@@ -189,7 +189,7 @@ impl Compiler {
                                 found,
                             } => report.with_message("Unexpected token").with_label(
                                 label.with_message(format!(
-                                    "Token \"{}\" follows final expression",
+                                    "Token `{}` follows final expression",
                                     token_kind_to_string(&found.kind)
                                 )),
                             ),
@@ -260,7 +260,7 @@ impl Compiler {
                         SemanticErrorKind::CannotCompareType { of, to } => report
                             .with_message("Incompatible comparison")
                             .with_label(label.with_message(format!(
-                                "Cannot compare \"{}\" to \"{}\"",
+                                "Cannot compare `{}` to `{}`",
                                 type_to_string(of),
                                 type_to_string(to)
                             ))),
@@ -268,14 +268,14 @@ impl Compiler {
                             let name = STRING_INTERNER.resolve(id.name);
                             report.with_message("Undeclared identifier").with_label(
                                 label
-                                    .with_message(format!("\"{}\" is not defined", name)),
+                                    .with_message(format!("`{}` is not defined", name)),
                             )
                         }
                         SemanticErrorKind::UndeclaredType(id) => {
                             let name = STRING_INTERNER.resolve(id.name);
                             report.with_message("Undeclared type").with_label(
                                 label.with_message(format!(
-                                    "Type \"{}\" is not defined",
+                                    "Type `{}` is not defined",
                                     name
                                 )),
                             )
@@ -283,14 +283,14 @@ impl Compiler {
                         SemanticErrorKind::TypeMismatch { expected, received } => report
                             .with_message("Type mismatch")
                             .with_label(label.with_message(format!(
-                                "Expected \"{}\", found \"{}\"",
+                                "Expected `{}`, found `{}`",
                                 type_to_string(expected),
                                 type_to_string(received)
                             ))),
                         SemanticErrorKind::ReturnTypeMismatch { expected, received } => {
-                            report.with_message("Return type mismatch").with_label(
+                            report.with_message("Function return type mismatch").with_label(
                                 label.with_message(format!(
-                                    "Function expects \"{}\", but returned \"{}\"",
+                                    "Expected the returned value to have a type that is assignable to `{}`, but found `{}`",
                                     type_to_string(expected),
                                     type_to_string(received)
                                 )),
@@ -299,7 +299,7 @@ impl Compiler {
                         SemanticErrorKind::ModuleNotFound(path_buf) => report
                             .with_message("Module not found")
                             .with_label(label.with_message(format!(
-                                "Could not find module at \"{}\"",
+                                "Could not find module at `{}`",
                                 path_buf.0.display()
                             ))),
                         SemanticErrorKind::SymbolNotExported {
@@ -309,7 +309,7 @@ impl Compiler {
                             let name = STRING_INTERNER.resolve(symbol.name);
                             report.with_message("Symbol not exported").with_label(
                                 label.with_message(format!(
-                                    "\"{}\" is not exported from \"{}\"",
+                                    "`{}` is not exported from `{}`",
                                     name,
                                     module_path.0.display()
                                 )),
@@ -331,7 +331,7 @@ impl Compiler {
                             let identifier_name = STRING_INTERNER.resolve(id.name);
                             report.with_message("Duplicate identifier").with_label(
                                 label.with_message(format!(
-                                    "Duplicate identifier declaration \"{}\"",
+                                    "Duplicate identifier declaration `{}`",
                                     identifier_name
                                 )),
                             )
@@ -340,7 +340,7 @@ impl Compiler {
                             let name = STRING_INTERNER.resolve(id.name);
                             report.with_message("Duplicate union variant").with_label(
                                 label.with_message(format!(
-                                    "Variant \"{}\" is defined multiple times in this \
+                                    "Variant `{}` is defined multiple times in this \
                                      union",
                                     name
                                 )),
@@ -349,7 +349,7 @@ impl Compiler {
                         SemanticErrorKind::CannotIndex(ty) => report
                             .with_message("Cannot index type")
                             .with_label(label.with_message(format!(
-                                "Type \"{}\" cannot be indexed",
+                                "Type `{}` cannot be indexed",
                                 type_to_string(ty)
                             ))),
                         SemanticErrorKind::FromStatementMustBeDeclaredAtTopLevel => {
@@ -372,7 +372,7 @@ impl Compiler {
                             report
                                 .with_message("Duplicate initializer for a struct field")
                                 .with_label(label.with_message(format!(
-                                    "Struct field \"{}\" cannot be initialized multiple \
+                                    "Struct field `{}` cannot be initialized multiple \
                                      times",
                                     name
                                 )))
@@ -383,7 +383,7 @@ impl Compiler {
                             report
                                 .with_message("Unknown field in the struct initializer")
                                 .with_label(label.with_message(format!(
-                                    "Unknown struct field \"{}\"",
+                                    "Unknown struct field `{}`",
                                     name
                                 )))
                         }
@@ -396,7 +396,7 @@ impl Compiler {
                                 .collect();
                             let joined = field_names
                                 .iter()
-                                .map(|n| format!("\"{}\"", n))
+                                .map(|n| format!("`{}`", n))
                                 .collect::<Vec<String>>()
                                 .join(", ");
                             report
@@ -410,14 +410,14 @@ impl Compiler {
                         SemanticErrorKind::CannotCall(target) => report
                             .with_message("Cannot use the function call operator")
                             .with_label(label.with_message(format!(
-                                "Cannot use the function-call operator on type \"{}\"",
+                                "Cannot use the function-call operator on type `{}`",
                                 type_to_string(target)
                             ))),
                         SemanticErrorKind::IncompatibleBranchTypes { first, second } => {
                             report.with_message("Incompatible branch types").with_label(
                                 label.with_message(format!(
-                                    "This branch returns \"{}\", but the previous \
-                                     branch returned \"{}\"",
+                                    "This branch returns `{}`, but the previous \
+                                     branch returned `{}`",
                                     type_to_string(second),
                                     type_to_string(first)
                                 )),
@@ -425,26 +425,26 @@ impl Compiler {
                         }
                         SemanticErrorKind::ReturnKeywordOutsideFunction => report
                             .with_message(
-                                "Keyword \"return\" used outside of a function scope",
+                                "Keyword `return` used outside of a function scope",
                             )
                             .with_label(label.with_message(
-                                "Cannot use the \"return\" keyword outside of a \
+                                "Cannot use the `return` keyword outside of a \
                                  function scope",
                             )),
                         SemanticErrorKind::BreakKeywordOutsideLoop => report
                             .with_message(
-                                "Keyword \"break\" used outside of a loop scope",
+                                "Keyword `break` used outside of a loop scope",
                             )
                             .with_label(label.with_message(
-                                "Cannot use the \"break\" keyword outside of a loop \
+                                "Cannot use the `break` keyword outside of a loop \
                                  scope",
                             )),
                         SemanticErrorKind::ContinueKeywordOutsideLoop => report
                             .with_message(
-                                "Keyword \"continue\" used outside of a loop scope",
+                                "Keyword `continue` used outside of a loop scope",
                             )
                             .with_label(label.with_message(
-                                "Cannot use the \"continue\" keyword outside of a loop \
+                                "Cannot use the `continue` keyword outside of a loop \
                                  scope",
                             )),
                         SemanticErrorKind::InvalidLValue => report
@@ -456,7 +456,7 @@ impl Compiler {
                         } => {
                             let mut expected_strings: Vec<String> = expected
                                 .iter()
-                                .map(|t| format!("\"{}\"", type_to_string(t)))
+                                .map(|t| format!("`{}`", type_to_string(t)))
                                 .collect();
 
                             expected_strings.sort();
@@ -464,7 +464,7 @@ impl Compiler {
 
                             report.with_message("Type mismatch").with_label(
                                 label.with_message(format!(
-                                    "Expected one of {}, but found \"{}\"",
+                                    "Expected one of {}, but found `{}`",
                                     expected_str,
                                     type_to_string(received)
                                 )),
@@ -482,7 +482,7 @@ impl Compiler {
                         SemanticErrorKind::CannotAccess(target) => report
                             .with_message("Cannot access field")
                             .with_label(label.with_message(format!(
-                                "Cannot use the access operator on the type \"{}\"",
+                                "Cannot use the access operator on the type `{}`",
                                 type_to_string(target)
                             ))),
                         SemanticErrorKind::CannotStaticAccess(_) => todo!(),
@@ -491,7 +491,7 @@ impl Compiler {
                             report
                                 .with_message("Access to an undefined field")
                                 .with_label(label.with_message(format!(
-                                    "Field \"{}\" is not defined",
+                                    "Field `{}` is not defined",
                                     name
                                 )))
                         }
@@ -499,7 +499,7 @@ impl Compiler {
                             let name = STRING_INTERNER.resolve(id.name);
                             report.with_message("Undefined static field").with_label(
                                 label.with_message(format!(
-                                    "Static field \"{}\" does not exist",
+                                    "Static field `{}` does not exist",
                                     name
                                 )),
                             )
@@ -550,7 +550,7 @@ impl Compiler {
                             target_type,
                         } => report.with_message("Invalid type cast").with_label(
                             label.with_message(format!(
-                                "Cannot cast type \"{}\" to \"{}\"",
+                                "Cannot cast type `{}` to `{}`",
                                 type_to_string(source_type),
                                 type_to_string(target_type)
                             )),
@@ -567,7 +567,7 @@ impl Compiler {
                                 .with_message("Unexpected value for tag")
                                 .with_label(label.with_message(format!(
                                     "This tag is defined without a value, but found a \
-                                     value of type \"{}\"",
+                                     value of type `{}`",
                                     received_str
                                 )))
                                 .with_help(
@@ -580,11 +580,11 @@ impl Compiler {
                             report
                                 .with_message("Missing value for tag")
                                 .with_label(label.with_message(format!(
-                                    "This tag requires a value of type \"{}\"",
+                                    "This tag requires a value of type `{}`",
                                     expected_str
                                 )))
                                 .with_help(format!(
-                                    "Provide a value of type \"{}\" in parentheses, \
+                                    "Provide a value of type `{}` in parentheses, \
                                      e.g., #Tag(value)",
                                     expected_str
                                 ))
@@ -601,7 +601,7 @@ impl Compiler {
 
                 CompilerErrorKind::CouldNotReadFile { path, error } => {
                     println!(
-                        "Error: Could not read file \"{}\": {}",
+                        "Error: Could not read file `{}`: {}",
                         path.0.display(),
                         error
                     );
@@ -612,7 +612,7 @@ impl Compiler {
                     error,
                 } => {
                     println!(
-                        "Error: Module \"{}\" (imported by \"{}\") not found: {}",
+                        "Error: Module `{}` (imported by `{}`) not found: {}",
                         target_path.0.display(),
                         importing_module.0.display(),
                         error

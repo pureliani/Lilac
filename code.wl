@@ -5,11 +5,15 @@ type OptionalUser = {
     kind: #None
 };
 
-fn main(): void {
-    let a: OptionalUser = { kind: #Some, id: 15 };
+fn main() {
+    let user: OptionalUser = { kind: #Some, id: 15 };
 
-    let x = a::is({ kind: #Some, id: i32 });
-   
+    let condition = user::is({ kind: #Some, id: i32 });
+    let condition_alias = condition;
 
-   if x { };
+    if (condition_alias) {
+        user.id = 10i64;
+    };
+
+    15
 }

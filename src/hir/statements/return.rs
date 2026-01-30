@@ -14,6 +14,7 @@ impl<'a> Builder<'a, InBlock> {
         value: Expr,
         span: Span,
     ) -> Result<(), SemanticError> {
+        let value_span = value.span.clone();
         let func_id = self.context.func_id;
         let expected_return_type = match self.program.declarations.get(&func_id) {
             Some(CheckedDeclaration::Function(f)) => f.return_type.clone(),
@@ -34,7 +35,7 @@ impl<'a> Builder<'a, InBlock> {
                     expected: expected_return_type.clone(),
                     received: actual_type.clone(),
                 },
-                span,
+                span: value_span,
             });
         }
 

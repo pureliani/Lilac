@@ -113,13 +113,12 @@ impl<'a> Builder<'a, InModule> {
                 .map_name_to_decl(param.identifier.name, param_decl_id);
         }
 
-        let body_span = body.span.clone();
-        let final_value = fn_builder.build_codeblock_expr(body)?;
+        let (final_value, final_value_span) = fn_builder.build_codeblock_expr(body)?;
         let final_value_type = fn_builder.get_value_type(&final_value).clone();
 
         if !check_structural_compatibility(&final_value_type, &checked_return_type) {
             return Err(SemanticError {
-                span: body_span,
+                span: final_value_span,
                 kind: SemanticErrorKind::ReturnTypeMismatch {
                     expected: checked_return_type.clone(),
                     received: final_value_type,

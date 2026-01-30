@@ -71,7 +71,7 @@ impl<'a> Builder<'a, InBlock> {
             } => self.build_if(branches, else_branch, IfContext::Expression),
 
             ExprKind::CodeBlock(block_contents) => {
-                self.build_codeblock_expr(block_contents)
+                Ok(self.build_codeblock_expr(block_contents)?.0)
             }
 
             ExprKind::Fn(fn_decl) => self.build_fn_expr(*fn_decl),

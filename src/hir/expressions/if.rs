@@ -10,9 +10,7 @@ use crate::{
         builders::{BasicBlockId, Builder, InBlock, LValue, PhiEntry, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::{StructKind, Type},
-        utils::{
-            adjustments::check_structural_compatibility, type_to_string::type_to_string,
-        },
+        utils::adjustments::check_structural_compatibility,
     },
 };
 
@@ -42,15 +40,6 @@ impl<'a> Builder<'a, InBlock> {
         let merge_block_id = self.as_fn().new_bb();
         let mut branch_results: Vec<(BasicBlockId, ValueId, Span)> = Vec::new();
         let mut current_cond_block_id = self.context.block_id;
-
-        let get_final_expr_span = |block: &BlockContents| {
-            block
-                .final_expr
-                .as_ref()
-                .map(|f| &f.span)
-                .unwrap_or(&block.span)
-                .clone()
-        };
 
         for (condition, body) in branches {
             self.use_basic_block(current_cond_block_id);
@@ -83,11 +72,10 @@ impl<'a> Builder<'a, InBlock> {
                 }
             }
 
-            let final_expr_span = get_final_expr_span(&body);
-            let then_val = self.build_codeblock_expr(body)?;
+            let (then_val, then_val_span) = self.build_codeblock_expr(body)?;
 
             if self.bb().terminator.is_none() {
-                branch_results.push((self.context.block_id, then_val, final_expr_span));
+                branch_results.push((self.context.block_id, then_val, then_val_span));
                 self.emit_jmp(merge_block_id);
             }
 
@@ -103,11 +91,10 @@ impl<'a> Builder<'a, InBlock> {
 
         self.use_basic_block(current_cond_block_id);
         if let Some(else_body) = else_branch {
-            let final_expr_span = get_final_expr_span(&else_body);
-            let else_val = self.build_codeblock_expr(else_body)?;
+            let (else_val, else_val_span) = self.build_codeblock_expr(else_body)?;
 
             if self.bb().terminator.is_none() {
-                branch_results.push((self.context.block_id, else_val, final_expr_span));
+                branch_results.push((self.context.block_id, else_val, else_val_span));
                 self.emit_jmp(merge_block_id);
             }
         } else {
