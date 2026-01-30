@@ -1,6 +1,6 @@
 type OptionalUser = {
     kind: #Some,
-    id: i64,
+    id: i32,
 } | {
     kind: #None
 };
