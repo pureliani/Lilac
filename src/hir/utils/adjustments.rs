@@ -122,7 +122,10 @@ pub fn analyze_memory_adjustment(
 
         &**target_inner
     } else {
-        panic!("INTERNAL COMPILER ERROR: analyze_memory_adjustment expected the target to be a pointer");
+        panic!(
+            "INTERNAL COMPILER ERROR: analyze_memory_adjustment expected the target to \
+             be a pointer"
+        );
     };
 
     if let Type::Struct(StructKind::Union(t_variants)) = target_inner {

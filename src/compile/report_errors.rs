@@ -589,6 +589,12 @@ impl Compiler {
                                     expected_str
                                 ))
                         }
+                        SemanticErrorKind::UnsupportedUnionNarrowing => report
+                            .with_message("Union-to-union narrowing not supported")
+                            .with_label(label.with_message(
+                                "Narrowing to a subset union type is not yet supported; \
+                                 try narrowing to a specific variant instead",
+                            )),
                     };
                     let _ = final_report.finish().print(&mut *cache);
                 }

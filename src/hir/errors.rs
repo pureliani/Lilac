@@ -14,6 +14,7 @@ pub enum SemanticErrorKind {
     ExpectedTagWithValue {
         expected: Type,
     },
+    UnsupportedUnionNarrowing,
     CannotNarrowNonUnion(Type),
     ValuedTagInIsExpression,
     UnreachableCode,
@@ -134,6 +135,7 @@ impl SemanticErrorKind {
             SemanticErrorKind::CannotNarrowNonUnion(_) => 43,
             SemanticErrorKind::ExpectedTagWithoutValue { .. } => 44,
             SemanticErrorKind::ExpectedTagWithValue { .. } => 45,
+            SemanticErrorKind::UnsupportedUnionNarrowing => 46,
         }
     }
 }

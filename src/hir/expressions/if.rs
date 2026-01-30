@@ -5,11 +5,14 @@ use crate::{
         expr::{BlockContents, Expr},
         Span,
     },
+    globals::COMMON_IDENTIFIERS,
     hir::{
         builders::{BasicBlockId, Builder, InBlock, LValue, PhiEntry, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::Type,
-        utils::adjustments::check_structural_compatibility,
+        types::checked_type::{StructKind, Type},
+        utils::{
+            adjustments::check_structural_compatibility, type_to_string::type_to_string,
+        },
     },
 };
 
@@ -76,7 +79,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_true_type {
-                    self.apply_narrowing(pred.lvalue, ty);
+                    self.apply_narrowing(pred.lvalue, ty, condition_span.clone())?
                 }
             }
 
@@ -92,10 +95,9 @@ impl<'a> Builder<'a, InBlock> {
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_false_type {
-                    self.apply_narrowing(pred.lvalue, ty);
+                    self.apply_narrowing(pred.lvalue, ty, condition_span.clone())?
                 }
             }
-
             current_cond_block_id = next_cond_block_id;
         }
 
@@ -138,10 +140,42 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    fn apply_narrowing(&mut self, lvalue: LValue, new_type: Type) {
-        if let Ok(current_val) = self.read_lvalue(lvalue, Span::default()) {
-            let refined_val = self.emit_bitcast(current_val, new_type);
-            self.remap_lvalue(lvalue, refined_val);
+    fn apply_narrowing(
+        &mut self,
+        lvalue: LValue,
+        new_type: Type,
+        span: Span,
+    ) -> Result<(), SemanticError> {
+        let current_val = self.read_lvalue(lvalue, Span::default())?;
+        let current_ty = self.get_value_type(&current_val).clone();
+
+        dbg!(type_to_string(&new_type));
+
+        if let Type::Pointer(inner) = &new_type {
+            if let Type::Struct(StructKind::Union(_)) = &**inner {
+                return Err(SemanticError {
+                    kind: SemanticErrorKind::UnsupportedUnionNarrowing,
+                    span,
+                });
+            }
         }
+
+        let refined_val = if let Type::Pointer(inner) = &current_ty {
+            if let Type::Struct(StructKind::Union(_)) = &**inner {
+                let buffer_ptr =
+                    self.get_field_ptr(current_val, COMMON_IDENTIFIERS.value);
+
+                // unsafe bitcast is okay here because it has the
+                // alignment and size of the largest variant of the union
+                self.emit_bitcast_unsafe(buffer_ptr, new_type)
+            } else {
+                self.emit_bitcast(current_val, new_type)
+            }
+        } else {
+            self.emit_bitcast(current_val, new_type)
+        };
+
+        self.remap_lvalue(lvalue, refined_val);
+        Ok(())
     }
 }

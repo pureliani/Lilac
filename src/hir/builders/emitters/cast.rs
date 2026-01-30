@@ -77,4 +77,19 @@ impl<'a> Builder<'a, InBlock> {
         self.push_instruction(Instruction::Cast(CastInstr::BitCast { dest, src }));
         dest
     }
+
+    pub fn emit_bitcast_unsafe(&mut self, src: ValueId, target_ty: Type) -> ValueId {
+        let src_ty = self.get_value_type(&src);
+
+        if !matches!(src_ty, Type::Pointer(_)) || !matches!(target_ty, Type::Pointer(_)) {
+            panic!(
+                "INTERNAL COMPILER ERROR: emit_bitcast_unsafe should only be used for \
+                 pointer-to-pointer casts"
+            );
+        }
+
+        let dest = self.new_value_id(target_ty);
+        self.push_instruction(Instruction::Cast(CastInstr::BitCast { dest, src }));
+        dest
+    }
 }
