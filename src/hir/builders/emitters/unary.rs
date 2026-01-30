@@ -6,7 +6,7 @@ use crate::{
         instructions::{Instruction, UnaryInstr},
         types::checked_type::Type,
         utils::{
-            adjustments::check_is_assignable,
+            adjustments::check_structural_compatibility,
             numeric::{is_float, is_signed},
         },
     },
@@ -52,7 +52,7 @@ impl<'a> Builder<'a, InBlock> {
     pub fn not(&mut self, src: ValueId, span: Span) -> Result<ValueId, SemanticError> {
         let ty = self.get_value_type(&src);
 
-        if !check_is_assignable(ty, &Type::Bool) {
+        if !check_structural_compatibility(ty, &Type::Bool) {
             return Err(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,

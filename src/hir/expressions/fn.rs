@@ -8,7 +8,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
         utils::{
-            adjustments::check_is_assignable,
+            adjustments::check_structural_compatibility,
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
             scope::ScopeKind,
         },
@@ -117,7 +117,7 @@ impl<'a> Builder<'a, InModule> {
         let final_value = fn_builder.build_codeblock_expr(body)?;
         let final_value_type = fn_builder.get_value_type(&final_value).clone();
 
-        if !check_is_assignable(&final_value_type, &checked_return_type) {
+        if !check_structural_compatibility(&final_value_type, &checked_return_type) {
             return Err(SemanticError {
                 span: body_span,
                 kind: SemanticErrorKind::ReturnTypeMismatch {

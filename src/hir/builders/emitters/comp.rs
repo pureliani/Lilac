@@ -6,9 +6,7 @@ use crate::{
         instructions::{CompInstr, Instruction},
         types::checked_type::Type,
         utils::{
-            adjustments::{
-                arithmetic_supertype, check_is_assignable, check_structural_compatibility,
-            },
+            adjustments::{arithmetic_supertype, check_structural_compatibility},
             numeric::{is_float, is_signed},
         },
     },
@@ -121,7 +119,7 @@ impl<'a> Builder<'a, InBlock> {
     ) -> ValueId {
         let condition_type = self.get_value_type(&condition);
 
-        if !check_is_assignable(condition_type, &Type::Bool) {
+        if !check_structural_compatibility(condition_type, &Type::Bool) {
             panic!("INTERNAL COMPILER ERROR: Select instruction expected the condition to be a boolean value");
         }
 
@@ -153,7 +151,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        if !check_is_assignable(lhs_ty, rhs_ty) && !check_is_assignable(rhs_ty, lhs_ty) {
+        // TODO: check if string, float or integer, otherwise error
+        if !check_structural_compatibility(lhs_ty, rhs_ty) {
             return Err(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: lhs_ty.clone(),
@@ -180,7 +179,8 @@ impl<'a> Builder<'a, InBlock> {
         let lhs_ty = self.get_value_type(&lhs);
         let rhs_ty = self.get_value_type(&rhs);
 
-        if !check_is_assignable(lhs_ty, rhs_ty) && !check_is_assignable(rhs_ty, lhs_ty) {
+        // TODO: check if string, float or integer, otherwise error
+        if !check_structural_compatibility(lhs_ty, rhs_ty) {
             return Err(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: lhs_ty.clone(),

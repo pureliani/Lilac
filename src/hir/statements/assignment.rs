@@ -7,7 +7,7 @@ use crate::{
         builders::{Builder, InBlock, LValue},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::CheckedDeclaration,
-        utils::adjustments::check_is_assignable,
+        utils::adjustments::check_structural_compatibility,
     },
 };
 
@@ -64,7 +64,7 @@ impl<'a> Builder<'a, InBlock> {
                     .expect("INTERNAL COMPILER ERROR: DeclId not found");
 
                 if let CheckedDeclaration::Var(var_decl) = decl {
-                    if !check_is_assignable(&val_type, &var_decl.constraint) {
+                    if !check_structural_compatibility(&val_type, &var_decl.constraint) {
                         return Err(SemanticError {
                             kind: SemanticErrorKind::TypeMismatch {
                                 expected: var_decl.constraint.clone(),

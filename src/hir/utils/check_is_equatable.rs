@@ -1,7 +1,7 @@
 use super::numeric::is_integer;
 use crate::hir::{
     types::checked_type::{StructKind, Type},
-    utils::adjustments::check_is_assignable,
+    utils::adjustments::check_structural_compatibility,
 };
 
 pub fn check_is_equatable(left: &Type, right: &Type) -> bool {
@@ -9,7 +9,7 @@ pub fn check_is_equatable(left: &Type, right: &Type) -> bool {
         return check_is_equatable(l, r);
     }
 
-    if check_is_assignable(left, right) || check_is_assignable(right, left) {
+    if check_structural_compatibility(left, right) {
         // Filter out types that shouldn't be compared even if they match
         return !matches!(
             left,

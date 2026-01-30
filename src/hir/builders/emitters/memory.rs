@@ -7,7 +7,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, MemoryInstr},
         types::checked_type::{StructKind, Type},
-        utils::adjustments::{check_is_assignable, check_structural_compatibility},
+        utils::adjustments::check_structural_compatibility,
     },
 };
 
@@ -63,7 +63,7 @@ impl<'a> Builder<'a, InBlock> {
         let val_ty = self.get_value_type(&value).clone();
 
         if let Type::Pointer(to) = ptr_ty {
-            if !check_is_assignable(&val_ty, &to) {
+            if !check_structural_compatibility(&val_ty, &to) {
                 self.as_program().errors.push(SemanticError {
                     kind: SemanticErrorKind::TypeMismatch {
                         expected: *to.clone(),
@@ -89,7 +89,7 @@ impl<'a> Builder<'a, InBlock> {
         let ptr_ty = self.get_value_type(&base_ptr).clone();
         let index_ty = self.get_value_type(&index);
 
-        if !check_is_assignable(index_ty, &Type::USize) {
+        if !check_structural_compatibility(index_ty, &Type::USize) {
             return Err(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::USize,

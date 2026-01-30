@@ -339,11 +339,6 @@ fn check_recursive<'a>(
     result
 }
 
-pub fn check_is_assignable(source: &Type, target: &Type) -> bool {
-    analyze_value_adjustment(source, Default::default(), target).is_ok()
-        || analyze_memory_adjustment(source, Default::default(), target).is_ok()
-}
-
 impl<'a> Builder<'a, InBlock> {
     pub fn apply_value_adjustment(
         &mut self,

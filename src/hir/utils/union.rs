@@ -4,7 +4,7 @@ use crate::{
     compile::interner::StringId,
     hir::{
         types::checked_type::{StructKind, Type},
-        utils::adjustments::check_is_assignable,
+        utils::adjustments::check_structural_compatibility,
     },
 };
 
@@ -35,7 +35,7 @@ pub fn get_matching_variant_indices(
         let index = index as u16;
 
         if let Some(field_type) = get_type_at_path(variant, path) {
-            if check_is_assignable(&field_type, target_type) {
+            if check_structural_compatibility(&field_type, target_type) {
                 matching_indices.push(index);
             }
         }
