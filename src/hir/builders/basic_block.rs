@@ -1,14 +1,14 @@
 use std::collections::HashSet;
 
 use crate::{
-    ast::{IdentifierNode, Span},
+    ast::Span,
     globals::next_value_id,
     hir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
-            InModule, LValue, PhiEntry, ValueId,
+            InModule, PhiEntry, Place, ValueId,
         },
-        errors::{SemanticError, SemanticErrorKind},
+        errors::SemanticError,
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
     },
 };
@@ -117,117 +117,21 @@ impl<'a> Builder<'a, InBlock> {
         })
     }
 
-    pub fn read_lvalue(
-        &mut self,
-        lval: LValue,
-        span: Span,
-    ) -> Result<ValueId, SemanticError> {
-        let canonical_lval = match lval {
-            LValue::Variable(decl_id) => {
-                self.aliases.get(&decl_id).cloned().unwrap_or(lval)
-            }
-            _ => lval,
-        };
-
-        self.read_lvalue_from_block(self.context.block_id, canonical_lval, span)
-    }
-
-    fn read_lvalue_from_block(
-        &mut self,
-        block_id: BasicBlockId,
-        lval: LValue,
-        span: Span,
-    ) -> Result<ValueId, SemanticError> {
-        if let Some(block_defs) = self.current_defs.get(&block_id) {
-            if let Some(val) = block_defs.get(&lval) {
-                return Ok(*val);
-            }
-        }
-
-        let val_id: ValueId;
-
-        let predecessors: Vec<BasicBlockId> =
-            self.get_bb(block_id).predecessors.iter().cloned().collect();
-
-        if !self.get_bb(block_id).sealed {
-            val_id = self.new_value_id(Type::Unknown);
-            self.incomplete_phis
-                .entry(block_id)
-                .or_default()
-                .push((val_id, lval, span));
-        } else if predecessors.len() == 1 {
-            val_id = self.read_lvalue_from_block(predecessors[0], lval, span)?;
-        } else if predecessors.is_empty() {
-            val_id = self.materialize_lvalue(lval, span)?;
-        } else {
-            val_id = self.new_value_id(Type::Unknown);
-
-            self.current_defs
-                .entry(block_id)
-                .or_default()
-                .insert(lval, val_id);
-
-            self.resolve_phi(block_id, val_id, lval, span)?;
-        }
-
-        self.current_defs
-            .entry(block_id)
-            .or_default()
-            .insert(lval, val_id);
-
-        Ok(val_id)
-    }
-
-    fn materialize_lvalue(
-        &mut self,
-        lval: LValue,
-        span: Span,
-    ) -> Result<ValueId, SemanticError> {
-        match lval {
-            LValue::Variable(decl_id) => {
-                let ident = match self.program.declarations.get(&decl_id).unwrap() {
-                    CheckedDeclaration::Var(v) => v.identifier.clone(),
-                    _ => unreachable!(),
-                };
-                Err(SemanticError {
-                    kind: SemanticErrorKind::UndeclaredIdentifier(ident),
-                    span,
-                })
-            }
-            LValue::Field { base_ptr, field } => {
-                let field_node = IdentifierNode {
-                    name: field,
-                    span: span.clone(),
-                };
-
-                let ptr = self.try_get_field_ptr(base_ptr, &field_node)?;
-
-                Ok(self.emit_load(ptr))
-            }
-        }
-    }
-
-    pub fn remap_lvalue(&mut self, lval: LValue, val: ValueId) {
-        self.current_defs
-            .entry(self.context.block_id)
-            .or_default()
-            .insert(lval, val);
-    }
-
-    fn resolve_phi(
+    pub fn resolve_phi(
         &mut self,
         block_id: BasicBlockId,
         phi_id: ValueId,
-        lval: LValue,
+        place: &Place,
         span: Span,
-    ) -> Result<ValueId, SemanticError> {
+    ) -> Result<(), SemanticError> {
         let predecessors: Vec<BasicBlockId> =
             self.get_bb(block_id).predecessors.iter().cloned().collect();
+
         let mut phi_entries = HashSet::new();
         let mut incoming_types = Vec::new();
 
         for pred in predecessors {
-            let val = self.read_lvalue_from_block(pred, lval, span.clone())?;
+            let val = self.read_place_from_block(pred, place, span.clone())?;
             phi_entries.insert(PhiEntry {
                 from: pred,
                 value: val,
@@ -241,7 +145,7 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         self.get_bb_mut(block_id).phis.insert(phi_id, phi_entries);
-        Ok(phi_id)
+        Ok(())
     }
 
     pub fn new_value_id(&mut self, ty: Type) -> ValueId {
@@ -269,8 +173,8 @@ impl<'a> Builder<'a, InBlock> {
         let block_id = self.context.block_id;
         let incomplete = self.incomplete_phis.remove(&block_id).unwrap_or_default();
 
-        for (phi_id, lval, span) in incomplete {
-            self.resolve_phi(block_id, phi_id, lval, span)?;
+        for (phi_id, place, span) in incomplete {
+            self.resolve_phi(block_id, phi_id, &place, span)?;
         }
 
         self.bb_mut().sealed = true;

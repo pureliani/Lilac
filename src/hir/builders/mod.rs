@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{DeclarationId, IdentifierNode, ModulePath, Span},
-    compile::interner::StringId,
     hir::{
         errors::SemanticError,
         instructions::{Instruction, Terminator},
@@ -10,7 +9,7 @@ use crate::{
             checked_declaration::{CheckedDeclaration, CheckedParam},
             checked_type::Type,
         },
-        utils::scope::Scope,
+        utils::{place::Place, scope::Scope},
     },
 };
 
@@ -29,15 +28,9 @@ pub struct ValueId(pub usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ConstantId(pub usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum LValue {
-    Variable(DeclarationId),
-    Field { base_ptr: ValueId, field: StringId },
-}
-
 #[derive(Debug, Clone)]
 pub struct TypePredicate {
-    pub lvalue: LValue,
+    pub lvalue: Place,
     pub on_true_type: Option<Type>,
     pub on_false_type: Option<Type>,
 }
@@ -101,9 +94,9 @@ pub struct Builder<'a, C: BuilderContext> {
     pub current_scope: Scope,
 
     pub type_predicates: &'a mut HashMap<ValueId, TypePredicate>,
-    pub current_defs: &'a mut HashMap<BasicBlockId, HashMap<LValue, ValueId>>,
-    pub aliases: &'a mut HashMap<DeclarationId, LValue>,
-    pub incomplete_phis: &'a mut HashMap<BasicBlockId, Vec<(ValueId, LValue, Span)>>,
+    pub current_defs: &'a mut HashMap<BasicBlockId, HashMap<Place, ValueId>>,
+    pub aliases: &'a mut HashMap<DeclarationId, Place>,
+    pub incomplete_phis: &'a mut HashMap<BasicBlockId, Vec<(ValueId, Place, Span)>>,
 }
 
 pub struct InGlobal;

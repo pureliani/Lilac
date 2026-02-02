@@ -269,7 +269,13 @@ impl<'a> Builder<'a, InBlock> {
         match self.adjust_assignment(source, source_span, target.clone(), is_explicit)? {
             Adjustment::Value(f) => Ok(f(self)),
             Adjustment::Write(f) => {
-                let target_inner_type = target.try_unwrap_pointer().unwrap_or_else(|| panic!("INTERNAL COMPILER ERROR: Cannot call 'unwrap_pointer' on non pointer type"));
+                let target_inner_type =
+                    target.try_unwrap_pointer().unwrap_or_else(|| {
+                        panic!(
+                            "INTERNAL COMPILER ERROR: Cannot call 'unwrap_pointer' on \
+                             non pointer type"
+                        )
+                    });
                 let one = self.emit_const_number(NumberKind::USize(1));
                 let ptr = self.emit_heap_alloc(target_inner_type.clone(), one);
                 f(self, ptr);

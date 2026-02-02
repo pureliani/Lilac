@@ -3,10 +3,7 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::SemanticError,
-        utils::{
-            adjustments::Adjustment,
-            check_type::{check_type_annotation, TypeCheckerContext},
-        },
+        utils::check_type::{check_type_annotation, TypeCheckerContext},
     },
 };
 
@@ -26,11 +23,6 @@ impl<'a> Builder<'a, InBlock> {
         };
         let target_type = check_type_annotation(&mut type_ctx, &target);
 
-        match self.adjust_assignment(source, source_span, target_type, true)? {
-            Adjustment::Value(f) => Ok(f(self)),
-            Adjustment::Write(f) => {
-                todo!()
-            }
-        }
+        self.adjust_initial_value(source, source_span, target_type, true)
     }
 }

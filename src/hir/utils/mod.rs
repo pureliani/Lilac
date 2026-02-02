@@ -4,6 +4,7 @@ pub mod check_type;
 pub mod dump;
 pub mod layout;
 pub mod numeric;
+pub mod place;
 pub mod scope;
 pub mod type_to_string;
 pub mod union;
