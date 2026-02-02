@@ -1,7 +1,7 @@
 use crate::{
     ast::{expr::Expr, IdentifierNode},
     hir::{
-        builders::{Builder, InBlock, LValue, ValueId},
+        builders::{Builder, InBlock, ValueId},
         errors::SemanticError,
     },
 };
@@ -14,11 +14,7 @@ impl<'a> Builder<'a, InBlock> {
     ) -> Result<ValueId, SemanticError> {
         let base_ptr = self.build_expr(left)?;
 
-        let lval = LValue::Field {
-            base_ptr,
-            field: field.name,
-        };
-
-        self.read_lvalue(lval, field.span)
+        let field_ptr = self.try_get_field_ptr(base_ptr, &field)?;
+        Ok(self.emit_load(field_ptr))
     }
 }
