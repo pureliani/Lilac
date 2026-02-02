@@ -184,3 +184,13 @@ pub enum Type {
 
     Never,
 }
+
+impl Type {
+    pub fn try_unwrap_pointer(&self) -> Option<&Type> {
+        if let Type::Pointer(inner) = self {
+            Some(inner)
+        } else {
+            None
+        }
+    }
+}

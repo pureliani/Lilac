@@ -3,7 +3,10 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::SemanticError,
-        utils::check_type::{check_type_annotation, TypeCheckerContext},
+        utils::{
+            adjustments::Adjustment,
+            check_type::{check_type_annotation, TypeCheckerContext},
+        },
     },
 };
 
@@ -13,8 +16,8 @@ impl<'a> Builder<'a, InBlock> {
         left: Expr,
         target: TypeAnnotation,
     ) -> Result<ValueId, SemanticError> {
-        let value_span = left.span.clone();
-        let src_id = self.build_expr(left)?;
+        let source_span = left.span.clone();
+        let source = self.build_expr(left)?;
 
         let mut type_ctx = TypeCheckerContext {
             scope: self.current_scope.clone(),
@@ -23,6 +26,11 @@ impl<'a> Builder<'a, InBlock> {
         };
         let target_type = check_type_annotation(&mut type_ctx, &target);
 
-        todo!()
+        match self.adjust_assignment(source, source_span, target_type, true)? {
+            Adjustment::Value(f) => Ok(f(self)),
+            Adjustment::Write(f) => {
+                todo!()
+            }
+        }
     }
 }

@@ -216,8 +216,10 @@ impl<'a> Builder<'a, InBlock> {
         let target_ty =
             arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
-        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+        let lhs =
+            self.expect_value_adjustment(lhs, lhs_span, target_ty.clone(), false)?;
+        let rhs =
+            self.expect_value_adjustment(rhs, rhs_span, target_ty.clone(), false)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_flt(lhs, rhs))
@@ -241,8 +243,10 @@ impl<'a> Builder<'a, InBlock> {
         let target_ty =
             arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
-        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+        let lhs =
+            self.expect_value_adjustment(lhs, lhs_span, target_ty.clone(), false)?;
+        let rhs =
+            self.expect_value_adjustment(rhs, rhs_span, target_ty.clone(), false)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fle(lhs, rhs))
@@ -266,8 +270,10 @@ impl<'a> Builder<'a, InBlock> {
         let target_ty =
             arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
-        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+        let lhs =
+            self.expect_value_adjustment(lhs, lhs_span, target_ty.clone(), false)?;
+        let rhs =
+            self.expect_value_adjustment(rhs, rhs_span, target_ty.clone(), false)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fgt(lhs, rhs))
@@ -291,8 +297,10 @@ impl<'a> Builder<'a, InBlock> {
         let target_ty =
             arithmetic_supertype(lhs_ty, lhs_span.clone(), rhs_ty, rhs_span.clone())?;
 
-        let lhs = self.adjust_value(lhs, lhs_span, &target_ty)?;
-        let rhs = self.adjust_value(rhs, rhs_span, &target_ty)?;
+        let lhs =
+            self.expect_value_adjustment(lhs, lhs_span, target_ty.clone(), false)?;
+        let rhs =
+            self.expect_value_adjustment(rhs, rhs_span, target_ty.clone(), false)?;
 
         if is_float(&target_ty) {
             Ok(self.emit_fge(lhs, rhs))

@@ -43,10 +43,10 @@ impl<'a> Builder<'a, InBlock> {
         for (i, arg_expr) in args.into_iter().enumerate() {
             let arg_span = arg_expr.span.clone();
             let arg_value = self.build_expr(arg_expr)?;
-            let param_type = &params[i].ty;
+            let param_type = params[i].ty.clone();
 
             let coerced_arg_value =
-                self.adjust_initial_value(arg_value, arg_span, param_type)?;
+                self.adjust_initial_value(arg_value, arg_span, param_type, false)?;
 
             final_args.push(coerced_arg_value);
         }

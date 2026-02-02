@@ -34,7 +34,8 @@ impl<'a> Builder<'a, InBlock> {
             val_type.clone()
         };
 
-        let final_val_id = self.adjust_initial_value(val_id, value_span, &constraint)?;
+        let final_val_id =
+            self.adjust_initial_value(val_id, value_span, constraint.clone(), false)?;
 
         let lval = LValue::Variable(var_decl.id);
         self.remap_lvalue(lval, final_val_id);

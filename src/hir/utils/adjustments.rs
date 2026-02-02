@@ -258,6 +258,40 @@ impl<'a> Builder<'a, InBlock> {
 
         Err(make_error())
     }
+
+    pub fn adjust_initial_value(
+        &mut self,
+        source: ValueId,
+        source_span: Span,
+        target: Type,
+        is_explicit: bool,
+    ) -> Result<ValueId, SemanticError> {
+        match self.adjust_assignment(source, source_span, target.clone(), is_explicit)? {
+            Adjustment::Value(f) => Ok(f(self)),
+            Adjustment::Write(f) => {
+                let target_inner_type = target.try_unwrap_pointer().unwrap_or_else(|| panic!("INTERNAL COMPILER ERROR: Cannot call 'unwrap_pointer' on non pointer type"));
+                let one = self.emit_const_number(NumberKind::USize(1));
+                let ptr = self.emit_heap_alloc(target_inner_type.clone(), one);
+                f(self, ptr);
+                Ok(ptr)
+            }
+        }
+    }
+
+    pub fn expect_value_adjustment(
+        &mut self,
+        source: ValueId,
+        source_span: Span,
+        target: Type,
+        is_explicit: bool,
+    ) -> Result<ValueId, SemanticError> {
+        match self.adjust_assignment(source, source_span, target, is_explicit)? {
+            Adjustment::Value(f) => Ok(f(self)),
+            Adjustment::Write(_) => {
+                panic!("INTERNAL COMPILER ERROR: Expected value adjustment")
+            }
+        }
+    }
 }
 
 pub fn check_structural_compatibility<'a>(source: &'a Type, target: &'a Type) -> bool {
