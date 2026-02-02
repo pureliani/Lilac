@@ -1,8 +1,9 @@
 use crate::{
     ast::IdentifierNode,
     hir::{
-        builders::{Builder, InBlock, LValue, ValueId},
+        builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
+        utils::place::Place,
     },
 };
 
@@ -21,12 +22,12 @@ impl<'a> Builder<'a, InBlock> {
             }
         };
 
-        let lval = self
+        let place = self
             .aliases
             .get(&decl_id)
             .cloned()
-            .unwrap_or(LValue::Variable(decl_id));
+            .unwrap_or_else(|| Place::Local(decl_id));
 
-        self.read_lvalue(lval, identifier.span)
+        self.read_place(&place, identifier.span)
     }
 }

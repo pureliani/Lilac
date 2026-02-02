@@ -1,4 +1,3 @@
-// src/compile/file_cache.rs
 use codespan_reporting::files::{Files, SimpleFiles};
 use std::collections::HashMap;
 use std::ops::Range;

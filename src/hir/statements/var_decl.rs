@@ -1,10 +1,13 @@
 use crate::{
     ast::decl::VarDecl,
     hir::{
-        builders::{Builder, InBlock, LValue},
+        builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
-        utils::check_type::{check_type_annotation, TypeCheckerContext},
+        utils::{
+            check_type::{check_type_annotation, TypeCheckerContext},
+            place::Place,
+        },
     },
 };
 
@@ -37,8 +40,8 @@ impl<'a> Builder<'a, InBlock> {
         let final_val_id =
             self.adjust_initial_value(val_id, value_span, constraint.clone(), false)?;
 
-        let lval = LValue::Variable(var_decl.id);
-        self.remap_lvalue(lval, final_val_id);
+        let place = Place::Local(var_decl.id);
+        self.write_place(&place, final_val_id, var_decl.identifier.span.clone());
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
