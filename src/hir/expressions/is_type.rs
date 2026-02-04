@@ -1,10 +1,5 @@
 use crate::{
-    ast::{
-        expr::{Expr, ExprKind},
-        type_annotation::TypeAnnotation,
-        Span,
-    },
-    compile::interner::StringId,
+    ast::{expr::Expr, type_annotation::TypeAnnotation, Span},
     globals::COMMON_IDENTIFIERS,
     hir::{
         builders::{Builder, InBlock, TypePredicate, ValueId},
@@ -51,24 +46,6 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         Ok(result_id)
-    }
-
-    fn unwind_access_path(
-        &self,
-        expr: Expr,
-    ) -> Result<(Expr, Vec<StringId>), SemanticError> {
-        let mut path = Vec::new();
-        let mut current = expr;
-
-        loop {
-            match current.kind {
-                ExprKind::Access { left, field } => {
-                    path.insert(0, field.name);
-                    current = *left;
-                }
-                _ => return Ok((current, path)),
-            }
-        }
     }
 
     pub fn build_is_type_expr(
