@@ -4,12 +4,13 @@ use crate::{
     ast::decl::FnDecl,
     globals::{next_block_id, next_declaration_id},
     hir::{
-        builders::{BasicBlock, Builder, Function, InBlock, InModule, LValue, ValueId},
+        builders::{BasicBlock, Builder, Function, InBlock, InModule, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
         utils::{
             adjustments::check_structural_compatibility,
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
+            place::Place,
             scope::ScopeKind,
         },
     },
@@ -101,7 +102,7 @@ impl<'a> Builder<'a, InModule> {
                 .current_defs
                 .entry(entry_block_id)
                 .or_default()
-                .insert(LValue::Variable(param_decl_id), identity_id);
+                .insert(Place::Local(param_decl_id), identity_id);
 
             fn_builder
                 .program

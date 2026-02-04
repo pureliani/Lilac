@@ -7,12 +7,9 @@ use crate::{
     compile::interner::StringId,
     globals::COMMON_IDENTIFIERS,
     hir::{
-        builders::{Builder, InBlock, LValue, TypePredicate, ValueId},
+        builders::{Builder, InBlock, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::{
-            checked_declaration::CheckedDeclaration,
-            checked_type::{StructKind, Type},
-        },
+        types::checked_type::{StructKind, Type},
         utils::{
             check_type::{check_type_annotation, TypeCheckerContext},
             union::{get_matching_variant_indices, get_non_matching_variant_indices},
@@ -24,7 +21,7 @@ use crate::{
 impl<'a> Builder<'a, InBlock> {
     fn emit_is_type_check(
         &mut self,
-        root_val_id: ValueId,
+        union_ptr: ValueId,
         matching_indices: &[u16],
         total_variants: usize,
         span: Span,
@@ -37,7 +34,7 @@ impl<'a> Builder<'a, InBlock> {
             return Ok(self.emit_const_bool(true));
         }
 
-        let id_ptr = self.get_field_ptr(root_val_id, COMMON_IDENTIFIERS.id);
+        let id_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.id);
         let active_id = self.emit_load(id_ptr);
 
         let mut iter = matching_indices.iter();
@@ -54,39 +51,6 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         Ok(result_id)
-    }
-
-    fn unwind_to_lvalue(&mut self, expr: &Expr) -> Result<(LValue, Vec<StringId>), ()> {
-        let mut path = Vec::new();
-        let mut current = expr;
-
-        loop {
-            match &current.kind {
-                ExprKind::Access { left, field } => {
-                    path.insert(0, field.name);
-                    current = left;
-                }
-                ExprKind::Identifier(ident) => {
-                    if let Some(decl_id) = self.current_scope.lookup(ident.name) {
-                        let decl = self.program.declarations.get(&decl_id).expect(
-                            "INTERNAL COMPILER ERROR: Expected declaration id entry to \
-                             exist",
-                        );
-                        if let CheckedDeclaration::Var(_) = decl {
-                            let lvalue = self
-                                .aliases
-                                .get(&decl_id)
-                                .cloned()
-                                .unwrap_or(LValue::Variable(decl_id));
-
-                            return Ok((lvalue, path));
-                        }
-                    }
-                    return Err(());
-                }
-                _ => return Err(()),
-            }
-        }
     }
 
     fn unwind_access_path(
@@ -107,66 +71,30 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    fn build_is_type_fallback(
-        &mut self,
-        left: Expr,
-        ty: TypeAnnotation,
-        span: Span,
-    ) -> Result<ValueId, SemanticError> {
-        let (root_expr, path) = self.unwind_access_path(left)?;
-
-        let root_val_id = self.build_expr(root_expr)?;
-        let root_ty = self.get_value_type(&root_val_id).clone();
-
-        let variants = match &root_ty {
-            Type::Struct(StructKind::Union(variants)) => variants,
-            _ => {
-                return Err(SemanticError {
-                    kind: SemanticErrorKind::CannotNarrowNonUnion(root_ty),
-                    span,
-                });
-            }
-        };
-
-        let mut type_ctx = TypeCheckerContext {
-            scope: self.current_scope.clone(),
-            declarations: &self.program.declarations,
-            errors: self.errors,
-        };
-        let target_type = check_type_annotation(&mut type_ctx, &ty);
-
-        let matching_indices =
-            get_matching_variant_indices(variants, &path, &target_type);
-
-        self.emit_is_type_check(root_val_id, &matching_indices, variants.len(), span)
-    }
-
     pub fn build_is_type_expr(
         &mut self,
         left: Expr,
         ty: TypeAnnotation,
     ) -> Result<ValueId, SemanticError> {
         let span = left.span.clone();
+        let place = self.resolve_place(left)?;
+        let place_path = place.path();
+        let place_type = self.type_of_place(&place);
 
-        let (lvalue, path) = match self.unwind_to_lvalue(&left) {
-            Ok(res) => res,
-            Err(_) => {
-                return self.build_is_type_fallback(left, ty, span);
-            }
+        let make_err = || SemanticError {
+            span: span.clone(),
+            kind: SemanticErrorKind::CannotNarrowNonUnion(place_type.clone()),
         };
 
-        let val_id = self.read_lvalue(lvalue, span.clone())?;
-        let val_ty = self.get_value_type(&val_id).clone();
-
-        let variants = match &val_ty {
+        let variants = match &place_type {
             Type::Pointer(to) => {
                 if let Type::Struct(StructKind::Union(variants)) = &**to {
                     variants
                 } else {
-                    return self.build_is_type_fallback(left, ty, span);
+                    return Err(make_err());
                 }
             }
-            _ => return self.build_is_type_fallback(left, ty, span),
+            _ => return Err(make_err()),
         };
 
         let mut type_ctx = TypeCheckerContext {
@@ -185,12 +113,14 @@ impl<'a> Builder<'a, InBlock> {
             }
         }
 
-        let match_indices = get_matching_variant_indices(variants, &path, &target_type);
+        let match_indices =
+            get_matching_variant_indices(variants, &place_path, &target_type);
         let non_match_indices =
-            get_non_matching_variant_indices(variants, &path, &target_type);
+            get_non_matching_variant_indices(variants, &place_path, &target_type);
 
+        let union_ptr = self.read_place(&place, span.clone())?;
         let result_id =
-            self.emit_is_type_check(val_id, &match_indices, variants.len(), span)?;
+            self.emit_is_type_check(union_ptr, &match_indices, variants.len(), span)?;
 
         let true_type =
             if !match_indices.is_empty() && match_indices.len() < variants.len() {
@@ -214,7 +144,7 @@ impl<'a> Builder<'a, InBlock> {
             self.type_predicates.insert(
                 result_id,
                 TypePredicate {
-                    lvalue,
+                    place,
                     on_true_type: true_type,
                     on_false_type: false_type,
                 },

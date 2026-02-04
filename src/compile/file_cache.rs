@@ -22,7 +22,6 @@ impl FileCache {
     }
 }
 
-// Implement Files trait to pass directly to codespan emitters
 impl<'a> Files<'a> for FileCache {
     type FileId = usize;
     type Name = String;

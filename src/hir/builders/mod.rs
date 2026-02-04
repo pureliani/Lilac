@@ -30,7 +30,7 @@ pub struct ConstantId(pub usize);
 
 #[derive(Debug, Clone)]
 pub struct TypePredicate {
-    pub lvalue: Place,
+    pub place: Place,
     pub on_true_type: Option<Type>,
     pub on_false_type: Option<Type>,
 }

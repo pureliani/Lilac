@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{
         expr::{Expr, ExprKind},
-        DeclarationId, IdentifierNode, Span,
+        DeclarationId, Span,
     },
     compile::interner::StringId,
     hir::{
@@ -20,14 +20,15 @@ use crate::{
 pub enum Place {
     Local(DeclarationId),
     Field(Box<Place>, StringId),
+    Temporary(ValueId),
 }
 
 impl Place {
-    /// For `x.a.b`, returns the DeclarationId for `x`
-    pub fn root(&self) -> DeclarationId {
+    pub fn root(&self) -> Option<DeclarationId> {
         match self {
-            Place::Local(id) => *id,
+            Place::Local(id) => Some(*id),
             Place::Field(base, _) => base.root(),
+            Place::Temporary(_) => None,
         }
     }
 
@@ -59,6 +60,7 @@ impl Place {
             Place::Field(base, field) => {
                 Place::Field(Box::new(base.canonicalize(aliases)), *field)
             }
+            Place::Temporary(_) => self.clone(),
         }
     }
 }
@@ -79,10 +81,10 @@ impl<'a> Builder<'a, InBlock> {
                 let base = self.resolve_place(*left)?;
                 Ok(Place::Field(Box::new(base), field.name))
             }
-            _ => Err(SemanticError {
-                kind: SemanticErrorKind::InvalidLValue,
-                span,
-            }),
+            _ => {
+                let val_id = self.build_expr(expr)?;
+                Ok(Place::Temporary(val_id))
+            }
         }
     }
 
@@ -101,6 +103,10 @@ impl<'a> Builder<'a, InBlock> {
         place: &Place,
         span: Span,
     ) -> Result<ValueId, SemanticError> {
+        if let Place::Temporary(val_id) = place {
+            return Ok(*val_id);
+        }
+
         if let Some(block_defs) = self.current_defs.get(&block_id) {
             if let Some(val) = block_defs.get(place) {
                 return Ok(*val);
@@ -145,62 +151,45 @@ impl<'a> Builder<'a, InBlock> {
         Ok(val_id)
     }
 
-    pub fn write_place(&mut self, place: &Place, value: ValueId, span: Span) {
-        let canonical = place.canonicalize(self.aliases);
-
-        self.cache_place_value(canonical.clone(), value);
-        self.write_place_to_memory(&canonical, value, span);
-    }
-
-    fn write_place_to_memory(&mut self, place: &Place, value: ValueId, span: Span) {
-        match place {
-            Place::Local(decl_id) => {
-                if let Some(aliased) = self.aliases.get(decl_id).cloned() {
-                    self.write_place_to_memory(&aliased, value, span);
-                }
-            }
-            Place::Field(base, field) => {
-                let base_ptr = self
-                    .read_place(base, span.clone())
-                    .expect("INTERNAL COMPILER ERROR: Base must exist for field write");
-
-                let field_node = IdentifierNode {
-                    name: *field,
-                    span: span.clone(),
-                };
-                let field_ptr = self
-                    .try_get_field_ptr(base_ptr, &field_node)
-                    .expect("INTERNAL COMPILER ERROR: Field must exist");
-
-                self.emit_store(field_ptr, value, span);
-            }
+    pub fn remap_place(&mut self, place: &Place, value: ValueId) {
+        if let Place::Temporary(_) = place {
+            panic!("INTERNAL COMPILER ERROR: Cannot remap (SSA update) a temporary place, temporaries are R-Values");
         }
-    }
 
-    fn cache_place_value(&mut self, place: Place, value: ValueId) {
+        let canonical = place.canonicalize(self.aliases);
         self.current_defs
             .entry(self.context.block_id)
             .or_default()
-            .insert(place, value);
+            .insert(canonical, value);
     }
 
-    pub fn type_of_place(&self, place: &Place) -> Option<Type> {
+    pub fn type_of_place(&self, place: &Place) -> Type {
         match place {
             Place::Local(decl_id) => {
-                let decl = self.program.declarations.get(decl_id)?;
+                let decl = self.program.declarations.get(decl_id).unwrap();
                 match decl {
-                    CheckedDeclaration::Var(v) => Some(v.constraint.clone()),
-                    CheckedDeclaration::Function(f) => Some(Type::Fn(FnType {
+                    CheckedDeclaration::Var(v) => v.constraint.clone(),
+                    CheckedDeclaration::Function(f) => Type::Fn(FnType {
                         params: f.params.clone(),
                         return_type: Box::new(f.return_type.clone()),
-                    })),
-                    _ => None,
+                    }),
+                    _ => panic!(),
                 }
             }
             Place::Field(base, field) => {
-                let base_ty = self.type_of_place(base)?;
-                self.type_of_field(&base_ty, *field)
+                let base_ty = self.type_of_place(base);
+                self.type_of_field(&base_ty, *field).expect(
+                    "INTERNAL COMPILER ERROR: Expected Place::Field to have a type",
+                )
             }
+            Place::Temporary(val_id) => self
+                .program
+                .value_types
+                .get(val_id)
+                .expect(
+                    "INTERNAL COMPILER ERROR: Expected Place::Temporary to have a type",
+                )
+                .clone(),
         }
     }
 

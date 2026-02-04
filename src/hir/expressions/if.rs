@@ -7,10 +7,10 @@ use crate::{
     },
     globals::COMMON_IDENTIFIERS,
     hir::{
-        builders::{BasicBlockId, Builder, InBlock, LValue, PhiEntry, ValueId},
+        builders::{BasicBlockId, Builder, InBlock, PhiEntry, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::{StructKind, Type},
-        utils::adjustments::check_structural_compatibility,
+        utils::{adjustments::check_structural_compatibility, place::Place},
     },
 };
 
@@ -68,7 +68,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_true_type {
-                    self.apply_narrowing(pred.lvalue, ty, condition_span.clone())?
+                    self.apply_narrowing(pred.place, ty, condition_span.clone())?
                 }
             }
 
@@ -83,7 +83,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_false_type {
-                    self.apply_narrowing(pred.lvalue, ty, condition_span.clone())?
+                    self.apply_narrowing(pred.place, ty, condition_span.clone())?
                 }
             }
             current_cond_block_id = next_cond_block_id;
@@ -129,11 +129,11 @@ impl<'a> Builder<'a, InBlock> {
 
     fn apply_narrowing(
         &mut self,
-        lvalue: LValue,
+        place: Place,
         new_type: Type,
         span: Span,
     ) -> Result<(), SemanticError> {
-        let current_val = self.read_lvalue(lvalue, span)?;
+        let current_val = self.read_place(&place, span)?;
         let current_ty = self.get_value_type(&current_val).clone();
 
         let refined_val = if let Type::Pointer(inner) = &current_ty {
@@ -151,7 +151,7 @@ impl<'a> Builder<'a, InBlock> {
             self.emit_bitcast(current_val, new_type)
         };
 
-        self.remap_lvalue(lvalue, refined_val);
+        self.remap_place(&place, refined_val);
         Ok(())
     }
 }

@@ -550,13 +550,10 @@ impl Compiler {
                                     type_to_string(target)
                                 ))]),
 
-                        SemanticErrorKind::CannotStaticAccess(_) => {
-                            // todo!() in original - keep same behavior or implement
-                            diag.with_message("Cannot access static field")
-                                .with_labels(vec![Label::primary(file_id, range)
-                                    .with_message("Invalid static access")])
-                        }
-
+                        SemanticErrorKind::CannotStaticAccess(_) => diag
+                            .with_message("Cannot access static field")
+                            .with_labels(vec![Label::primary(file_id, range)
+                                .with_message("Invalid static access")]),
                         SemanticErrorKind::AccessToUndefinedField(field) => {
                             let name = STRING_INTERNER.resolve(field.name);
                             diag.with_message("Access to an undefined field")

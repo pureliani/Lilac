@@ -41,7 +41,7 @@ impl<'a> Builder<'a, InBlock> {
             self.adjust_initial_value(val_id, value_span, constraint.clone(), false)?;
 
         let place = Place::Local(var_decl.id);
-        self.write_place(&place, final_val_id, var_decl.identifier.span.clone());
+        self.remap_place(&place, final_val_id);
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
