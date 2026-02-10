@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::{
     ast::Span,
     hir::{
-        builders::{BasicBlockId, Builder, InBlock, PhiEntry, ValueId},
+        builders::{BasicBlockId, Builder, InBlock, PhiSource, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, Terminator},
         types::checked_type::Type,
@@ -132,21 +132,21 @@ impl<'a> Builder<'a, InBlock> {
 
         let const_true = self.emit_const_bool(true);
 
-        let result_id = self.new_value_id(Type::Bool);
-        let phi_operands = HashSet::from([
-            PhiEntry {
+        let phi_id = self.new_value_id(Type::Bool);
+        let phi_sources = HashSet::from([
+            PhiSource {
                 from: left_block,
                 value: const_true,
             },
-            PhiEntry {
+            PhiSource {
                 from: right_block,
                 value: right,
             },
         ]);
 
-        self.bb_mut().phis.insert(result_id, phi_operands);
+        self.insert_phi(self.context.block_id, phi_id, phi_sources);
 
-        Ok(result_id)
+        Ok(phi_id)
     }
 
     pub fn emit_logical_and<F>(
@@ -199,20 +199,20 @@ impl<'a> Builder<'a, InBlock> {
 
         let const_false = self.emit_const_bool(false);
 
-        let result_id = self.new_value_id(Type::Bool);
-        let phi_operands = HashSet::from([
-            PhiEntry {
+        let phi_id = self.new_value_id(Type::Bool);
+        let phi_sources = HashSet::from([
+            PhiSource {
                 from: left_block,
                 value: const_false,
             },
-            PhiEntry {
+            PhiSource {
                 from: right_block,
                 value: right,
             },
         ]);
 
-        self.bb_mut().phis.insert(result_id, phi_operands);
+        self.insert_phi(self.context.block_id, phi_id, phi_sources);
 
-        Ok(result_id)
+        Ok(phi_id)
     }
 }

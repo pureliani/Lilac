@@ -6,10 +6,11 @@ use crate::{
     hir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
-            InModule, PhiEntry, Place, ValueId,
+            InModule, PhiSource, Place, ValueId,
         },
         errors::SemanticError,
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
+        utils::type_to_string::type_to_string,
     },
 };
 
@@ -117,6 +118,42 @@ impl<'a> Builder<'a, InBlock> {
         })
     }
 
+    pub fn insert_phi(
+        &mut self,
+        basic_block_id: BasicBlockId,
+        phi_id: ValueId,
+        sources: HashSet<PhiSource>,
+    ) {
+        assert!(
+            !sources.is_empty(),
+            "Phi node must have at least one source"
+        );
+
+        let first_source = sources.iter().next().unwrap();
+        let expected_type = self.get_value_type(&first_source.value);
+
+        for source in &sources {
+            let current_type = self.get_value_type(&source.value);
+
+            if expected_type != current_type {
+                panic!(
+                    "INTERNAL COMPILER ERROR: Phi node type mismatch.\n\
+                     Phi ID: {:?}\n\
+                     Block ID: {:?}\n\
+                     Expected Type: {}\n\
+                     Found Type: {} (from block {:?})",
+                    phi_id,
+                    basic_block_id,
+                    type_to_string(expected_type),
+                    type_to_string(current_type),
+                    source.from
+                );
+            }
+        }
+
+        self.get_bb_mut(basic_block_id).phis.insert(phi_id, sources);
+    }
+
     pub fn resolve_phi(
         &mut self,
         block_id: BasicBlockId,
@@ -127,12 +164,12 @@ impl<'a> Builder<'a, InBlock> {
         let predecessors: Vec<BasicBlockId> =
             self.get_bb(block_id).predecessors.iter().cloned().collect();
 
-        let mut phi_entries = HashSet::new();
+        let mut phi_sources = HashSet::new();
         let mut incoming_types = Vec::new();
 
         for pred in predecessors {
             let val = self.read_place_from_block(pred, place, span.clone())?;
-            phi_entries.insert(PhiEntry {
+            phi_sources.insert(PhiSource {
                 from: pred,
                 value: val,
             });
@@ -144,7 +181,7 @@ impl<'a> Builder<'a, InBlock> {
             *ty = unified_type;
         }
 
-        self.get_bb_mut(block_id).phis.insert(phi_id, phi_entries);
+        self.insert_phi(block_id, phi_id, phi_sources);
         Ok(())
     }
 

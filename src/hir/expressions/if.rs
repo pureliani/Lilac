@@ -7,7 +7,7 @@ use crate::{
     },
     globals::COMMON_IDENTIFIERS,
     hir::{
-        builders::{BasicBlockId, Builder, InBlock, PhiEntry, ValueId},
+        builders::{BasicBlockId, Builder, InBlock, PhiSource, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::{StructKind, Type},
         utils::{adjustments::check_structural_compatibility, place::Place},
@@ -114,14 +114,14 @@ impl<'a> Builder<'a, InBlock> {
 
             let result_type = Type::make_union(type_entries);
 
-            let result_id = self.new_value_id(result_type);
-            let phi_operands: HashSet<PhiEntry> = branch_results
+            let phi_id = self.new_value_id(result_type);
+            let phi_sources: HashSet<PhiSource> = branch_results
                 .into_iter()
-                .map(|(block, value, _)| PhiEntry { from: block, value })
+                .map(|(block, value, _)| PhiSource { from: block, value })
                 .collect();
 
-            self.bb_mut().phis.insert(result_id, phi_operands);
-            Ok(result_id)
+            self.insert_phi(self.context.block_id, phi_id, phi_sources);
+            Ok(phi_id)
         } else {
             Ok(self.emit_const_void())
         }

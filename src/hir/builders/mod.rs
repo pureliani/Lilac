@@ -70,7 +70,7 @@ pub struct Function {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PhiEntry {
+pub struct PhiSource {
     pub from: BasicBlockId,
     pub value: ValueId,
 }
@@ -81,7 +81,7 @@ pub struct BasicBlock {
     pub instructions: Vec<Instruction>,
     pub terminator: Option<Terminator>,
     pub predecessors: HashSet<BasicBlockId>,
-    pub phis: HashMap<ValueId, HashSet<PhiEntry>>,
+    pub phis: HashMap<ValueId, HashSet<PhiSource>>,
     pub sealed: bool,
 }
 
