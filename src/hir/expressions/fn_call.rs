@@ -46,7 +46,7 @@ impl<'a> Builder<'a, InBlock> {
             let param_type = params[i].ty.clone();
 
             let coerced_arg_value =
-                self.adjust_initial_value(arg_value, arg_span, param_type, false)?;
+                self.adjust_value(arg_value, arg_span, param_type, false)?;
 
             final_args.push(coerced_arg_value);
         }

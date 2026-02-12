@@ -38,7 +38,7 @@ impl<'a> Builder<'a, InBlock> {
         };
 
         let final_val_id =
-            self.adjust_initial_value(val_id, value_span, constraint.clone(), false)?;
+            self.adjust_value(val_id, value_span, constraint.clone(), false)?;
 
         let place = Place::Local(var_decl.id);
         self.remap_place(&place, final_val_id);

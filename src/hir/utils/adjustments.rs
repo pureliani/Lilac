@@ -1,302 +1,211 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashSet};
 
 use crate::ast::Span;
-use crate::globals::COMMON_IDENTIFIERS;
 use crate::hir::builders::{Builder, InBlock, ValueId};
 use crate::hir::errors::{SemanticError, SemanticErrorKind};
 use crate::hir::types::checked_type::{StructKind, Type};
-use crate::hir::utils::layout::get_layout_of;
 use crate::hir::utils::numeric::{
     get_numeric_type_rank, is_float, is_integer, is_signed,
 };
-use crate::tokenize::NumberKind;
 
-type ValueAdjuster = dyn FnOnce(&mut Builder<'_, InBlock>) -> ValueId;
-type MemoryWriteAdjuster = dyn FnOnce(&mut Builder<'_, InBlock>, ValueId);
 pub enum Adjustment {
-    Value(Box<ValueAdjuster>),
-    Write(Box<MemoryWriteAdjuster>),
+    // No conversion needed
+    Identity,
+
+    // Numeric conversions
+    SExt {
+        target: Type,
+    },
+    ZExt {
+        target: Type,
+    },
+    Trunc {
+        target: Type,
+    },
+    FExt {
+        target: Type,
+    },
+    FTrunc {
+        target: Type,
+    },
+    SIToF {
+        target: Type,
+    },
+    UIToF {
+        target: Type,
+    },
+    FToSI {
+        target: Type,
+    },
+    FToUI {
+        target: Type,
+    },
+
+    // Union conversions
+    WrapInUnion {
+        variants: BTreeSet<Type>,
+    },
+    WidenUnion {
+        source_variants: BTreeSet<Type>,
+        target_variants: BTreeSet<Type>,
+    },
 }
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn adjust_assignment(
-        &mut self,
+    pub fn compute_adjustment(
+        &self,
         source: ValueId,
-        source_span: Span,
-        target: Type,
+        target: &Type,
         is_explicit: bool,
-    ) -> Result<Adjustment, SemanticError> {
+    ) -> Result<Adjustment, SemanticErrorKind> {
         let source_type = self.get_value_type(&source).clone();
-        let make_error = || SemanticError {
-            kind: SemanticErrorKind::CannotCastType {
-                source_type: source_type.clone(),
-                target_type: target.clone(),
-            },
-            span: source_span.clone(),
-        };
 
-        if check_structural_compatibility(&source_type, &target) {
-            return Ok(Adjustment::Value(Box::new(move |_| source)));
+        if check_structural_compatibility(&source_type, target) {
+            return Ok(Adjustment::Identity);
         }
 
-        if is_integer(&source_type) && is_integer(&target) {
+        // Integer -> Integer
+        if is_integer(&source_type) && is_integer(target) {
             let s_rank = get_numeric_type_rank(&source_type);
-            let t_rank = get_numeric_type_rank(&target);
+            let t_rank = get_numeric_type_rank(target);
 
             if t_rank > s_rank {
-                return Ok(Adjustment::Value(Box::new(move |b| {
-                    let is_source_signed = is_signed(&source_type);
-                    if is_source_signed {
-                        b.emit_sext(source, target.clone())
-                    } else {
-                        b.emit_zext(source, target.clone())
-                    }
-                })));
-            } else if (t_rank < s_rank) && is_explicit {
-                return Ok(Adjustment::Value(Box::new(move |b| {
-                    b.emit_trunc(source, target.clone())
-                })));
+                return if is_signed(&source_type) {
+                    Ok(Adjustment::SExt {
+                        target: target.clone(),
+                    })
+                } else {
+                    Ok(Adjustment::ZExt {
+                        target: target.clone(),
+                    })
+                };
+            } else if t_rank < s_rank && is_explicit {
+                return Ok(Adjustment::Trunc {
+                    target: target.clone(),
+                });
             }
-
-            return Err(make_error());
         }
 
-        if is_float(&source_type) && is_float(&target) {
+        // Float -> Float
+        if is_float(&source_type) && is_float(target) {
             let s_rank = get_numeric_type_rank(&source_type);
-            let t_rank = get_numeric_type_rank(&target);
+            let t_rank = get_numeric_type_rank(target);
 
             if t_rank > s_rank {
-                return Ok(Adjustment::Value(Box::new(move |b| {
-                    b.emit_fext(source, target)
-                })));
-            } else if (t_rank < s_rank) && is_explicit {
-                return Ok(Adjustment::Value(Box::new(move |b| {
-                    b.emit_ftrunc(source, target)
-                })));
+                return Ok(Adjustment::FExt {
+                    target: target.clone(),
+                });
+            } else if t_rank < s_rank && is_explicit {
+                return Ok(Adjustment::FTrunc {
+                    target: target.clone(),
+                });
             }
-
-            return Err(make_error());
         }
 
-        if is_integer(&source_type) && is_float(&target) {
-            return Ok(Adjustment::Value(Box::new(move |b| {
-                let is_source_signed = is_signed(&source_type);
-
-                if is_source_signed {
-                    b.emit_sitof(source, target)
-                } else {
-                    b.emit_uitof(source, target)
-                }
-            })));
-        }
-
-        if is_float(&source_type) && is_integer(&target) && is_explicit {
-            return Ok(Adjustment::Value(Box::new(move |b| {
-                let is_target_signed = is_signed(&target);
-
-                if is_target_signed {
-                    b.emit_ftosi(source, target)
-                } else {
-                    b.emit_ftoui(source, target)
-                }
-            })));
-        }
-
-        // Memory write adjustments (caller allocates)
-        let target_inner = if let Type::Pointer(target_inner) = &target {
-            if check_structural_compatibility(&source_type, target_inner) {
-                return Ok(Adjustment::Write(Box::new(move |b, ptr| {
-                    assert!(check_structural_compatibility(
-                        b.get_value_type(&ptr),
-                        &target
-                    ));
-
-                    b.emit_store(ptr, source, source_span);
-                })));
-            }
-
-            target_inner
-        } else {
-            return Err(make_error());
-        };
-
-        if let Type::Struct(StructKind::Union(t_variants)) = &**target_inner {
-            let s_variants = if let Type::Pointer(inner) = &source_type {
-                if let Type::Struct(StructKind::Union(s_variants)) = &**inner {
-                    Some(s_variants)
-                } else {
-                    None
-                }
+        // Integer -> Float
+        if is_integer(&source_type) && is_float(target) {
+            return if is_signed(&source_type) {
+                Ok(Adjustment::SIToF {
+                    target: target.clone(),
+                })
             } else {
-                None
+                Ok(Adjustment::UIToF {
+                    target: target.clone(),
+                })
             };
+        }
 
-            match s_variants {
-                // Variant -> Union
-                None => {
-                    if let Some(discriminator) =
-                        t_variants.iter().position(|union_variant| {
-                            check_structural_compatibility(&source_type, union_variant)
-                        })
-                    {
-                        return Ok(Adjustment::Write(Box::new(
-                            move |b, target_union_ptr| {
-                                assert!(check_structural_compatibility(
-                                    b.get_value_type(&target_union_ptr),
-                                    &target
-                                ));
+        // Float -> Integer
+        if is_float(&source_type) && is_integer(target) && is_explicit {
+            return if is_signed(target) {
+                Ok(Adjustment::FToSI {
+                    target: target.clone(),
+                })
+            } else {
+                Ok(Adjustment::FToUI {
+                    target: target.clone(),
+                })
+            };
+        }
 
-                                let union_id_ptr = b.get_field_ptr(
-                                    target_union_ptr,
-                                    COMMON_IDENTIFIERS.id,
-                                );
-                                let discriminator_value = b.emit_const_number(
-                                    NumberKind::U16(discriminator as u16),
-                                );
-                                b.emit_store(
-                                    union_id_ptr,
-                                    discriminator_value,
-                                    source_span.clone(),
-                                );
-
-                                let union_value_ptr = b.get_field_ptr(
-                                    target_union_ptr,
-                                    COMMON_IDENTIFIERS.value,
-                                );
-                                let union_value_ptr_bitcast = b.emit_bitcast(
-                                    union_value_ptr,
-                                    Type::Pointer(Box::new(source_type.clone())),
-                                );
-                                b.emit_store(
-                                    union_value_ptr_bitcast,
-                                    source,
-                                    source_span,
-                                );
-                            },
-                        )));
-                    }
-                }
-                // Union -> Union (Widening/Reordering)
-                Some(s_variants) => {
-                    let mut remap = HashMap::new();
-                    let mut possible = true;
-
-                    for (s_idx, s_variant) in s_variants.iter().enumerate() {
-                        let match_idx = t_variants.iter().position(|t_variant| {
-                            check_structural_compatibility(s_variant, t_variant)
-                        });
-
-                        if let Some(t_idx) = match_idx {
-                            remap.insert(s_idx as u16, t_idx as u16);
-                        } else {
-                            possible = false;
-                            break;
-                        }
-                    }
-
-                    if possible && !remap.is_empty() {
-                        return Ok(Adjustment::Write(Box::new(
-                            move |b, target_union_ptr| {
-                                assert!(check_structural_compatibility(
-                                    b.get_value_type(&target_union_ptr),
-                                    &target
-                                ));
-
-                                let source_id_ptr =
-                                    b.get_field_ptr(source, COMMON_IDENTIFIERS.id);
-                                let source_id_val = b.emit_load(source_id_ptr);
-
-                                let mut sorted_remap: Vec<_> =
-                                    remap.into_iter().collect();
-                                sorted_remap.sort_by_key(|(src, _)| *src);
-
-                                let mut calculated_id =
-                                    b.emit_const_number(NumberKind::U16(0));
-
-                                for (source_index, target_index) in sorted_remap {
-                                    let source_value = b
-                                        .emit_const_number(NumberKind::U16(source_index));
-                                    let target_value = b
-                                        .emit_const_number(NumberKind::U16(target_index));
-
-                                    let is_match =
-                                        b.emit_ieq(source_id_val, source_value);
-                                    calculated_id = b.emit_select(
-                                        is_match,
-                                        target_value,
-                                        calculated_id,
-                                    );
-                                }
-
-                                let target_union_id_ptr = b.get_field_ptr(
-                                    target_union_ptr,
-                                    COMMON_IDENTIFIERS.id,
-                                );
-                                b.emit_store(
-                                    target_union_id_ptr,
-                                    calculated_id,
-                                    source_span.clone(),
-                                );
-
-                                let source_union_value_ptr =
-                                    b.get_field_ptr(source, COMMON_IDENTIFIERS.value);
-                                let target_union_value_ptr = b.get_field_ptr(
-                                    target_union_ptr,
-                                    COMMON_IDENTIFIERS.value,
-                                );
-
-                                b.emit_memcopy(
-                                    source_union_value_ptr,
-                                    target_union_value_ptr,
-                                );
-                            },
-                        )));
-                    }
-                }
+        // Variant -> Union
+        if let Some(target_variants) = target.as_union_variants() {
+            if target_variants
+                .iter()
+                .any(|v| check_structural_compatibility(&source_type, v))
+            {
+                return Ok(Adjustment::WrapInUnion {
+                    variants: target_variants.clone(),
+                });
             }
         }
 
-        Err(make_error())
+        // Union -> Union (widening)
+        if let (Some(source_variants), Some(target_variants)) =
+            (source_type.as_union_variants(), target.as_union_variants())
+        {
+            let all_present = source_variants.iter().all(|sv| {
+                target_variants
+                    .iter()
+                    .any(|tv| check_structural_compatibility(sv, tv))
+            });
+
+            if all_present {
+                return Ok(Adjustment::WidenUnion {
+                    source_variants: source_variants.clone(),
+                    target_variants: target_variants.clone(),
+                });
+            }
+        }
+
+        Err(SemanticErrorKind::CannotCastType {
+            source_type,
+            target_type: target.clone(),
+        })
     }
 
-    pub fn adjust_initial_value(
+    pub fn apply_adjustment(
+        &mut self,
+        source: ValueId,
+        adjustment: Adjustment,
+        span: Span,
+    ) -> ValueId {
+        match adjustment {
+            Adjustment::Identity => source,
+            Adjustment::SExt { target } => self.emit_sext(source, target),
+            Adjustment::ZExt { target } => self.emit_zext(source, target),
+            Adjustment::Trunc { target } => self.emit_trunc(source, target),
+            Adjustment::FExt { target } => self.emit_fext(source, target),
+            Adjustment::FTrunc { target } => self.emit_ftrunc(source, target),
+            Adjustment::SIToF { target } => self.emit_sitof(source, target),
+            Adjustment::UIToF { target } => self.emit_uitof(source, target),
+            Adjustment::FToSI { target } => self.emit_ftosi(source, target),
+            Adjustment::FToUI { target } => self.emit_ftoui(source, target),
+            Adjustment::WrapInUnion { variants } => {
+                self.wrap_in_union(source, &variants, span)
+            }
+            Adjustment::WidenUnion {
+                source_variants,
+                target_variants,
+            } => self.widen_union(source, &source_variants, &target_variants, span),
+        }
+    }
+
+    pub fn adjust_value(
         &mut self,
         source: ValueId,
         source_span: Span,
         target: Type,
         is_explicit: bool,
     ) -> Result<ValueId, SemanticError> {
-        match self.adjust_assignment(source, source_span, target.clone(), is_explicit)? {
-            Adjustment::Value(f) => Ok(f(self)),
-            Adjustment::Write(f) => {
-                let target_inner_type =
-                    target.try_unwrap_pointer().unwrap_or_else(|| {
-                        panic!(
-                            "INTERNAL COMPILER ERROR: Cannot call 'unwrap_pointer' on \
-                             non pointer type"
-                        )
-                    });
-                let one = self.emit_const_number(NumberKind::USize(1));
-                let ptr = self.emit_heap_alloc(target_inner_type.clone(), one);
-                f(self, ptr);
-                Ok(ptr)
-            }
-        }
-    }
+        let adjustment = self
+            .compute_adjustment(source, &target, is_explicit)
+            .map_err(|kind| SemanticError {
+                kind,
+                span: source_span.clone(),
+            })?;
 
-    pub fn expect_value_adjustment(
-        &mut self,
-        source: ValueId,
-        source_span: Span,
-        target: Type,
-        is_explicit: bool,
-    ) -> Result<ValueId, SemanticError> {
-        match self.adjust_assignment(source, source_span, target, is_explicit)? {
-            Adjustment::Value(f) => Ok(f(self)),
-            Adjustment::Write(_) => {
-                panic!("INTERNAL COMPILER ERROR: Expected value adjustment")
-            }
-        }
+        Ok(self.apply_adjustment(source, adjustment, source_span))
     }
 }
 
@@ -381,19 +290,13 @@ fn check_recursive<'a>(
 
             params_ok && return_ok
         }
-        (
-            Buffer {
-                size: buffer_size,
-                alignment: buffer_alignment,
-            },
-            target,
-        ) => {
-            let target_layout = get_layout_of(target);
-
-            target_layout.size == *buffer_size
-                && target_layout.alignment == *buffer_alignment
+        (Type::UnionPayload(source_variants), Type::UnionPayload(target_variants)) => {
+            source_variants.iter().all(|sv| {
+                target_variants
+                    .iter()
+                    .any(|tv| check_structural_compatibility(sv, tv))
+            })
         }
-
         _ => false,
     };
 

@@ -56,8 +56,13 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
                 type_to_string_recursive(to, visited_set)
             }
         }
-        Type::Buffer { size, alignment } => {
-            format!("Buffer(size={}, align={})", size, alignment)
+        Type::UnionPayload(variants) => {
+            let inner = variants
+                .iter()
+                .map(|t| type_to_string_recursive(t, visited_set))
+                .collect::<Vec<_>>()
+                .join(" | ");
+            format!("UnionPayload<{}>", inner)
         }
         Type::Tag(tag_id) => {
             let name_string_id = TAG_INTERNER.resolve(*tag_id);

@@ -1,10 +1,7 @@
 use crate::{
     compile::interner::{StringId, TagId},
     globals::COMMON_IDENTIFIERS,
-    hir::{
-        types::checked_declaration::{CheckedParam, FnType},
-        utils::layout::get_layout_of,
-    },
+    hir::types::checked_declaration::{CheckedParam, FnType},
 };
 use std::{collections::BTreeSet, hash::Hash};
 
@@ -86,6 +83,16 @@ impl Type {
         set.insert(self);
         set
     }
+
+    pub fn as_union_variants(&self) -> Option<&BTreeSet<Type>> {
+        match self {
+            Type::Pointer(inner) => match &**inner {
+                Type::Struct(StructKind::Union(variants)) => Some(variants),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
 }
 
 impl StructKind {
@@ -115,23 +122,11 @@ impl StructKind {
                     );
                 }
 
-                let mut max_size = 0;
-                let mut max_align = 1;
-
-                for tag_type in variants {
-                    let layout = get_layout_of(tag_type);
-                    max_size = std::cmp::max(max_size, layout.size);
-                    max_align = std::cmp::max(max_align, layout.alignment);
-                }
-
                 vec![
                     (COMMON_IDENTIFIERS.id, Type::U16),
                     (
                         COMMON_IDENTIFIERS.value,
-                        Type::Buffer {
-                            size: max_size,
-                            alignment: max_align,
-                        },
+                        Type::UnionPayload(variants.clone()),
                     ),
                 ]
             }
@@ -175,10 +170,7 @@ pub enum Type {
     /// Represents a function pointer signature
     Fn(FnType),
 
-    Buffer {
-        size: usize,
-        alignment: usize,
-    },
+    UnionPayload(BTreeSet<Type>),
 
     Unknown,
 

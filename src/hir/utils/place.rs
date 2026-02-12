@@ -153,7 +153,10 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn remap_place(&mut self, place: &Place, value: ValueId) {
         if let Place::Temporary(_) = place {
-            panic!("INTERNAL COMPILER ERROR: Cannot remap (SSA update) a temporary place, temporaries are R-Values");
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot remap (SSA update) a temporary place, \
+                 temporaries are R-Values"
+            );
         }
 
         let canonical = place.canonicalize(self.aliases);

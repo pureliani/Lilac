@@ -33,8 +33,19 @@ pub fn get_layout_of(ty: &Type) -> Layout {
         Type::Pointer(_) | Type::Fn(_) | Type::USize | Type::ISize => {
             Layout::new(PTR_SIZE, PTR_ALIGN)
         }
-        Type::Buffer { size, alignment } => Layout::new(*size, *alignment),
-
+        Type::UnionPayload(variants) => {
+            let mut max_size = 0;
+            let mut max_align = 1;
+            for v in variants {
+                let layout = get_layout_of(v);
+                max_size = max_size.max(layout.size);
+                max_align = max_align.max(layout.alignment);
+            }
+            Layout {
+                size: max_size,
+                alignment: max_align,
+            }
+        }
         Type::Tag(_) => Layout::new(0, 1),
         Type::Unknown | Type::Never => Layout::new(0, 1),
 

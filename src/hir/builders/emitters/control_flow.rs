@@ -77,11 +77,6 @@ impl<'a> Builder<'a, InBlock> {
         self.bb_mut().terminator = Some(Terminator::Return { value })
     }
 
-    pub fn emit_unreachable(&mut self) {
-        self.check_no_terminator();
-        self.bb_mut().terminator = Some(Terminator::Unreachable)
-    }
-
     pub fn emit_logical_or<F>(
         &mut self,
         left: ValueId,

@@ -23,6 +23,6 @@ impl<'a> Builder<'a, InBlock> {
         };
         let target_type = check_type_annotation(&mut type_ctx, &target);
 
-        self.adjust_initial_value(source, source_span, target_type, true)
+        self.adjust_value(source, source_span, target_type, true)
     }
 }
