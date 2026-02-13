@@ -107,27 +107,27 @@ pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut 
 
     dump_instructions(&bb.instructions, p, out);
 
-    let term = bb.terminator.clone().unwrap();
-    match term {
-        Terminator::Jump { target } => {
-            writeln!(out, "    jmp block_{}", target.0).unwrap();
+    if let Some(term) = bb.terminator.clone() {
+        match term {
+            Terminator::Jump { target } => {
+                writeln!(out, "    jmp block_{}", target.0).unwrap();
+            }
+            Terminator::CondJump {
+                condition,
+                true_target,
+                false_target,
+            } => {
+                writeln!(
+                    out,
+                    "    cond_jmp v{} ? block_{} : block_{}\n",
+                    condition.0, true_target.0, false_target.0
+                )
+                .unwrap();
+            }
+            Terminator::Return { value } => {
+                writeln!(out, "    ret v{}\n", value.0).unwrap();
+            }
         }
-        Terminator::CondJump {
-            condition,
-            true_target,
-            false_target,
-        } => {
-            writeln!(
-                out,
-                "    cond_jmp v{} ? block_{} : block_{}\n",
-                condition.0, true_target.0, false_target.0
-            )
-            .unwrap();
-        }
-        Terminator::Return { value } => {
-            writeln!(out, "    ret v{}\n", value.0).unwrap();
-        }
-        _ => writeln!(out, "    {:?}", term).unwrap(),
     }
 }
 

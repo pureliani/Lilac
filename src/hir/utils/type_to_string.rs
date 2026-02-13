@@ -1,9 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use crate::{
+    ast::{IdentifierNode, Span},
     globals::{STRING_INTERNER, TAG_INTERNER},
     hir::types::{
-        checked_declaration::FnType,
+        checked_declaration::{CheckedParam, FnType},
         checked_type::{StructKind, Type},
     },
     tokenize::TokenKind,
@@ -47,7 +48,25 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
         Type::F64 => String::from("f64"),
         Type::Unknown => String::from("unknown"),
         Type::Never => String::from("never"),
-        Type::Struct(s) => struct_to_string(s, visited_set),
+        Type::Struct(s) => {
+            if std::env::var("DUMP_HIR").is_ok() {
+                let fields = s
+                    .fields()
+                    .iter()
+                    .map(|f| CheckedParam {
+                        identifier: IdentifierNode {
+                            name: f.0,
+                            span: Span::default(),
+                        },
+                        ty: f.1.clone(),
+                    })
+                    .collect::<Vec<CheckedParam>>();
+
+                struct_to_string_raw(&fields, visited_set)
+            } else {
+                struct_to_string(s, visited_set)
+            }
+        }
         Type::Fn(fn_type) => fn_signature_to_string(fn_type, visited_set),
         Type::Pointer(to) => {
             if std::env::var("DUMP_HIR").is_ok() {
@@ -57,12 +76,7 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
             }
         }
         Type::UnionPayload(variants) => {
-            let inner = variants
-                .iter()
-                .map(|t| type_to_string_recursive(t, visited_set))
-                .collect::<Vec<_>>()
-                .join(" | ");
-            format!("UnionPayload<{}>", inner)
+            union_variants_to_string(variants, visited_set, true)
         }
         Type::Tag(tag_id) => {
             let name_string_id = TAG_INTERNER.resolve(*tag_id);
@@ -102,28 +116,9 @@ fn struct_to_string(s: &StructKind, visited_set: &mut HashSet<Type>) -> String {
                 return String::from("never");
             }
 
-            let variants_str = variants
-                .iter()
-                .map(|tag| type_to_string_recursive(tag, visited_set))
-                .collect::<Vec<String>>()
-                .join(" | ");
-
-            variants_str
+            union_variants_to_string(variants, visited_set, false)
         }
-        StructKind::UserDefined(fields) => {
-            let fields_str = fields
-                .iter()
-                .map(|f| {
-                    format!(
-                        "{}: {}",
-                        STRING_INTERNER.resolve(f.identifier.name),
-                        type_to_string_recursive(&f.ty, visited_set)
-                    )
-                })
-                .collect::<Vec<String>>()
-                .join(", ");
-            format!("{{ {} }}", fields_str)
-        }
+        StructKind::UserDefined(fields) => struct_to_string_raw(fields, visited_set),
         StructKind::ListHeader(item_type) => {
             let elem_type_str = type_to_string_recursive(item_type, visited_set);
 
@@ -131,4 +126,41 @@ fn struct_to_string(s: &StructKind, visited_set: &mut HashSet<Type>) -> String {
         }
         StructKind::StringHeader => String::from("string"),
     }
+}
+
+fn union_variants_to_string(
+    variants: &BTreeSet<Type>,
+    visited_set: &mut HashSet<Type>,
+    raw: bool,
+) -> String {
+    let joined = variants
+        .iter()
+        .map(|tag| type_to_string_recursive(tag, visited_set))
+        .collect::<Vec<String>>()
+        .join(" | ");
+
+    if raw {
+        format!("oneOf<{}>", joined)
+    } else {
+        joined
+    }
+}
+
+fn struct_to_string_raw(
+    fields: &[CheckedParam],
+    visited_set: &mut HashSet<Type>,
+) -> String {
+    let fields_str = fields
+        .iter()
+        .map(|f| {
+            format!(
+                "{}: {}",
+                STRING_INTERNER.resolve(f.identifier.name),
+                type_to_string_recursive(&f.ty, visited_set)
+            )
+        })
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    format!("{{ {} }}", fields_str)
 }

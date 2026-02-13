@@ -1,19 +1,15 @@
-type OptionalUser = {
-    kind: #Some,
-    id: i32,
-} | {
-    kind: #None
+type Foo = {
+    bar: string | i32,
 };
 
 fn main() {
-    let user: OptionalUser = { kind: #Some, id: 15 };
+    let f: Foo = { bar: 1 };
 
-    let condition = user::is({ kind: #Some, id: i32 });
-    let condition_alias = condition;
-
-    if (condition_alias) {
-        user.id = 10i64;
+    let bar_is_number = f.bar::is(i32);
+    
+    let value = if bar_is_number {
+        f.bar
+    } else {
+        123
     };
-
-    15
 }

@@ -5,11 +5,10 @@ use crate::{
         expr::{BlockContents, Expr},
         Span,
     },
-    globals::COMMON_IDENTIFIERS,
     hir::{
         builders::{BasicBlockId, Builder, InBlock, PhiSource, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::{StructKind, Type},
+        types::checked_type::Type,
         utils::{adjustments::check_structural_compatibility, place::Place},
     },
 };
@@ -68,7 +67,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_true_type {
-                    self.apply_narrowing(pred.place, ty, condition_span.clone())?
+                    self.apply_narrowing(pred.place.clone(), ty, condition_span.clone())?;
                 }
             }
 
@@ -83,9 +82,10 @@ impl<'a> Builder<'a, InBlock> {
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_false_type {
-                    self.apply_narrowing(pred.place, ty, condition_span.clone())?
+                    self.apply_narrowing(pred.place.clone(), ty, condition_span.clone())?;
                 }
             }
+
             current_cond_block_id = next_cond_block_id;
         }
 
@@ -114,44 +114,77 @@ impl<'a> Builder<'a, InBlock> {
 
             let result_type = Type::make_union(type_entries);
 
-            let phi_id = self.new_value_id(result_type);
-            let phi_sources: HashSet<PhiSource> = branch_results
-                .into_iter()
-                .map(|(block, value, _)| PhiSource { from: block, value })
-                .collect();
+            if result_type.as_union_variants().is_some() {
+                let current_block = self.context.block_id;
+                let mut coerced_sources = HashSet::new();
 
-            self.insert_phi(self.context.block_id, phi_id, phi_sources);
-            Ok(phi_id)
+                for (from_block, val, span) in branch_results {
+                    let coercion_block =
+                        self.get_coercion_block(from_block, merge_block_id);
+                    self.use_basic_block(coercion_block);
+                    let coerced = self.coerce_to_union(val, &result_type, span);
+
+                    coerced_sources.insert(PhiSource {
+                        from: coercion_block,
+                        value: coerced,
+                    });
+                }
+
+                self.use_basic_block(current_block);
+                let phi_id = self.new_value_id(result_type);
+                self.insert_phi(merge_block_id, phi_id, coerced_sources);
+                Ok(phi_id)
+            } else {
+                let phi_id = self.new_value_id(result_type);
+                let phi_sources: HashSet<PhiSource> = branch_results
+                    .into_iter()
+                    .map(|(block, value, _)| PhiSource { from: block, value })
+                    .collect();
+                self.insert_phi(merge_block_id, phi_id, phi_sources);
+                Ok(phi_id)
+            }
         } else {
             Ok(self.emit_const_void())
         }
     }
 
-    fn apply_narrowing(
+    /// Narrows a place to a more specific type after a type predicate
+    /// has confirmed the variant.
+    ///
+    /// Three cases:
+    /// - Already the target type (assignment narrowing): no-op.
+    /// - Union narrowed to a single variant: unwrap_from_union.
+    /// - Union narrowed to a smaller union (subset): narrow_union.
+    pub fn apply_narrowing(
         &mut self,
         place: Place,
         new_type: Type,
         span: Span,
     ) -> Result<(), SemanticError> {
-        let current_val = self.read_place(&place, span)?;
+        let current_val = self.read_place(&place, span.clone())?;
         let current_ty = self.get_value_type(&current_val).clone();
 
-        let refined_val = if let Type::Pointer(inner) = &current_ty {
-            if let Type::Struct(StructKind::Union(_)) = &**inner {
-                let buffer_ptr =
-                    self.get_field_ptr(current_val, COMMON_IDENTIFIERS.value);
+        if check_structural_compatibility(&current_ty, &new_type) {
+            return Ok(());
+        }
 
-                // unsafe bitcast is okay here because it has the
-                // alignment and size of the largest variant of the union
-                self.emit_bitcast_unsafe(buffer_ptr, new_type)
-            } else {
-                self.emit_bitcast(current_val, new_type)
-            }
-        } else {
-            self.emit_bitcast(current_val, new_type)
-        };
+        let source_variants = current_ty.as_union_variants().unwrap_or_else(|| {
+            panic!(
+                "INTERNAL COMPILER ERROR: apply_narrowing called but current type \
+                 is neither compatible nor a union"
+            )
+        });
 
-        self.remap_place(&place, refined_val);
+        if new_type.as_union_variants().is_none() {
+            let narrowed = self.unwrap_from_union(current_val, &new_type);
+            self.remap_place(&place, narrowed);
+            return Ok(());
+        }
+
+        let target_variants = new_type.as_union_variants().unwrap();
+        let narrowed =
+            self.narrow_union(current_val, source_variants, target_variants, span);
+        self.remap_place(&place, narrowed);
         Ok(())
     }
 }

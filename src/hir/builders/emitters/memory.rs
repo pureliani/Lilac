@@ -121,12 +121,21 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         base_ptr: ValueId,
         field: &IdentifierNode,
+        is_internal_access: bool,
     ) -> Result<ValueId, SemanticError> {
         let current_ty = self.get_value_type(&base_ptr);
 
         let struct_kind = match current_ty {
             Type::Pointer(to) => match &**to {
-                Type::Struct(s) => s,
+                Type::Struct(s) => {
+                    if is_internal_access {
+                        s
+                    } else if let StructKind::UserDefined(_) = s {
+                        s
+                    } else {
+                        panic!("INTERNAL COMPILER ERROR: Compiler allowed the user to attempt access to non-user space struct field")
+                    }
+                }
                 _ => panic!("Expected pointer to struct, found {:?}", current_ty),
             },
             _ => {
@@ -162,6 +171,7 @@ impl<'a> Builder<'a, InBlock> {
                 name: field_name,
                 span: Span::default(),
             },
+            true,
         )
         .unwrap_or_else(|_| {
             panic!(

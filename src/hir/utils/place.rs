@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{
         expr::{Expr, ExprKind},
-        DeclarationId, Span,
+        DeclarationId, IdentifierNode, Span,
     },
     compile::interner::StringId,
     hir::{
@@ -11,7 +11,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::{CheckedDeclaration, FnType},
-            checked_type::Type,
+            checked_type::{StructKind, Type},
         },
     },
 };
@@ -79,12 +79,43 @@ impl<'a> Builder<'a, InBlock> {
             },
             ExprKind::Access { left, field } => {
                 let base = self.resolve_place(*left)?;
+
+                let current_val = self.read_place(&base, field.span.clone())?;
+                let current_type = self.get_value_type(&current_val).clone();
+
+                self.validate_field_access(&current_type, &field)?;
+
                 Ok(Place::Field(Box::new(base), field.name))
             }
             _ => {
                 let val_id = self.build_expr(expr)?;
                 Ok(Place::Temporary(val_id))
             }
+        }
+    }
+
+    /// Checks that the given field is accessible on this type from user code.
+    /// Internal struct fields (union id/value, list headers, string headers)
+    /// are not user-accessible.
+    fn validate_field_access(
+        &self,
+        base_type: &Type,
+        field: &IdentifierNode,
+    ) -> Result<(), SemanticError> {
+        let struct_kind = match base_type {
+            Type::Pointer(inner) => match &**inner {
+                Type::Struct(s) => s,
+                _ => return Ok(()),
+            },
+            _ => return Ok(()),
+        };
+
+        match struct_kind {
+            StructKind::UserDefined(_) => Ok(()),
+            _ => Err(SemanticError {
+                span: field.span.clone(),
+                kind: SemanticErrorKind::AccessToUndefinedField(field.clone()),
+            }),
         }
     }
 

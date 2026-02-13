@@ -163,6 +163,8 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
+    /// Replaces occurrences of `old_target` with `new_target` in the
+    /// terminator of `block_id`.
     fn retarget_terminator(
         &mut self,
         block_id: BasicBlockId,
@@ -191,8 +193,8 @@ impl<'a> Builder<'a, InBlock> {
                 }
             }
             _ => panic!(
-                "INTERNAL COMPILER ERROR: retarget_terminator: block has no branchable \
-                 terminator"
+                "INTERNAL COMPILER ERROR: retarget_terminator: block has no \
+                 branchable terminator"
             ),
         }
     }
@@ -236,7 +238,7 @@ impl<'a> Builder<'a, InBlock> {
     /// Returns the block where coercion instructions should be emitted for
     /// the edge from `pred_block` to `target_block`. Splits the edge if it
     /// is critical.
-    fn get_coercion_block(
+    pub fn get_coercion_block(
         &mut self,
         pred_block: BasicBlockId,
         target_block: BasicBlockId,
@@ -252,10 +254,10 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    /// Coerces a value to match a union type by wrapping or widening as needed.
-    /// Must be called with `self.context.block_id` set to the block where the
-    /// coercion instructions should be emitted.
-    fn coerce_to_union(
+    /// Coerces a value to match a union type by wrapping, widening, or
+    /// narrowing as needed. Must be called with `self.context.block_id`
+    /// set to the block where the coercion instructions should be emitted.
+    pub fn coerce_to_union(
         &mut self,
         val: ValueId,
         target_union: &Type,
@@ -272,7 +274,17 @@ impl<'a> Builder<'a, InBlock> {
             .expect("INTERNAL COMPILER ERROR: coerce_to_union target is not a union");
 
         if let Some(source_variants) = val_type.as_union_variants() {
-            self.widen_union(val, source_variants, target_variants, span)
+            let source_is_subset = source_variants.iter().all(|sv| {
+                target_variants.iter().any(|tv| {
+                    crate::hir::utils::adjustments::check_structural_compatibility(sv, tv)
+                })
+            });
+
+            if source_is_subset {
+                self.widen_union(val, source_variants, target_variants, span)
+            } else {
+                self.narrow_union(val, source_variants, target_variants, span)
+            }
         } else {
             self.wrap_in_union(val, target_variants, span)
         }

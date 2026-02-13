@@ -14,7 +14,7 @@ impl<'a> Builder<'a, InBlock> {
     ) -> Result<ValueId, SemanticError> {
         let base_ptr = self.build_expr(left)?;
 
-        let field_ptr = self.try_get_field_ptr(base_ptr, &field)?;
+        let field_ptr = self.try_get_field_ptr(base_ptr, &field, false)?;
         Ok(self.emit_load(field_ptr))
     }
 }

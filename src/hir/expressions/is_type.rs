@@ -4,7 +4,7 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::{StructKind, Type},
+        types::checked_type::Type,
         utils::{
             check_type::{check_type_annotation, TypeCheckerContext},
             union::{get_matching_variant_indices, get_non_matching_variant_indices},
@@ -14,6 +14,8 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
+    /// Emits a runtime check that tests the union discriminant against
+    /// one or more matching variant indices. Returns a bool ValueId.
     fn emit_is_type_check(
         &mut self,
         union_ptr: ValueId,
@@ -56,23 +58,16 @@ impl<'a> Builder<'a, InBlock> {
         let span = left.span.clone();
         let place = self.resolve_place(left)?;
         let place_path = place.path();
-        let place_type = self.type_of_place(&place);
 
-        let make_err = || SemanticError {
-            span: span.clone(),
-            kind: SemanticErrorKind::CannotNarrowNonUnion(place_type.clone()),
-        };
+        let current_val = self.read_place(&place, span.clone())?;
+        let current_ty = self.get_value_type(&current_val).clone();
 
-        let variants = match &place_type {
-            Type::Pointer(to) => {
-                if let Type::Struct(StructKind::Union(variants)) = &**to {
-                    variants
-                } else {
-                    return Err(make_err());
-                }
-            }
-            _ => return Err(make_err()),
-        };
+        let variants = current_ty
+            .as_union_variants()
+            .ok_or_else(|| SemanticError {
+                span: span.clone(),
+                kind: SemanticErrorKind::CannotNarrowNonUnion(current_ty.clone()),
+            })?;
 
         let mut type_ctx = TypeCheckerContext {
             scope: self.current_scope.clone(),
@@ -81,13 +76,11 @@ impl<'a> Builder<'a, InBlock> {
         };
         let target_type = check_type_annotation(&mut type_ctx, &ty);
 
-        if let Type::Pointer(to) = &target_type {
-            if let Type::Struct(StructKind::Union(_)) = &**to {
-                return Err(SemanticError {
-                    kind: SemanticErrorKind::UnsupportedUnionNarrowing,
-                    span: ty.span.clone(),
-                });
-            }
+        if target_type.as_union_variants().is_some() {
+            return Err(SemanticError {
+                kind: SemanticErrorKind::UnsupportedUnionNarrowing,
+                span: ty.span.clone(),
+            });
         }
 
         let match_indices =
@@ -95,9 +88,12 @@ impl<'a> Builder<'a, InBlock> {
         let non_match_indices =
             get_non_matching_variant_indices(variants, &place_path, &target_type);
 
-        let union_ptr = self.read_place(&place, span.clone())?;
-        let result_id =
-            self.emit_is_type_check(union_ptr, &match_indices, variants.len(), span)?;
+        let result_id = self.emit_is_type_check(
+            current_val,
+            &match_indices,
+            variants.len(),
+            span.clone(),
+        )?;
 
         let true_type =
             if !match_indices.is_empty() && match_indices.len() < variants.len() {
