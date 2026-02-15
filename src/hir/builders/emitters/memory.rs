@@ -185,7 +185,7 @@ impl<'a> Builder<'a, InBlock> {
         let list_ptr_type = self.get_value_type(&list_header_ptr);
 
         let is_valid = if let Type::Pointer(inner) = &list_ptr_type {
-            !matches!(
+            matches!(
                 &**inner,
                 Type::Struct(StructKind::ListHeader(_))
                     | Type::Struct(StructKind::StringHeader)
