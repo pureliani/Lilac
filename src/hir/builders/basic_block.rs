@@ -8,7 +8,6 @@ use crate::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
             InModule, PhiSource, Place, ValueId,
         },
-        errors::SemanticError,
         instructions::Terminator,
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::type_to_string::type_to_string,
@@ -296,7 +295,7 @@ impl<'a> Builder<'a, InBlock> {
         phi_id: ValueId,
         place: &Place,
         span: Span,
-    ) -> Result<(), SemanticError> {
+    ) {
         let predecessors: Vec<BasicBlockId> =
             self.get_bb(block_id).predecessors.iter().cloned().collect();
 
@@ -304,7 +303,7 @@ impl<'a> Builder<'a, InBlock> {
         let mut incoming_types = Vec::new();
 
         for pred in &predecessors {
-            let val = self.read_place_from_block(*pred, place, span.clone())?;
+            let val = self.read_place_from_block(*pred, place, span.clone());
             phi_sources.push((*pred, val));
             incoming_types.push(self.get_value_type(&val).clone());
         }
@@ -344,7 +343,6 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         self.insert_phi(block_id, phi_id, final_sources);
-        Ok(())
     }
 
     pub fn new_value_id(&mut self, ty: Type) -> ValueId {
@@ -364,28 +362,25 @@ impl<'a> Builder<'a, InBlock> {
         self.context.block_id = block_id;
     }
 
-    pub fn seal(&mut self) -> Result<(), SemanticError> {
+    pub fn seal(&mut self) {
         if self.bb().sealed {
-            return Ok(());
+            return;
         }
 
         let block_id = self.context.block_id;
         let incomplete = self.incomplete_phis.remove(&block_id).unwrap_or_default();
 
         for (phi_id, place, span) in incomplete {
-            self.resolve_phi(block_id, phi_id, &place, span)?;
+            self.resolve_phi(block_id, phi_id, &place, span);
         }
 
         self.bb_mut().sealed = true;
-
-        Ok(())
     }
 
-    pub fn seal_block(&mut self, block_id: BasicBlockId) -> Result<(), SemanticError> {
+    pub fn seal_block(&mut self, block_id: BasicBlockId) {
         let old_block = self.context.block_id;
         self.context.block_id = block_id;
-        self.seal()?;
+        self.seal();
         self.context.block_id = old_block;
-        Ok(())
     }
 }

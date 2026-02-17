@@ -3,20 +3,16 @@ use std::collections::BTreeSet;
 use crate::{
     compile::interner::StringId,
     hir::{
-        types::checked_type::{StructKind, Type},
-        utils::adjustments::check_structural_compatibility,
+        types::checked_type::Type, utils::adjustments::check_structural_compatibility,
     },
 };
 
 fn get_type_at_path(mut ty: &Type, path: &[StringId]) -> Option<Type> {
     for field_name in path {
         match ty {
-            Type::Struct(StructKind::UserDefined(fields)) => {
+            Type::Struct(fields) => {
                 let field = fields.iter().find(|f| f.identifier.name == *field_name)?;
                 ty = &field.ty;
-            }
-            Type::Pointer(inner) => {
-                return get_type_at_path(inner, path);
             }
             _ => return None,
         }

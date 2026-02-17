@@ -22,13 +22,12 @@ use crate::{
     ast::expr::{Expr, ExprKind},
     hir::{
         builders::{Builder, InBlock, ValueId},
-        errors::SemanticError,
         expressions::r#if::IfContext,
     },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_expr(&mut self, expr: Expr) -> Result<ValueId, SemanticError> {
+    pub fn build_expr(&mut self, expr: Expr) -> ValueId {
         let span = expr.span.clone();
         match expr.kind {
             ExprKind::Not { right } => self.build_not_expr(*right),

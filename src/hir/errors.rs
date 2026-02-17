@@ -29,6 +29,7 @@ pub enum SemanticErrorKind {
     MissingStructFieldInitializers(HashSet<StringId>),
     CannotCall(Type),
     ExpectedANumericOperand,
+    ExpectedASignedNumericOperand,
     IncompatibleBranchTypes {
         first: Type,
         second: Type,
@@ -136,6 +137,7 @@ impl SemanticErrorKind {
             SemanticErrorKind::ExpectedTagWithoutValue { .. } => 44,
             SemanticErrorKind::ExpectedTagWithValue { .. } => 45,
             SemanticErrorKind::UnsupportedUnionNarrowing => 46,
+            SemanticErrorKind::ExpectedASignedNumericOperand => 47,
         }
     }
 }

@@ -12,17 +12,18 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_var_decl(&mut self, var_decl: VarDecl) -> Result<(), SemanticError> {
+    pub fn build_var_decl(&mut self, var_decl: VarDecl) {
         if self.current_scope.is_file_scope() {
-            return Err(SemanticError {
+            self.errors.push(SemanticError {
                 kind: SemanticErrorKind::CannotDeclareGlobalVariable,
                 span: var_decl.identifier.span.clone(),
             });
+            return;
         }
 
         let value_span = var_decl.value.span.clone();
 
-        let val_id = self.build_expr(var_decl.value)?;
+        let val_id = self.build_expr(var_decl.value);
         let val_type = self.get_value_type(&val_id).clone();
 
         let constraint = if let Some(annotation) = &var_decl.constraint {
@@ -56,7 +57,5 @@ impl<'a> Builder<'a, InBlock> {
 
         self.current_scope
             .map_name_to_decl(var_decl.identifier.name, var_decl.id);
-
-        Ok(())
     }
 }

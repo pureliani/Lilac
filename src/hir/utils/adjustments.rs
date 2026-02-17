@@ -4,7 +4,7 @@ use crate::ast::Span;
 use crate::compile::interner::StringId;
 use crate::hir::builders::{Builder, InBlock, ValueId};
 use crate::hir::errors::{SemanticError, SemanticErrorKind};
-use crate::hir::types::checked_type::{StructKind, Type};
+use crate::hir::types::checked_type::Type;
 use crate::hir::utils::numeric::{
     get_numeric_type_rank, is_float, is_integer, is_signed,
 };
@@ -164,46 +164,40 @@ pub fn compute_type_adjustment(
     }
 
     // Struct -> Struct (field-level coercion)
-    if let (Type::Pointer(s_inner), Type::Pointer(t_inner)) = (source_type, target) {
-        if let (
-            Type::Struct(StructKind::UserDefined(s_fields)),
-            Type::Struct(StructKind::UserDefined(t_fields)),
-        ) = (&**s_inner, &**t_inner)
-        {
-            if s_fields.len() == t_fields.len() {
-                let mut field_adjustments = Vec::new();
-                let mut all_ok = true;
+    if let (Type::Struct(s_fields), Type::Struct(t_fields)) = (source_type, target) {
+        if s_fields.len() == t_fields.len() {
+            let mut field_adjustments = Vec::new();
+            let mut all_ok = true;
 
-                for (sf, tf) in s_fields.iter().zip(t_fields.iter()) {
-                    if sf.identifier.name != tf.identifier.name {
+            for (sf, tf) in s_fields.iter().zip(t_fields.iter()) {
+                if sf.identifier.name != tf.identifier.name {
+                    all_ok = false;
+                    break;
+                }
+
+                if check_structural_compatibility(&sf.ty, &tf.ty) {
+                    continue;
+                }
+
+                match compute_type_adjustment(&sf.ty, &tf.ty, is_explicit) {
+                    Ok(adj) => {
+                        field_adjustments.push((sf.identifier.name, adj));
+                    }
+                    Err(_) => {
                         all_ok = false;
                         break;
                     }
-
-                    if check_structural_compatibility(&sf.ty, &tf.ty) {
-                        continue;
-                    }
-
-                    match compute_type_adjustment(&sf.ty, &tf.ty, is_explicit) {
-                        Ok(adj) => {
-                            field_adjustments.push((sf.identifier.name, adj));
-                        }
-                        Err(_) => {
-                            all_ok = false;
-                            break;
-                        }
-                    }
                 }
+            }
 
-                if all_ok {
-                    if field_adjustments.is_empty() {
-                        return Ok(Adjustment::Identity);
-                    }
-                    return Ok(Adjustment::CoerceStruct {
-                        target_inner_type: (**t_inner).clone(),
-                        field_adjustments,
-                    });
+            if all_ok {
+                if field_adjustments.is_empty() {
+                    return Ok(Adjustment::Identity);
                 }
+                return Ok(Adjustment::CoerceStruct {
+                    target_inner_type: (**t_inner).clone(),
+                    field_adjustments,
+                });
             }
         }
     }
@@ -224,44 +218,6 @@ impl<'a> Builder<'a, InBlock> {
     ) -> Result<Adjustment, SemanticErrorKind> {
         let source_type = self.get_value_type(&source).clone();
         compute_type_adjustment(&source_type, target, is_explicit)
-    }
-
-    /// Applies a previously computed adjustment, emitting the necessary
-    /// instructions and returning the adjusted value.
-    pub fn apply_adjustment(
-        &mut self,
-        source: ValueId,
-        adjustment: Adjustment,
-        span: Span,
-    ) -> ValueId {
-        match adjustment {
-            Adjustment::Identity => source,
-            Adjustment::SExt { target } => self.emit_sext(source, target),
-            Adjustment::ZExt { target } => self.emit_zext(source, target),
-            Adjustment::Trunc { target } => self.emit_trunc(source, target),
-            Adjustment::FExt { target } => self.emit_fext(source, target),
-            Adjustment::FTrunc { target } => self.emit_ftrunc(source, target),
-            Adjustment::SIToF { target } => self.emit_sitof(source, target),
-            Adjustment::UIToF { target } => self.emit_uitof(source, target),
-            Adjustment::FToSI { target } => self.emit_ftosi(source, target),
-            Adjustment::FToUI { target } => self.emit_ftoui(source, target),
-            Adjustment::WrapInUnion { variants } => {
-                self.wrap_in_union(source, &variants, span)
-            }
-            Adjustment::WidenUnion {
-                source_variants,
-                target_variants,
-            } => self.widen_union(source, &source_variants, &target_variants, span),
-            Adjustment::CoerceStruct {
-                target_inner_type,
-                field_adjustments,
-            } => self.apply_struct_coercion(
-                source,
-                target_inner_type,
-                field_adjustments,
-                span,
-            ),
-        }
     }
 
     /// Allocates a new struct with the target layout, copies all fields
@@ -308,24 +264,6 @@ impl<'a> Builder<'a, InBlock> {
 
         new_ptr
     }
-
-    /// Computes and applies an adjustment in one step.
-    pub fn adjust_value(
-        &mut self,
-        source: ValueId,
-        source_span: Span,
-        target: Type,
-        is_explicit: bool,
-    ) -> Result<ValueId, SemanticError> {
-        let adjustment = self
-            .compute_adjustment(source, &target, is_explicit)
-            .map_err(|kind| SemanticError {
-                kind,
-                span: source_span.clone(),
-            })?;
-
-        Ok(self.apply_adjustment(source, adjustment, source_span))
-    }
 }
 
 pub fn check_structural_compatibility<'a>(source: &'a Type, target: &'a Type) -> bool {
@@ -364,34 +302,26 @@ fn check_recursive<'a>(
         | (F32, F32)
         | (F64, F64)
         | (Bool, Bool)
+        | (String, String)
         | (Void, Void) => true,
 
         (Never, _) => true,
         (_, Unknown) | (Unknown, _) => true,
 
-        (Pointer(s_inner), Pointer(t_inner)) => {
-            check_recursive(s_inner, t_inner, visited)
+        (Struct(s_fields), Struct(t_fields)) => {
+            if s_fields.len() != t_fields.len() {
+                return false;
+            }
+
+            s_fields.iter().zip(t_fields.iter()).all(|(sp, tp)| {
+                sp.identifier.name == tp.identifier.name
+                    && check_recursive(&sp.ty, &tp.ty, visited)
+            })
         }
 
-        (Struct(s_kind), Struct(t_kind)) => match (s_kind, t_kind) {
-            (StructKind::UserDefined(s_fields), StructKind::UserDefined(t_fields)) => {
-                if s_fields.len() != t_fields.len() {
-                    return false;
-                }
-                s_fields.iter().zip(t_fields.iter()).all(|(sp, tp)| {
-                    sp.identifier.name == tp.identifier.name
-                        && check_recursive(&sp.ty, &tp.ty, visited)
-                })
-            }
-            (StructKind::ListHeader(s_inner), StructKind::ListHeader(t_inner)) => {
-                check_recursive(s_inner, t_inner, visited)
-            }
-            (StructKind::StringHeader, StructKind::StringHeader) => true,
-
-            (StructKind::Union(s_vars), StructKind::Union(t_vars)) => s_vars == t_vars,
-
-            _ => false,
-        },
+        (List(source_item), List(target_item)) => {
+            check_recursive(source_item, target_item, visited)
+        }
 
         (Fn(s_fn), Fn(t_fn)) => {
             if s_fn.params.len() != t_fn.params.len() {
@@ -410,7 +340,7 @@ fn check_recursive<'a>(
             params_ok && return_ok
         }
 
-        (Type::UnionPayload(source_variants), Type::UnionPayload(target_variants)) => {
+        (Type::Union(source_variants), Type::Union(target_variants)) => {
             source_variants.iter().all(|sv| {
                 target_variants
                     .iter()

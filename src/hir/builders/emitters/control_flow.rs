@@ -103,7 +103,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.emit_cond_jmp(left, merge_block, right_entry_block);
 
-        self.seal_block(right_entry_block)?;
+        self.seal_block(right_entry_block);
         self.use_basic_block(right_entry_block);
 
         let right = produce_right(self)?;
@@ -122,7 +122,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.emit_jmp(merge_block);
 
-        self.seal_block(merge_block)?;
+        self.seal_block(merge_block);
         self.use_basic_block(merge_block);
 
         let const_true = self.emit_const_bool(true);
@@ -149,18 +149,18 @@ impl<'a> Builder<'a, InBlock> {
         left: ValueId,
         left_span: Span,
         produce_right: F,
-    ) -> Result<ValueId, SemanticError>
+    ) -> ValueId
     where
-        F: FnOnce(&mut Self) -> Result<ValueId, SemanticError>,
+        F: FnOnce(&mut Self) -> ValueId,
     {
         let left_type = self.get_value_type(&left);
         if !check_structural_compatibility(left_type, &Type::Bool) {
-            return Err(SemanticError {
+            self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,
                     received: left_type.clone(),
                 },
-                span: left_span,
+                span: left_span.clone(),
             });
         }
 
@@ -170,15 +170,15 @@ impl<'a> Builder<'a, InBlock> {
 
         self.emit_cond_jmp(left, right_entry_block, merge_block);
 
-        self.seal_block(right_entry_block)?;
+        self.seal_block(right_entry_block);
         self.use_basic_block(right_entry_block);
 
-        let right = produce_right(self)?;
+        let right = produce_right(self);
         let right_block = self.context.block_id;
 
         let right_type = self.get_value_type(&right);
         if !check_structural_compatibility(right_type, &Type::Bool) {
-            return Err(SemanticError {
+            self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,
                     received: right_type.clone(),
@@ -189,7 +189,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.emit_jmp(merge_block);
 
-        self.seal_block(merge_block)?;
+        self.seal_block(merge_block);
         self.use_basic_block(merge_block);
 
         let const_false = self.emit_const_bool(false);
@@ -208,6 +208,6 @@ impl<'a> Builder<'a, InBlock> {
 
         self.insert_phi(self.context.block_id, phi_id, phi_sources);
 
-        Ok(phi_id)
+        phi_id
     }
 }

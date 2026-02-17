@@ -10,9 +10,9 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::{CheckedDeclaration, CheckedParam, FnType},
-            checked_type::{StructKind, Type},
+            checked_type::Type,
         },
-        utils::{layout::pack_struct, scope::Scope},
+        utils::scope::Scope,
     },
 };
 
@@ -118,26 +118,14 @@ pub fn check_type_annotation(
 
             Type::make_union(checked_variants)
         }
-        TypeAnnotationKind::String => {
-            let inner = Box::new(Type::Struct(StructKind::StringHeader));
-            Type::Pointer(inner)
-        }
+        TypeAnnotationKind::String => Type::String,
         TypeAnnotationKind::List(item_type) => {
             let checked_item_type = check_type_annotation(ctx, item_type);
-            let inner = Box::new(Type::Struct(StructKind::ListHeader(Box::new(
-                checked_item_type,
-            ))));
-
-            Type::Pointer(inner)
+            Type::List(Box::new(checked_item_type))
         }
         TypeAnnotationKind::Struct(items) => {
             let checked_field_types = check_params(ctx, items);
-
-            let packed = pack_struct(StructKind::UserDefined(checked_field_types));
-
-            let inner = Box::new(Type::Struct(packed));
-
-            Type::Pointer(inner)
+            Type::Struct(checked_field_types)
         }
     }
 }

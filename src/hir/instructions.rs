@@ -1,7 +1,12 @@
+use std::collections::BTreeSet;
+
 use crate::{
     ast::DeclarationId,
-    compile::interner::TagId,
-    hir::builders::{BasicBlockId, ConstantId, ValueId},
+    compile::interner::{StringId, TagId},
+    hir::{
+        builders::{BasicBlockId, ConstantId, ValueId},
+        types::checked_type::Type,
+    },
     tokenize::NumberKind,
 };
 
@@ -33,63 +38,34 @@ pub enum ConstInstr {
 }
 
 #[derive(Clone, Debug)]
+pub enum UnaryInstr {
+    Neg { dest: ValueId, src: ValueId },
+    Not { dest: ValueId, src: ValueId },
+}
+
+#[derive(Clone, Debug)]
 pub enum BinaryInstr {
-    IAdd {
+    Add {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
     },
-    ISub {
+    Sub {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
     },
-    IMul {
+    Mul {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
     },
-    SDiv {
+    Div {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
     },
-    UDiv {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    SRem {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    URem {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FRem {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FAdd {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FSub {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FMul {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FDiv {
+    Rem {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
@@ -98,82 +74,32 @@ pub enum BinaryInstr {
 
 #[derive(Clone, Debug)]
 pub enum CompInstr {
-    IEq {
+    Eq {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
     },
-    INe {
+    Neq {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
     },
-    SLt {
+    Lt {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
     },
-    SLe {
+    Lte {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
     },
-    SGt {
+    Gt {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
     },
-    SGe {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    ULt {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    ULe {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    UGt {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    UGe {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FEq {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FNe {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FLt {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FLe {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FGt {
-        dest: ValueId,
-        lhs: ValueId,
-        rhs: ValueId,
-    },
-    FGe {
+    Gte {
         dest: ValueId,
         lhs: ValueId,
         rhs: ValueId,
@@ -181,60 +107,74 @@ pub enum CompInstr {
 }
 
 #[derive(Clone, Debug)]
-pub enum UnaryInstr {
-    INeg { dest: ValueId, src: ValueId },
-    FNeg { dest: ValueId, src: ValueId },
-    BNot { dest: ValueId, src: ValueId },
-}
-
-#[derive(Clone, Debug)]
-pub enum CastInstr {
-    SIToF { dest: ValueId, src: ValueId },
-    UIToF { dest: ValueId, src: ValueId },
-    FToSI { dest: ValueId, src: ValueId },
-    FToUI { dest: ValueId, src: ValueId },
-    FExt { dest: ValueId, src: ValueId },
-    FTrunc { dest: ValueId, src: ValueId },
-    Trunc { dest: ValueId, src: ValueId },
-    SExt { dest: ValueId, src: ValueId },
-    ZExt { dest: ValueId, src: ValueId },
-    BitCast { dest: ValueId, src: ValueId },
-}
-
-#[derive(Clone, Debug)]
-pub enum MemoryInstr {
-    StackAlloc {
+pub enum StructInstr {
+    Construct {
         dest: ValueId,
-        count: usize,
+        fields: Vec<(StringId, ValueId)>,
     },
-    HeapAlloc {
+    ReadField {
         dest: ValueId,
-        count: ValueId,
+        base: ValueId,
+        field: StringId,
     },
-    HeapFree {
-        ptr: ValueId,
-    },
-    Store {
-        ptr: ValueId,
+    UpdateField {
+        dest: ValueId,
+        base: ValueId,
+        field: StringId,
         value: ValueId,
     },
-    Load {
-        dest: ValueId,
-        ptr: ValueId,
-    },
-    MemCopy {
+}
+
+#[derive(Clone, Debug)]
+pub enum UnionInstr {
+    WrapInUnion {
         dest: ValueId,
         src: ValueId,
+        target_variants: BTreeSet<Type>,
     },
-    GetFieldPtr {
+    UnwrapUnion {
         dest: ValueId,
-        base_ptr: ValueId,
-        field_index: usize,
+        src: ValueId,
+        variant_type: Type,
     },
-    PtrOffset {
+    TestVariant {
         dest: ValueId,
-        base_ptr: ValueId,
+        src: ValueId,
+        variant_type: Type,
+    },
+    WidenUnion {
+        dest: ValueId,
+        src: ValueId,
+        target_variants: BTreeSet<Type>,
+    },
+    NarrowUnion {
+        dest: ValueId,
+        src: ValueId,
+        target_variants: BTreeSet<Type>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum ListInstr {
+    Init {
+        dest: ValueId,
+        element_type: Type,
+        items: Vec<ValueId>,
+    },
+    Get {
+        dest: ValueId,
+        list: ValueId,
         index: ValueId,
+    },
+    Set {
+        dest: ValueId,
+        list: ValueId,
+        index: ValueId,
+        value: ValueId,
+    },
+    Len {
+        dest: ValueId,
+        list: ValueId,
     },
 }
 
@@ -242,10 +182,11 @@ pub enum MemoryInstr {
 pub enum Instruction {
     Binary(BinaryInstr),
     Unary(UnaryInstr),
-    Cast(CastInstr),
-    Memory(MemoryInstr),
     Const(ConstInstr),
     Comp(CompInstr),
+    Struct(StructInstr),
+    Union(UnionInstr),
+    List(ListInstr),
     Call {
         dest: ValueId,
         func: ValueId,

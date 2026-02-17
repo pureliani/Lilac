@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{
         expr::{Expr, ExprKind},
-        DeclarationId, IdentifierNode, Span,
+        DeclarationId, Span,
     },
     compile::interner::StringId,
     hir::{
@@ -11,7 +11,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::{CheckedDeclaration, FnType},
-            checked_type::{StructKind, Type},
+            checked_type::Type,
         },
     },
 };
@@ -80,50 +80,26 @@ impl<'a> Builder<'a, InBlock> {
             ExprKind::Access { left, field } => {
                 let base = self.resolve_place(*left)?;
 
-                let current_val = self.read_place(&base, field.span.clone())?;
-                let current_type = self.get_value_type(&current_val).clone();
+                let base_val = self.read_place(&base, field.span.clone());
+                let base_type = self.get_value_type(&base_val).clone();
 
-                self.validate_field_access(&current_type, &field)?;
-
-                Ok(Place::Field(Box::new(base), field.name))
+                if matches!(&base_type, Type::Struct(_)) {
+                    Ok(Place::Field(Box::new(base), field.name))
+                } else {
+                    Err(SemanticError {
+                        span: field.span.clone(),
+                        kind: SemanticErrorKind::AccessToUndefinedField(field.clone()),
+                    })
+                }
             }
             _ => {
-                let val_id = self.build_expr(expr)?;
+                let val_id = self.build_expr(expr);
                 Ok(Place::Temporary(val_id))
             }
         }
     }
 
-    /// Checks that the given field is accessible on this type from user code.
-    /// Internal struct fields (union id/value, list headers, string headers)
-    /// are not user-accessible.
-    fn validate_field_access(
-        &self,
-        base_type: &Type,
-        field: &IdentifierNode,
-    ) -> Result<(), SemanticError> {
-        let struct_kind = match base_type {
-            Type::Pointer(inner) => match &**inner {
-                Type::Struct(s) => s,
-                _ => return Ok(()),
-            },
-            _ => return Ok(()),
-        };
-
-        match struct_kind {
-            StructKind::UserDefined(_) => Ok(()),
-            _ => Err(SemanticError {
-                span: field.span.clone(),
-                kind: SemanticErrorKind::AccessToUndefinedField(field.clone()),
-            }),
-        }
-    }
-
-    pub fn read_place(
-        &mut self,
-        place: &Place,
-        span: Span,
-    ) -> Result<ValueId, SemanticError> {
+    pub fn read_place(&mut self, place: &Place, span: Span) -> ValueId {
         let canonical = place.canonicalize(self.aliases);
         self.read_place_from_block(self.context.block_id, &canonical, span)
     }
@@ -133,14 +109,14 @@ impl<'a> Builder<'a, InBlock> {
         block_id: BasicBlockId,
         place: &Place,
         span: Span,
-    ) -> Result<ValueId, SemanticError> {
+    ) -> ValueId {
         if let Place::Temporary(val_id) = place {
-            return Ok(*val_id);
+            return *val_id;
         }
 
         if let Some(block_defs) = self.current_defs.get(&block_id) {
             if let Some(val) = block_defs.get(place) {
-                return Ok(*val);
+                return *val;
             }
         }
 
@@ -156,7 +132,7 @@ impl<'a> Builder<'a, InBlock> {
             ));
             val_id
         } else if predecessors.len() == 1 {
-            self.read_place_from_block(predecessors[0], place, span)?
+            self.read_place_from_block(predecessors[0], place, span)
         } else if predecessors.is_empty() {
             panic!(
                 "INTERNAL COMPILER ERROR: Tried to read place in a basic block which \
@@ -170,7 +146,7 @@ impl<'a> Builder<'a, InBlock> {
                 .or_default()
                 .insert(place.clone(), val_id);
 
-            self.resolve_phi(block_id, val_id, place, span)?;
+            self.resolve_phi(block_id, val_id, place, span);
             val_id
         };
 
@@ -179,7 +155,7 @@ impl<'a> Builder<'a, InBlock> {
             .or_default()
             .insert(place.clone(), val_id);
 
-        Ok(val_id)
+        val_id
     }
 
     pub fn remap_place(&mut self, place: &Place, value: ValueId) {
@@ -212,9 +188,12 @@ impl<'a> Builder<'a, InBlock> {
             }
             Place::Field(base, field) => {
                 let base_ty = self.type_of_place(base);
-                self.type_of_field(&base_ty, *field).expect(
-                    "INTERNAL COMPILER ERROR: Expected Place::Field to have a type",
-                )
+                base_ty
+                    .get_field(field)
+                    .expect(
+                        "INTERNAL COMPILER ERROR: Expected Place::Field to have a type",
+                    )
+                    .1
             }
             Place::Temporary(val_id) => self
                 .program
@@ -225,21 +204,5 @@ impl<'a> Builder<'a, InBlock> {
                 )
                 .clone(),
         }
-    }
-
-    fn type_of_field(&self, base_ty: &Type, field: StringId) -> Option<Type> {
-        use Type::*;
-
-        let base_inner = match base_ty {
-            Pointer(inner) => inner,
-            _ => return None,
-        };
-
-        let struct_kind = match base_inner.as_ref() {
-            Struct(s) => s,
-            _ => return None,
-        };
-
-        struct_kind.get_field(&field).map(|(_, ty)| ty)
     }
 }

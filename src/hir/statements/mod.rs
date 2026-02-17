@@ -28,17 +28,16 @@ impl<'a> Builder<'a, InBlock> {
                 break;
             }
 
-            let result = match statement.kind {
+            match statement.kind {
                 StmtKind::Expression(expr) => {
                     if let ExprKind::If {
                         branches,
                         else_branch,
                     } = expr.kind
                     {
-                        self.build_if(branches, else_branch, IfContext::Statement)
-                            .map(|_| ())
+                        self.build_if(branches, else_branch, IfContext::Statement);
                     } else {
-                        self.build_expr(expr).map(|_| ())
+                        self.build_expr(expr);
                     }
                 }
                 StmtKind::TypeAliasDecl(decl) => {
@@ -53,7 +52,7 @@ impl<'a> Builder<'a, InBlock> {
                 }
                 StmtKind::From { path, identifiers } => {
                     self.as_module()
-                        .build_from_stmt(path, identifiers, statement.span)
+                        .build_from_stmt(path, identifiers, statement.span);
                 }
                 StmtKind::While { condition, body } => {
                     self.build_while_stmt(*condition, body)
@@ -61,9 +60,8 @@ impl<'a> Builder<'a, InBlock> {
                 StmtKind::Break => {
                     if let Some(targets) = self.current_scope.within_loop_body() {
                         self.emit_jmp(targets.on_break);
-                        Ok(())
                     } else {
-                        Err(SemanticError {
+                        self.errors.push(SemanticError {
                             kind: SemanticErrorKind::BreakKeywordOutsideLoop,
                             span: statement.span,
                         })
@@ -72,18 +70,13 @@ impl<'a> Builder<'a, InBlock> {
                 StmtKind::Continue => {
                     if let Some(targets) = self.current_scope.within_loop_body() {
                         self.emit_jmp(targets.on_continue);
-                        Ok(())
                     } else {
-                        Err(SemanticError {
+                        self.errors.push(SemanticError {
                             kind: SemanticErrorKind::ContinueKeywordOutsideLoop,
                             span: statement.span,
                         })
                     }
                 }
-            };
-
-            if let Err(e) = result {
-                self.errors.push(e);
             }
         }
     }

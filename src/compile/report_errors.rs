@@ -267,24 +267,24 @@ impl Compiler {
                                 )),
                             ])
                         }
-
                         SemanticErrorKind::ExpectedANumericOperand => diag
                             .with_message("Expected numeric operand")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message("This must be a numeric type")]),
-
+                        SemanticErrorKind::ExpectedASignedNumericOperand => diag
+                            .with_message("Expected signed numeric operand")
+                            .with_labels(vec![Label::primary(file_id, range)
+                                .with_message("This must be a signed numeric type")]),
                         SemanticErrorKind::MixedSignedAndUnsigned => diag
                             .with_message("Mixed signedness")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message(
                                     "Cannot mix signed and unsigned operands",
                                 )]),
-
                         SemanticErrorKind::MixedFloatAndInteger => diag
                             .with_message("Mixed types")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message("Cannot mix float and integer operands")]),
-
                         SemanticErrorKind::CannotCompareType { of, to } => diag
                             .with_message("Incompatible comparison")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -293,14 +293,12 @@ impl Compiler {
                                     type_to_string(of),
                                     type_to_string(to)
                                 ))]),
-
                         SemanticErrorKind::UndeclaredIdentifier(id) => {
                             let name = STRING_INTERNER.resolve(id.name);
                             diag.with_message("Undeclared identifier")
                                 .with_labels(vec![Label::primary(file_id, range)
                                     .with_message(format!("`{}` is not defined", name))])
                         }
-
                         SemanticErrorKind::UndeclaredType(id) => {
                             let name = STRING_INTERNER.resolve(id.name);
                             diag.with_message("Undeclared type").with_labels(vec![
@@ -310,7 +308,6 @@ impl Compiler {
                                 )),
                             ])
                         }
-
                         SemanticErrorKind::TypeMismatch { expected, received } => diag
                             .with_message("Type mismatch")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -319,7 +316,6 @@ impl Compiler {
                                     type_to_string(expected),
                                     type_to_string(received)
                                 ))]),
-
                         SemanticErrorKind::ReturnTypeMismatch { expected, received } => {
                             diag.with_message("Function return type mismatch")
                                 .with_labels(vec![Label::primary(file_id, range)
@@ -330,7 +326,6 @@ impl Compiler {
                                         type_to_string(received)
                                     ))])
                         }
-
                         SemanticErrorKind::ModuleNotFound(path_buf) => diag
                             .with_message("Module not found")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -338,7 +333,6 @@ impl Compiler {
                                     "Could not find module at `{}`",
                                     path_buf.0.display()
                                 ))]),
-
                         SemanticErrorKind::SymbolNotExported {
                             module_path,
                             symbol,
@@ -352,7 +346,6 @@ impl Compiler {
                                 )),
                             ])
                         }
-
                         SemanticErrorKind::ValuedTagInIsExpression => diag
                             .with_message("Valued tag not allowed in `::is()` expression")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -361,12 +354,10 @@ impl Compiler {
                                      identifier. Remove the value type (e.g., use \
                                      `#Tag` instead of `#Tag(Type)`)",
                                 )]),
-
                         SemanticErrorKind::UnreachableCode => diag
                             .with_message("Unreachable code")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message("This code will never be executed")]),
-
                         SemanticErrorKind::DuplicateIdentifier(id) => {
                             let name = STRING_INTERNER.resolve(id.name);
                             diag.with_message("Duplicate identifier").with_labels(vec![
@@ -376,7 +367,6 @@ impl Compiler {
                                 )),
                             ])
                         }
-
                         SemanticErrorKind::DuplicateUnionVariant(id) => {
                             let name = STRING_INTERNER.resolve(id.name);
                             diag.with_message("Duplicate union variant").with_labels(
@@ -389,7 +379,6 @@ impl Compiler {
                                 )],
                             )
                         }
-
                         SemanticErrorKind::CannotIndex(ty) => diag
                             .with_message("Cannot index type")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -397,7 +386,6 @@ impl Compiler {
                                     "Type `{}` cannot be indexed",
                                     type_to_string(ty)
                                 ))]),
-
                         SemanticErrorKind::FromStatementMustBeDeclaredAtTopLevel => diag
                             .with_message("Invalid import location")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -405,7 +393,6 @@ impl Compiler {
                                     "`from` statements must be declared at the top \
                                      level of the file",
                                 )]),
-
                         SemanticErrorKind::CannotDeclareGlobalVariable => diag
                             .with_message("Global variables not allowed")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -413,7 +400,6 @@ impl Compiler {
                                     "Variables cannot be declared at the file scope \
                                      (top-level)",
                                 )]),
-
                         SemanticErrorKind::DuplicateStructFieldInitializer(id) => {
                             let name = STRING_INTERNER.resolve(id.name);
                             diag.with_message("Duplicate initializer for a struct field")
@@ -424,7 +410,6 @@ impl Compiler {
                                         name
                                     ))])
                         }
-
                         SemanticErrorKind::UnknownStructFieldInitializer(id) => {
                             let name = STRING_INTERNER.resolve(id.name);
                             diag.with_message("Unknown field in the struct initializer")
@@ -434,7 +419,6 @@ impl Compiler {
                                         name
                                     ))])
                         }
-
                         SemanticErrorKind::MissingStructFieldInitializers(
                             missing_fields,
                         ) => {
@@ -457,7 +441,6 @@ impl Compiler {
                                 )],
                             )
                         }
-
                         SemanticErrorKind::CannotCall(target) => diag
                             .with_message("Cannot use the function call operator")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -465,7 +448,6 @@ impl Compiler {
                                     "Cannot use the function-call operator on type `{}`",
                                     type_to_string(target)
                                 ))]),
-
                         SemanticErrorKind::IncompatibleBranchTypes { first, second } => {
                             diag.with_message("Incompatible branch types").with_labels(
                                 vec![Label::primary(file_id, range).with_message(
@@ -478,7 +460,6 @@ impl Compiler {
                                 )],
                             )
                         }
-
                         SemanticErrorKind::ReturnKeywordOutsideFunction => diag
                             .with_message(
                                 "Keyword `return` used outside of a function scope",
@@ -488,7 +469,6 @@ impl Compiler {
                                     "Cannot use the `return` keyword outside of a \
                                      function scope",
                                 )]),
-
                         SemanticErrorKind::BreakKeywordOutsideLoop => diag
                             .with_message("Keyword `break` used outside of a loop scope")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -496,7 +476,6 @@ impl Compiler {
                                     "Cannot use the `break` keyword outside of a loop \
                                      scope",
                                 )]),
-
                         SemanticErrorKind::ContinueKeywordOutsideLoop => diag
                             .with_message(
                                 "Keyword `continue` used outside of a loop scope",
@@ -506,12 +485,10 @@ impl Compiler {
                                     "Cannot use the `continue` keyword outside of a \
                                      loop scope",
                                 )]),
-
                         SemanticErrorKind::InvalidLValue => diag
                             .with_message("Invalid assignment target")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message("Invalid assignment target")]),
-
                         SemanticErrorKind::TypeMismatchExpectedOneOf {
                             expected,
                             received,
@@ -530,7 +507,6 @@ impl Compiler {
                                 )),
                             ])
                         }
-
                         SemanticErrorKind::ReturnNotLastStatement => diag
                             .with_message(
                                 "Expected the return statement to be the last statement \
@@ -541,7 +517,6 @@ impl Compiler {
                                     "Expected the return statement to be the last \
                                      statement in the function",
                                 )]),
-
                         SemanticErrorKind::CannotAccess(target) => diag
                             .with_message("Cannot access field")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -549,7 +524,6 @@ impl Compiler {
                                     "Cannot use the access operator on the type `{}`",
                                     type_to_string(target)
                                 ))]),
-
                         SemanticErrorKind::CannotStaticAccess(_) => diag
                             .with_message("Cannot access static field")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -563,7 +537,6 @@ impl Compiler {
                                         name
                                     ))])
                         }
-
                         SemanticErrorKind::AccessToUndefinedStaticField(id) => {
                             let name = STRING_INTERNER.resolve(id.name);
                             diag.with_message("Undefined static field")
@@ -573,7 +546,6 @@ impl Compiler {
                                         name
                                     ))])
                         }
-
                         SemanticErrorKind::FnArgumentCountMismatch {
                             expected,
                             received,
@@ -587,28 +559,24 @@ impl Compiler {
                                         expected, s, received
                                     ))])
                         }
-
                         SemanticErrorKind::CannotUseVariableDeclarationAsType => diag
                             .with_message("Cannot use variable declaration as a type")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message(
                                     "Cannot use variable declaration as a type",
                                 )]),
-
                         SemanticErrorKind::CannotUseFunctionDeclarationAsType => diag
                             .with_message("Expected type, found function")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message(
                                     "Cannot use a function declaration as a type",
                                 )]),
-
                         SemanticErrorKind::CannotUseTypeDeclarationAsValue => diag
                             .with_message("Expected value, found type")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message(
                                     "Cannot use a type declaration as a value",
                                 )]),
-
                         SemanticErrorKind::TypeAliasMustBeDeclaredAtTopLevel => diag
                             .with_message(
                                 "Type aliases must be declared in the file scope",
@@ -617,7 +585,6 @@ impl Compiler {
                                 .with_message(
                                     "Type aliases must be declared in the file scope",
                                 )]),
-
                         SemanticErrorKind::IfExpressionMissingElse => diag
                             .with_message("`if` expression missing `else` block")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -625,7 +592,6 @@ impl Compiler {
                                     "`if` expressions used as values must have an \
                                      `else` block",
                                 )]),
-
                         SemanticErrorKind::CannotCastType {
                             source_type,
                             target_type,
@@ -636,7 +602,6 @@ impl Compiler {
                                 type_to_string(target_type)
                             )),
                         ]),
-
                         SemanticErrorKind::ClosuresNotSupportedYet => diag
                             .with_message("Closures not supported")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -644,7 +609,6 @@ impl Compiler {
                                     "Capturing variables from outer scopes (closures) \
                                      is not supported yet",
                                 )]),
-
                         SemanticErrorKind::ExpectedTagWithoutValue { received } => {
                             let received_str = type_to_string(received);
                             diag.with_message("Unexpected value for tag")
@@ -658,7 +622,6 @@ impl Compiler {
                                                   following the tag identifier"
                                     .to_string()])
                         }
-
                         SemanticErrorKind::ExpectedTagWithValue { expected } => {
                             let expected_str = type_to_string(expected);
                             diag.with_message("Missing value for tag")
@@ -673,7 +636,6 @@ impl Compiler {
                                     expected_str
                                 )])
                         }
-
                         SemanticErrorKind::UnsupportedUnionNarrowing => diag
                             .with_message("Union-to-union narrowing not supported")
                             .with_labels(vec![Label::primary(file_id, range)

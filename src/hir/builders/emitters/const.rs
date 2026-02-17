@@ -5,7 +5,7 @@ use crate::{
         instructions::{ConstInstr, Instruction},
         types::{
             checked_declaration::{CheckedDeclaration, FnType},
-            checked_type::{StructKind, Type},
+            checked_type::Type,
         },
     },
     tokenize::NumberKind,
@@ -40,10 +40,7 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn emit_const_string(&mut self, constant_id: ConstantId) -> ValueId {
-        let inner = Box::new(Type::Struct(StructKind::StringHeader));
-        let ty = Type::Pointer(inner);
-
-        let dest = self.new_value_id(ty);
+        let dest = self.new_value_id(Type::String);
         self.push_instruction(Instruction::Const(ConstInstr::ConstString {
             dest,
             constant_id,
