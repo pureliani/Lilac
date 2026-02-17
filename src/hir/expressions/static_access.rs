@@ -11,7 +11,7 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         _left: Expr,
         _field: IdentifierNode,
-    ) -> Result<ValueId, SemanticError> {
+    ) -> ValueId {
         todo!("Implement static access expression builder")
     }
 }

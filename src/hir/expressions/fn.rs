@@ -114,7 +114,7 @@ impl<'a> Builder<'a, InModule> {
                 .map_name_to_decl(param.identifier.name, param_decl_id);
         }
 
-        let (final_value, final_value_span) = fn_builder.build_codeblock_expr(body)?;
+        let (final_value, final_value_span) = fn_builder.build_codeblock_expr(body);
         let final_value_type = fn_builder.get_value_type(&final_value).clone();
 
         if !check_structural_compatibility(&final_value_type, &checked_return_type) {
@@ -134,9 +134,9 @@ impl<'a> Builder<'a, InModule> {
 }
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> Result<ValueId, SemanticError> {
+    pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> ValueId {
         let id = fn_decl.id;
-        self.as_module().build_fn_body(fn_decl)?;
-        Ok(self.emit_const_fn(id))
+        self.as_module().build_fn_body(fn_decl);
+        self.emit_const_fn(id)
     }
 }

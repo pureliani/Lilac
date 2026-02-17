@@ -8,14 +8,11 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_identifier_expr(
-        &mut self,
-        identifier: IdentifierNode,
-    ) -> Result<ValueId, SemanticError> {
+    pub fn build_identifier_expr(&mut self, identifier: IdentifierNode) -> ValueId {
         let decl_id = match self.current_scope.lookup(identifier.name) {
             Some(id) => id,
             None => {
-                return Err(SemanticError {
+                return self.report_error_and_get_poison(SemanticError {
                     span: identifier.span.clone(),
                     kind: SemanticErrorKind::UndeclaredIdentifier(identifier),
                 });

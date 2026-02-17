@@ -40,12 +40,10 @@ impl<'a> Builder<'a, InGlobal> {
             for decl in &m.declarations {
                 match decl {
                     Declaration::TypeAlias(alias) => {
-                        if let Err(e) = module_builder.build_type_alias_decl(
+                        module_builder.build_type_alias_decl(
                             alias.clone(),
                             alias.identifier.span.clone(),
-                        ) {
-                            module_builder.errors.push(e);
-                        };
+                        );
                     }
                     Declaration::Fn(f) => {
                         module_builder.register_fn_signature(f);

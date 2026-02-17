@@ -1,7 +1,6 @@
 pub mod access;
 pub mod and;
 pub mod binary_op;
-pub mod bool_literal;
 pub mod codeblock;
 pub mod r#fn;
 pub mod fn_call;
@@ -9,7 +8,6 @@ pub mod identifier;
 pub mod r#if;
 pub mod is_type;
 pub mod list_literal;
-pub mod number_literal;
 pub mod or;
 pub mod static_access;
 pub mod string;
@@ -52,8 +50,8 @@ impl<'a> Builder<'a, InBlock> {
             ExprKind::And { left, right } => self.build_and_expr(*left, *right),
             ExprKind::Or { left, right } => self.build_or_expr(*left, *right),
 
-            ExprKind::BoolLiteral(value) => self.build_bool_literal(value),
-            ExprKind::Number(number_kind) => self.build_number_literal(number_kind),
+            ExprKind::BoolLiteral(value) => self.emit_const_bool(value),
+            ExprKind::Number(number_kind) => self.emit_const_number(number_kind),
             ExprKind::String(string_node) => self.build_string_literal(string_node),
 
             ExprKind::Struct(fields) => self.build_struct_init_expr(fields),
@@ -70,7 +68,7 @@ impl<'a> Builder<'a, InBlock> {
             } => self.build_if(branches, else_branch, IfContext::Expression),
 
             ExprKind::CodeBlock(block_contents) => {
-                Ok(self.build_codeblock_expr(block_contents)?.0)
+                self.build_codeblock_expr(block_contents).0
             }
 
             ExprKind::Fn(fn_decl) => self.build_fn_expr(*fn_decl),

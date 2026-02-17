@@ -13,15 +13,15 @@ impl<'a> Builder<'a, InBlock> {
         left: Expr,
         args: Vec<Expr>,
         span: Span,
-    ) -> Result<ValueId, SemanticError> {
-        let func_id = self.build_expr(left)?;
+    ) -> ValueId {
+        let func_id = self.build_expr(left);
         let func_type = self.get_value_type(&func_id).clone();
 
         let (params, return_type) = match func_type {
             Type::Fn(f) => (f.params, *f.return_type),
-            Type::Unknown => return Ok(self.new_value_id(Type::Unknown)),
+            Type::Unknown => return self.new_value_id(Type::Unknown),
             _ => {
-                return Err(SemanticError {
+                return self.report_error_and_get_poison(SemanticError {
                     kind: SemanticErrorKind::CannotCall(func_type),
                     span,
                 });
@@ -29,7 +29,7 @@ impl<'a> Builder<'a, InBlock> {
         };
 
         if args.len() != params.len() {
-            return Err(SemanticError {
+            return self.report_error_and_get_poison(SemanticError {
                 kind: SemanticErrorKind::FnArgumentCountMismatch {
                     expected: params.len(),
                     received: args.len(),
@@ -42,7 +42,7 @@ impl<'a> Builder<'a, InBlock> {
 
         for (i, arg_expr) in args.into_iter().enumerate() {
             let arg_span = arg_expr.span.clone();
-            let arg_value = self.build_expr(arg_expr)?;
+            let arg_value = self.build_expr(arg_expr);
             let param_type = params[i].ty.clone();
 
             let coerced_arg_value =
@@ -51,6 +51,6 @@ impl<'a> Builder<'a, InBlock> {
             final_args.push(coerced_arg_value);
         }
 
-        Ok(self.emit_call(func_id, final_args, return_type))
+        self.emit_call(func_id, final_args, return_type)
     }
 }

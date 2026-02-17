@@ -18,20 +18,20 @@ impl<'a> Builder<'a, InBlock> {
     /// one or more matching variant indices. Returns a bool ValueId.
     fn emit_is_type_check(
         &mut self,
-        union_ptr: ValueId,
+        union: ValueId,
         matching_indices: &[u16],
         total_variants: usize,
         span: Span,
-    ) -> Result<ValueId, SemanticError> {
+    ) -> ValueId {
         if matching_indices.is_empty() {
-            return Ok(self.emit_const_bool(false));
+            return self.emit_const_bool(false);
         }
 
         if matching_indices.len() == total_variants {
-            return Ok(self.emit_const_bool(true));
+            return self.emit_const_bool(true);
         }
 
-        let id_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.id);
+        let id_ptr = self.get_field_ptr(union, COMMON_IDENTIFIERS.id);
         let active_id = self.emit_load(id_ptr);
 
         let mut iter = matching_indices.iter();
@@ -50,16 +50,15 @@ impl<'a> Builder<'a, InBlock> {
         Ok(result_id)
     }
 
-    pub fn build_is_type_expr(
-        &mut self,
-        left: Expr,
-        ty: TypeAnnotation,
-    ) -> Result<ValueId, SemanticError> {
+    pub fn build_is_type_expr(&mut self, left: Expr, ty: TypeAnnotation) -> ValueId {
         let span = left.span.clone();
-        let place = self.resolve_place(left)?;
+        let place = match self.resolve_place(left) {
+            Ok(p) => p,
+            Err(e) => return self.report_error_and_get_poison(e),
+        };
         let place_path = place.path();
 
-        let current_val = self.read_place(&place, span.clone())?;
+        let current_val = self.read_place(&place, span.clone());
         let current_ty = self.get_value_type(&current_val).clone();
 
         let variants = current_ty
@@ -77,7 +76,7 @@ impl<'a> Builder<'a, InBlock> {
         let target_type = check_type_annotation(&mut type_ctx, &ty);
 
         if target_type.as_union_variants().is_some() {
-            return Err(SemanticError {
+            return self.report_error_and_get_poison(SemanticError {
                 kind: SemanticErrorKind::UnsupportedUnionNarrowing,
                 span: ty.span.clone(),
             });
@@ -124,7 +123,7 @@ impl<'a> Builder<'a, InBlock> {
             );
         }
 
-        Ok(result_id)
+        result_id
     }
 }
 

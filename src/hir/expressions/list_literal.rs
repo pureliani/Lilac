@@ -14,13 +14,13 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         items: Vec<Expr>,
         expr_span: Span,
-    ) -> Result<ValueId, SemanticError> {
+    ) -> ValueId {
         let mut item_values = Vec::with_capacity(items.len());
         let mut type_entries = Vec::with_capacity(items.len());
 
         for item in items {
             let span = item.span.clone();
-            let val_id = self.build_expr(item)?;
+            let val_id = self.build_expr(item);
             let ty = self.get_value_type(&val_id).clone();
 
             item_values.push(val_id);

@@ -6,20 +6,15 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::{
-            checked_declaration::CheckedParam,
-            checked_type::{StructKind, Type},
-        },
-        utils::layout::pack_struct,
+        types::checked_declaration::CheckedParam,
     },
-    tokenize::NumberKind,
 };
 
 impl<'a> Builder<'a, InBlock> {
     pub fn build_struct_init_expr(
         &mut self,
         fields: Vec<(IdentifierNode, Expr)>,
-    ) -> Result<ValueId, SemanticError> {
+    ) -> ValueId {
         let mut resolved_fields: Vec<CheckedParam> = Vec::with_capacity(fields.len());
         let mut field_values: HashMap<StringId, ValueId> =
             HashMap::with_capacity(fields.len());
@@ -27,15 +22,15 @@ impl<'a> Builder<'a, InBlock> {
 
         for (field_name, field_expr) in fields {
             if !seen_names.insert(field_name.name) {
-                return Err(SemanticError {
+                self.errors.push(SemanticError {
                     kind: SemanticErrorKind::DuplicateStructFieldInitializer(
                         field_name.clone(),
                     ),
-                    span: field_name.span,
+                    span: field_name.span.clone(),
                 });
             }
 
-            let val_id = self.build_expr(field_expr)?;
+            let val_id = self.build_expr(field_expr);
             let val_type = self.get_value_type(&val_id).clone();
 
             resolved_fields.push(CheckedParam {
@@ -45,24 +40,6 @@ impl<'a> Builder<'a, InBlock> {
             field_values.insert(field_name.name, val_id);
         }
 
-        let packed_kind = pack_struct(StructKind::UserDefined(resolved_fields));
-        let struct_type = Type::Struct(packed_kind.clone());
-
-        let count_val = self.emit_const_number(NumberKind::USize(1));
-        let struct_ptr = self.emit_heap_alloc(struct_type, count_val);
-
-        if let StructKind::UserDefined(sorted_fields) = packed_kind {
-            for field in sorted_fields {
-                let field_ptr = self.get_field_ptr(struct_ptr, field.identifier.name);
-
-                let val_id = field_values.get(&field.identifier.name).expect(
-                    "INTERNAL COMPILER ERROR: Field value missing during initialization",
-                );
-
-                self.emit_store(field_ptr, *val_id, field.identifier.span.clone());
-            }
-        }
-
-        Ok(struct_ptr)
+        todo!("Emit Instruction::Struct(StructInstr::Construct(..))")
     }
 }

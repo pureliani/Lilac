@@ -27,10 +27,11 @@ impl<'a> Builder<'a, InBlock> {
         branches: Vec<(Box<Expr>, BlockContents)>,
         else_branch: Option<BlockContents>,
         context: IfContext,
-    ) -> Result<ValueId, SemanticError> {
+    ) -> ValueId {
         if context == IfContext::Expression && else_branch.is_none() {
             let span = branches.first().unwrap().0.span.clone();
-            return Err(SemanticError {
+
+            return self.report_error_and_get_poison(SemanticError {
                 kind: SemanticErrorKind::IfExpressionMissingElse,
                 span,
             });
@@ -44,11 +45,11 @@ impl<'a> Builder<'a, InBlock> {
             self.use_basic_block(current_cond_block_id);
 
             let condition_span = condition.span.clone();
-            let cond_id = self.build_expr(*condition)?;
+            let cond_id = self.build_expr(*condition);
             let cond_ty = self.get_value_type(&cond_id);
 
             if !check_structural_compatibility(cond_ty, &Type::Bool) {
-                return Err(SemanticError {
+                return self.report_error_and_get_poison(SemanticError {
                     span: condition_span,
                     kind: SemanticErrorKind::TypeMismatch {
                         expected: Type::Bool,
@@ -62,16 +63,16 @@ impl<'a> Builder<'a, InBlock> {
 
             self.emit_cond_jmp(cond_id, then_block_id, next_cond_block_id);
 
-            self.seal_block(then_block_id)?;
+            self.seal_block(then_block_id);
             self.use_basic_block(then_block_id);
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_true_type {
-                    self.apply_narrowing(pred.place.clone(), ty, condition_span.clone())?;
+                    self.apply_narrowing(pred.place.clone(), ty, condition_span.clone());
                 }
             }
 
-            let (then_val, then_val_span) = self.build_codeblock_expr(body)?;
+            let (then_val, then_val_span) = self.build_codeblock_expr(body);
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, then_val, then_val_span));
@@ -82,7 +83,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if let Some(pred) = self.type_predicates.get(&cond_id).cloned() {
                 if let Some(ty) = pred.on_false_type {
-                    self.apply_narrowing(pred.place.clone(), ty, condition_span.clone())?;
+                    self.apply_narrowing(pred.place.clone(), ty, condition_span.clone());
                 }
             }
 
@@ -91,7 +92,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.use_basic_block(current_cond_block_id);
         if let Some(else_body) = else_branch {
-            let (else_val, else_val_span) = self.build_codeblock_expr(else_body)?;
+            let (else_val, else_val_span) = self.build_codeblock_expr(else_body);
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, else_val, else_val_span));
@@ -101,9 +102,9 @@ impl<'a> Builder<'a, InBlock> {
             self.emit_jmp(merge_block_id);
         }
 
-        self.seal_block(current_cond_block_id)?;
+        self.seal_block(current_cond_block_id);
 
-        self.seal_block(merge_block_id)?;
+        self.seal_block(merge_block_id);
         self.use_basic_block(merge_block_id);
 
         if context == IfContext::Expression {
@@ -133,7 +134,7 @@ impl<'a> Builder<'a, InBlock> {
                 self.use_basic_block(current_block);
                 let phi_id = self.new_value_id(result_type);
                 self.insert_phi(merge_block_id, phi_id, coerced_sources);
-                Ok(phi_id)
+                phi_id
             } else {
                 let phi_id = self.new_value_id(result_type);
                 let phi_sources: HashSet<PhiSource> = branch_results
@@ -141,10 +142,10 @@ impl<'a> Builder<'a, InBlock> {
                     .map(|(block, value, _)| PhiSource { from: block, value })
                     .collect();
                 self.insert_phi(merge_block_id, phi_id, phi_sources);
-                Ok(phi_id)
+                phi_id
             }
         } else {
-            Ok(self.emit_const_void())
+            self.emit_const_void()
         }
     }
 
@@ -155,17 +156,12 @@ impl<'a> Builder<'a, InBlock> {
     /// - Already the target type (assignment narrowing): no-op.
     /// - Union narrowed to a single variant: unwrap_from_union.
     /// - Union narrowed to a smaller union (subset): narrow_union.
-    pub fn apply_narrowing(
-        &mut self,
-        place: Place,
-        new_type: Type,
-        span: Span,
-    ) -> Result<(), SemanticError> {
-        let current_val = self.read_place(&place, span.clone())?;
+    pub fn apply_narrowing(&mut self, place: Place, new_type: Type, span: Span) {
+        let current_val = self.read_place(&place, span.clone());
         let current_ty = self.get_value_type(&current_val).clone();
 
         if check_structural_compatibility(&current_ty, &new_type) {
-            return Ok(());
+            return;
         }
 
         let source_variants = current_ty.as_union_variants().unwrap_or_else(|| {
@@ -178,13 +174,12 @@ impl<'a> Builder<'a, InBlock> {
         if new_type.as_union_variants().is_none() {
             let narrowed = self.unwrap_from_union(current_val, &new_type);
             self.remap_place(&place, narrowed);
-            return Ok(());
+            return;
         }
 
         let target_variants = new_type.as_union_variants().unwrap();
         let narrowed =
             self.narrow_union(current_val, source_variants, target_variants, span);
         self.remap_place(&place, narrowed);
-        Ok(())
     }
 }

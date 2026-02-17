@@ -2,16 +2,12 @@ use crate::{
     ast::{expr::BlockContents, Span},
     hir::{
         builders::{Builder, InBlock, ValueId},
-        errors::SemanticError,
         utils::scope::ScopeKind,
     },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_codeblock_expr(
-        &mut self,
-        codeblock: BlockContents,
-    ) -> Result<(ValueId, Span), SemanticError> {
+    pub fn build_codeblock_expr(&mut self, codeblock: BlockContents) -> (ValueId, Span) {
         let mut final_expr_span = Span {
             start: codeblock.span.end,
             end: codeblock.span.end,
@@ -25,7 +21,7 @@ impl<'a> Builder<'a, InBlock> {
         self.build_statements(codeblock.statements);
         let result_id = if let Some(final_expr) = codeblock.final_expr {
             final_expr_span = final_expr.span.clone();
-            self.build_expr(*final_expr)?
+            self.build_expr(*final_expr)
         } else {
             self.emit_const_void()
         };
@@ -35,6 +31,6 @@ impl<'a> Builder<'a, InBlock> {
             .exit(codeblock.span.end)
             .expect("INTERNAL COMPILER ERROR: Scope stack mismatch in codeblock");
 
-        Ok((result_id, final_expr_span))
+        (result_id, final_expr_span)
     }
 }
