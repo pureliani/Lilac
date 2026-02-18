@@ -4,6 +4,7 @@ use crate::{
 };
 use std::{collections::BTreeSet, hash::Hash};
 
+// TODO: make cheaper to clone
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Type {
     Void,

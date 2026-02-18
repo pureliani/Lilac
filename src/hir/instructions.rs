@@ -145,12 +145,10 @@ pub enum UnionInstr {
     WidenUnion {
         dest: ValueId,
         src: ValueId,
-        target_variants: BTreeSet<Type>,
     },
     NarrowUnion {
         dest: ValueId,
         src: ValueId,
-        target_variants: BTreeSet<Type>,
     },
 }
 

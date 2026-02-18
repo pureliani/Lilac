@@ -1,50 +1,38 @@
 use std::collections::BTreeSet;
 
-use crate::{
-    ast::Span,
-    globals::COMMON_IDENTIFIERS,
-    hir::{
-        builders::{Builder, InBlock, ValueId},
-        types::checked_type::{StructKind, Type},
-        utils::adjustments::check_structural_compatibility,
-    },
-    tokenize::NumberKind,
+use crate::hir::{
+    builders::{Builder, InBlock, ValueId},
+    instructions::{Instruction, UnionInstr},
+    types::checked_type::Type,
+    utils::adjustments::check_structural_compatibility,
 };
 
 impl<'a> Builder<'a, InBlock> {
-    /// Wraps a single variant value into a union. Stack-allocates the union
-    /// struct, writes the discriminant and payload.
-    pub fn wrap_in_union(
+    /// Wraps a single variant value into a union.
+    pub fn emit_wrap_in_union(
         &mut self,
         source: ValueId,
         variants: &BTreeSet<Type>,
-        span: Span,
     ) -> ValueId {
         let source_type = self.get_value_type(&source).clone();
 
-        let variant_index = variants
-            .iter()
-            .position(|v| check_structural_compatibility(v, &source_type))
-            .unwrap_or_else(|| {
-                panic!(
-                    "INTERNAL COMPILER ERROR: wrap_in_union - source type is not a \
+        assert!(
+            variants
+                .iter()
+                .position(|v| check_structural_compatibility(v, &source_type))
+                .is_some(),
+            "INTERNAL COMPILER ERROR: wrap_in_union - source type is not a \
                      variant of the union"
-                )
-            });
+        );
 
-        let struct_type = Type::Struct(StructKind::Union(variants.clone()));
-        let union_ptr = self.emit_stack_alloc(struct_type, 1);
+        let new_union_value = self.new_value_id(Type::Union(variants.clone()));
+        self.push_instruction(Instruction::Union(UnionInstr::WrapInUnion {
+            dest: new_union_value,
+            src: source,
+            target_variants: variants.clone(),
+        }));
 
-        let id_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.id);
-        let id_val = self.emit_const_number(NumberKind::U16(variant_index as u16));
-        self.emit_store(id_ptr, id_val, span.clone());
-
-        let value_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.value);
-        let typed_ptr =
-            self.emit_bitcast_unsafe(value_ptr, Type::Pointer(Box::new(source_type)));
-        self.emit_store(typed_ptr, source, span);
-
-        union_ptr
+        new_union_value
     }
 
     /// Extracts a variant value from a union pointer. Caller must ensure
@@ -52,59 +40,67 @@ impl<'a> Builder<'a, InBlock> {
     /// known assignment).
     pub fn unwrap_from_union(
         &mut self,
-        union_ptr: ValueId,
+        union_value: ValueId,
         variant_type: &Type,
     ) -> ValueId {
-        let union_ptr_ty = self.get_value_type(&union_ptr);
+        let union_value_ty = self.get_value_type(&union_value);
         assert!(
-            union_ptr_ty
+            union_value_ty
                 .as_union_variants()
-                .expect(
-                    "INTERNAL COMPILER ERROR: unwrap_from_union - union_ptr is not \
-                     pointing to a union"
-                )
+                .expect("INTERNAL COMPILER ERROR: unwrap_from_union - union_value is not a union")
                 .iter()
                 .any(|v| { check_structural_compatibility(v, variant_type) }),
-            "INTERNAL COMPILER ERROR: unwrap_from_union - variant_type is not a \
-             member of the union"
+            "INTERNAL COMPILER ERROR: unwrap_from_union - variant_type is not a member of the union"
         );
 
-        let value_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.value);
-        let typed_ptr = self.emit_bitcast_unsafe(
-            value_ptr,
-            Type::Pointer(Box::new(variant_type.clone())),
-        );
-        self.emit_load(typed_ptr)
+        let payload_value = self.new_value_id(variant_type.clone());
+        self.push_instruction(Instruction::Union(UnionInstr::UnwrapUnion {
+            dest: payload_value,
+            src: union_value,
+            variant_type: variant_type.clone(),
+        }));
+        payload_value
     }
 
     /// Tests whether a union value holds a specific variant. Returns a
     /// bool ValueId.
-    pub fn test_variant(&mut self, union_ptr: ValueId, variant_type: &Type) -> ValueId {
-        let union_type = self.get_value_type(&union_ptr).clone();
+    pub fn test_variant(&mut self, union_value: ValueId, variant_type: &Type) -> ValueId {
+        let union_type = self.get_value_type(&union_value).clone();
         let variants = union_type
             .as_union_variants()
             .expect("INTERNAL COMPILER ERROR: test_variant called with non-union");
 
-        let variant_index = variants
-            .iter()
-            .position(|v| check_structural_compatibility(v, variant_type))
-            .expect("INTERNAL COMPILER ERROR: variant not found in union");
+        assert!(
+            variants
+                .iter()
+                .position(|v| check_structural_compatibility(v, variant_type))
+                .is_some(),
+            "INTERNAL COMPILER ERROR: variant not found in union"
+        );
 
-        let id_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.id);
-        let id_val = self.emit_load(id_ptr);
-        let expected = self.emit_const_number(NumberKind::U16(variant_index as u16));
-        self.emit_ieq(id_val, expected)
+        let bool_value = self.new_value_id(Type::Bool);
+        self.push_instruction(Instruction::Union(UnionInstr::TestVariant {
+            dest: bool_value,
+            src: union_value,
+            variant_type: variant_type.clone(),
+        }));
+        bool_value
     }
 
     /// Widens a union to a larger union that contains all source variants
     /// plus additional ones. Copies the payload and remaps the discriminant.
     pub fn widen_union(
         &mut self,
-        source_ptr: ValueId,
-        source_variants: &BTreeSet<Type>,
+        union: ValueId,
         target_variants: &BTreeSet<Type>,
-        span: Span,
     ) -> ValueId {
+        let source_variants = match self.get_value_type(&union) {
+            Type::Union(variants) => variants,
+            _ => {
+                panic!("INTERNAL COMPILER ERROR: narrow_union called on non-union type")
+            }
+        };
+
         assert!(
             source_variants.len() <= target_variants.len(),
             "INTERNAL COMPILER ERROR: widen_union called but source has more \
@@ -121,18 +117,13 @@ impl<'a> Builder<'a, InBlock> {
             );
         }
 
-        let remap = self.build_variant_remap(source_variants, target_variants);
+        let dest = self.new_value_id(Type::Union(target_variants.clone()));
+        self.push_instruction(Instruction::Union(UnionInstr::WidenUnion {
+            dest,
+            src: union,
+        }));
 
-        let target_struct = Type::Struct(StructKind::Union(target_variants.clone()));
-        let target_ptr = self.emit_stack_alloc(target_struct, 1);
-
-        let src_value_ptr = self.get_field_ptr(source_ptr, COMMON_IDENTIFIERS.value);
-        let dst_value_ptr = self.get_field_ptr(target_ptr, COMMON_IDENTIFIERS.value);
-        self.emit_memcopy(src_value_ptr, dst_value_ptr);
-
-        self.emit_discriminant_remap(source_ptr, target_ptr, &remap, span);
-
-        target_ptr
+        dest
     }
 
     /// Narrows a union to a smaller union that contains a subset of the
@@ -144,13 +135,18 @@ impl<'a> Builder<'a, InBlock> {
     /// the runtime invariant.
     pub fn narrow_union(
         &mut self,
-        source_ptr: ValueId,
-        source_variants: &BTreeSet<Type>,
+        union: ValueId,
         target_variants: &BTreeSet<Type>,
-        span: Span,
     ) -> ValueId {
+        let source_variants = match self.get_value_type(&union) {
+            Type::Union(variants) => variants,
+            _ => {
+                panic!("INTERNAL COMPILER ERROR: narrow_union called on non-union type")
+            }
+        };
+
         assert!(
-            target_variants.len() < source_variants.len(),
+            source_variants.len() > target_variants.len(),
             "INTERNAL COMPILER ERROR: narrow_union called but target has >= \
              variants than source (use widen_union instead)"
         );
@@ -165,86 +161,12 @@ impl<'a> Builder<'a, InBlock> {
             );
         }
 
-        // Remap: for each source variant that exists in target, map
-        // source_index -> target_index. Source variants not in target
-        // are skipped (they can't be active at runtime).
-        let remap: Vec<(u16, u16)> = source_variants
-            .iter()
-            .enumerate()
-            .filter_map(|(src_idx, variant)| {
-                let tgt_idx = target_variants
-                    .iter()
-                    .position(|v| check_structural_compatibility(v, variant));
-                tgt_idx.map(|ti| (src_idx as u16, ti as u16))
-            })
-            .collect();
+        let dest = self.new_value_id(Type::Union(target_variants.clone()));
+        self.push_instruction(Instruction::Union(UnionInstr::NarrowUnion {
+            dest,
+            src: union,
+        }));
 
-        let target_struct = Type::Struct(StructKind::Union(target_variants.clone()));
-        let target_ptr = self.emit_stack_alloc(target_struct, 1);
-
-        // Source payload >= target payload in size. The active variant
-        // fits in the target buffer. Bitcast the source payload to the
-        // target payload type so memcopy uses the target (smaller) size.
-        let src_value_ptr = self.get_field_ptr(source_ptr, COMMON_IDENTIFIERS.value);
-        let dst_value_ptr = self.get_field_ptr(target_ptr, COMMON_IDENTIFIERS.value);
-
-        let src_as_target_payload = self.emit_bitcast_unsafe(
-            src_value_ptr,
-            Type::Pointer(Box::new(Type::UnionPayload(target_variants.clone()))),
-        );
-        self.emit_memcopy(src_as_target_payload, dst_value_ptr);
-
-        self.emit_discriminant_remap(source_ptr, target_ptr, &remap, span);
-
-        target_ptr
-    }
-
-    /// Builds the index remap table: for each source variant, find its
-    /// position in the target variant set.
-    fn build_variant_remap(
-        &self,
-        source_variants: &BTreeSet<Type>,
-        target_variants: &BTreeSet<Type>,
-    ) -> Vec<(u16, u16)> {
-        source_variants
-            .iter()
-            .enumerate()
-            .map(|(src_idx, variant)| {
-                let tgt_idx = target_variants
-                    .iter()
-                    .position(|v| check_structural_compatibility(v, variant))
-                    .expect(
-                        "INTERNAL COMPILER ERROR: source variant not found in target \
-                         union",
-                    );
-                (src_idx as u16, tgt_idx as u16)
-            })
-            .collect()
-    }
-
-    /// Emits the select chain that remaps the discriminant from source
-    /// indices to target indices, then stores it in the target union.
-    fn emit_discriminant_remap(
-        &mut self,
-        source_ptr: ValueId,
-        target_ptr: ValueId,
-        remap: &[(u16, u16)],
-        span: Span,
-    ) {
-        let src_id_ptr = self.get_field_ptr(source_ptr, COMMON_IDENTIFIERS.id);
-        let src_id = self.emit_load(src_id_ptr);
-
-        let mut remapped_id =
-            self.emit_const_number(NumberKind::U16(remap.last().unwrap().1));
-
-        for &(src_idx, tgt_idx) in remap.iter().rev().skip(1) {
-            let cmp_val = self.emit_const_number(NumberKind::U16(src_idx));
-            let is_match = self.emit_ieq(src_id, cmp_val);
-            let tgt_val = self.emit_const_number(NumberKind::U16(tgt_idx));
-            remapped_id = self.emit_select(is_match, tgt_val, remapped_id);
-        }
-
-        let dst_id_ptr = self.get_field_ptr(target_ptr, COMMON_IDENTIFIERS.id);
-        self.emit_store(dst_id_ptr, remapped_id, span);
+        dest
     }
 }
