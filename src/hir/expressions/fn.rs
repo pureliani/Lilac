@@ -115,7 +115,7 @@ impl<'a> Builder<'a, InModule> {
         }
 
         let (final_value, final_value_span) = fn_builder.build_codeblock_expr(body);
-        let final_value_type = fn_builder.get_value_type(&final_value).clone();
+        let final_value_type = fn_builder.get_value_type(final_value).clone();
 
         if !check_structural_compatibility(&final_value_type, &checked_return_type) {
             return Err(SemanticError {

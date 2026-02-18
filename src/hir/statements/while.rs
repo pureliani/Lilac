@@ -19,7 +19,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let condition_span = condition.span.clone();
         let cond_id = self.build_expr(condition);
-        let cond_ty = self.get_value_type(&cond_id);
+        let cond_ty = self.get_value_type(cond_id);
 
         if !check_structural_compatibility(cond_ty, &Type::Bool) {
             self.errors.push(SemanticError {

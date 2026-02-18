@@ -15,7 +15,7 @@ impl<'a> Builder<'a, InBlock> {
         span: Span,
     ) -> ValueId {
         let func_id = self.build_expr(left);
-        let func_type = self.get_value_type(&func_id).clone();
+        let func_type = self.get_value_type(func_id).clone();
 
         let (params, return_type) = match func_type {
             Type::Fn(f) => (f.params, *f.return_type),

@@ -24,7 +24,7 @@ impl<'a> Builder<'a, InBlock> {
         let value_span = var_decl.value.span.clone();
 
         let val_id = self.build_expr(var_decl.value);
-        let val_type = self.get_value_type(&val_id).clone();
+        let val_type = self.get_value_type(val_id).clone();
 
         let constraint = if let Some(annotation) = &var_decl.constraint {
             let mut type_ctx = TypeCheckerContext {

@@ -81,7 +81,7 @@ impl<'a> Builder<'a, InBlock> {
                 let base = self.resolve_place(*left)?;
 
                 let base_val = self.read_place(&base, field.span.clone());
-                let base_type = self.get_value_type(&base_val).clone();
+                let base_type = self.get_value_type(base_val).clone();
 
                 if matches!(&base_type, Type::Struct(_)) {
                     Ok(Place::Field(Box::new(base), field.name))

@@ -86,7 +86,7 @@ impl<'a> Builder<'a, InBlock> {
     where
         F: FnOnce(&mut Self) -> Result<ValueId, SemanticError>,
     {
-        let left_type = self.get_value_type(&left);
+        let left_type = self.get_value_type(left);
         if !check_structural_compatibility(left_type, &Type::Bool) {
             return Err(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
@@ -109,7 +109,7 @@ impl<'a> Builder<'a, InBlock> {
         let right = produce_right(self)?;
         let right_block = self.context.block_id;
 
-        let right_type = self.get_value_type(&right);
+        let right_type = self.get_value_type(right);
         if !check_structural_compatibility(right_type, &Type::Bool) {
             return Err(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
@@ -153,7 +153,7 @@ impl<'a> Builder<'a, InBlock> {
     where
         F: FnOnce(&mut Self) -> ValueId,
     {
-        let left_type = self.get_value_type(&left);
+        let left_type = self.get_value_type(left);
         if !check_structural_compatibility(left_type, &Type::Bool) {
             self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
@@ -176,7 +176,7 @@ impl<'a> Builder<'a, InBlock> {
         let right = produce_right(self);
         let right_block = self.context.block_id;
 
-        let right_type = self.get_value_type(&right);
+        let right_type = self.get_value_type(right);
         if !check_structural_compatibility(right_type, &Type::Bool) {
             self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {

@@ -31,7 +31,7 @@ impl<'a> Builder<'a, InBlock> {
             }
 
             let val_id = self.build_expr(field_expr);
-            let val_type = self.get_value_type(&val_id).clone();
+            let val_type = self.get_value_type(val_id).clone();
 
             resolved_fields.push(CheckedParam {
                 identifier: field_name.clone(),

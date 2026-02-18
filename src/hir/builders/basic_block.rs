@@ -112,8 +112,8 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn get_value_type(&self, id: &ValueId) -> &Type {
-        self.program.value_types.get(id).unwrap_or_else(|| {
+    pub fn get_value_type(&self, id: ValueId) -> &Type {
+        self.program.value_types.get(&id).unwrap_or_else(|| {
             panic!("INTERNAL COMPILER ERROR: ValueId({}) has no type", id.0)
         })
     }
@@ -130,10 +130,10 @@ impl<'a> Builder<'a, InBlock> {
         );
 
         let first_source = sources.iter().next().unwrap();
-        let expected_type = self.get_value_type(&first_source.value);
+        let expected_type = self.get_value_type(first_source.value);
 
         for source in &sources {
-            let current_type = self.get_value_type(&source.value);
+            let current_type = self.get_value_type(source.value);
 
             if expected_type != current_type {
                 panic!(
@@ -262,7 +262,7 @@ impl<'a> Builder<'a, InBlock> {
         target_union: &Type,
         span: Span,
     ) -> ValueId {
-        let val_type = self.get_value_type(&val).clone();
+        let val_type = self.get_value_type(val).clone();
 
         if val_type == *target_union {
             return val;
@@ -280,12 +280,12 @@ impl<'a> Builder<'a, InBlock> {
             });
 
             if source_is_subset {
-                self.widen_union(val, source_variants, target_variants, span)
+                self.emit_widen_union(val, target_variants)
             } else {
-                self.narrow_union(val, source_variants, target_variants, span)
+                self.emit_narrow_union(val, target_variants)
             }
         } else {
-            self.wrap_in_union(val, target_variants, span)
+            self.emit_wrap_in_union(val, target_variants)
         }
     }
 
@@ -305,7 +305,7 @@ impl<'a> Builder<'a, InBlock> {
         for pred in &predecessors {
             let val = self.read_place_from_block(*pred, place, span.clone());
             phi_sources.push((*pred, val));
-            incoming_types.push(self.get_value_type(&val).clone());
+            incoming_types.push(self.get_value_type(val).clone());
         }
 
         let unified_type = Type::make_union(incoming_types);

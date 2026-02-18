@@ -216,7 +216,7 @@ impl<'a> Builder<'a, InBlock> {
         target: &Type,
         is_explicit: bool,
     ) -> Result<Adjustment, SemanticErrorKind> {
-        let source_type = self.get_value_type(&source).clone();
+        let source_type = self.get_value_type(source).clone();
         compute_type_adjustment(&source_type, target, is_explicit)
     }
 
@@ -229,7 +229,7 @@ impl<'a> Builder<'a, InBlock> {
         field_adjustments: Vec<(StringId, Adjustment)>,
         span: Span,
     ) -> ValueId {
-        let source_type = self.get_value_type(&source).clone();
+        let source_type = self.get_value_type(source).clone();
         let source_inner = source_type
             .try_unwrap_pointer()
             .expect("INTERNAL COMPILER ERROR: CoerceStruct source is not a pointer");

@@ -21,7 +21,7 @@ impl<'a> Builder<'a, InBlock> {
         for item in items {
             let span = item.span.clone();
             let val_id = self.build_expr(item);
-            let ty = self.get_value_type(&val_id).clone();
+            let ty = self.get_value_type(val_id).clone();
 
             item_values.push(val_id);
             type_entries.push((ty, span));

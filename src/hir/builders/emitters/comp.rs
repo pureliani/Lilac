@@ -48,7 +48,7 @@ impl<'a> Builder<'a, InBlock> {
         true_value: ValueId,
         false_value: ValueId,
     ) -> ValueId {
-        let condition_type = self.get_value_type(&condition);
+        let condition_type = self.get_value_type(condition);
 
         if !check_structural_compatibility(condition_type, &Type::Bool) {
             panic!(
@@ -57,8 +57,8 @@ impl<'a> Builder<'a, InBlock> {
             );
         }
 
-        let true_value_type = self.get_value_type(&true_value);
-        let false_value_type = self.get_value_type(&false_value);
+        let true_value_type = self.get_value_type(true_value);
+        let false_value_type = self.get_value_type(false_value);
 
         if !check_structural_compatibility(true_value_type, false_value_type) {
             panic!(

@@ -24,7 +24,7 @@ impl<'a> Builder<'a, InBlock> {
         };
 
         let val_id = self.build_expr(value);
-        let actual_type = self.get_value_type(&val_id);
+        let actual_type = self.get_value_type(val_id);
 
         if !check_structural_compatibility(actual_type, &expected_return_type) {
             self.errors.push(SemanticError {

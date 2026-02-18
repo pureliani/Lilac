@@ -14,7 +14,7 @@ impl<'a> Builder<'a, InBlock> {
         source: ValueId,
         variants: &BTreeSet<Type>,
     ) -> ValueId {
-        let source_type = self.get_value_type(&source).clone();
+        let source_type = self.get_value_type(source).clone();
 
         assert!(
             variants
@@ -38,12 +38,12 @@ impl<'a> Builder<'a, InBlock> {
     /// Extracts a variant value from a union pointer. Caller must ensure
     /// the active variant matches `variant_type` (via test_variant or
     /// known assignment).
-    pub fn unwrap_from_union(
+    pub fn emit_unwrap_from_union(
         &mut self,
         union_value: ValueId,
         variant_type: &Type,
     ) -> ValueId {
-        let union_value_ty = self.get_value_type(&union_value);
+        let union_value_ty = self.get_value_type(union_value);
         assert!(
             union_value_ty
                 .as_union_variants()
@@ -64,8 +64,12 @@ impl<'a> Builder<'a, InBlock> {
 
     /// Tests whether a union value holds a specific variant. Returns a
     /// bool ValueId.
-    pub fn test_variant(&mut self, union_value: ValueId, variant_type: &Type) -> ValueId {
-        let union_type = self.get_value_type(&union_value).clone();
+    pub fn emit_test_variant(
+        &mut self,
+        union_value: ValueId,
+        variant_type: &Type,
+    ) -> ValueId {
+        let union_type = self.get_value_type(union_value);
         let variants = union_type
             .as_union_variants()
             .expect("INTERNAL COMPILER ERROR: test_variant called with non-union");
@@ -89,12 +93,12 @@ impl<'a> Builder<'a, InBlock> {
 
     /// Widens a union to a larger union that contains all source variants
     /// plus additional ones. Copies the payload and remaps the discriminant.
-    pub fn widen_union(
+    pub fn emit_widen_union(
         &mut self,
         union: ValueId,
         target_variants: &BTreeSet<Type>,
     ) -> ValueId {
-        let source_variants = match self.get_value_type(&union) {
+        let source_variants = match self.get_value_type(union) {
             Type::Union(variants) => variants,
             _ => {
                 panic!("INTERNAL COMPILER ERROR: narrow_union called on non-union type")
@@ -133,12 +137,12 @@ impl<'a> Builder<'a, InBlock> {
     /// the target variants (via a prior type check). This method validates
     /// the structural precondition (target ⊂ source) but cannot validate
     /// the runtime invariant.
-    pub fn narrow_union(
+    pub fn emit_narrow_union(
         &mut self,
         union: ValueId,
         target_variants: &BTreeSet<Type>,
     ) -> ValueId {
-        let source_variants = match self.get_value_type(&union) {
+        let source_variants = match self.get_value_type(union) {
             Type::Union(variants) => variants,
             _ => {
                 panic!("INTERNAL COMPILER ERROR: narrow_union called on non-union type")

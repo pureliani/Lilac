@@ -59,7 +59,7 @@ impl<'a> Builder<'a, InBlock> {
         let place_path = place.path();
 
         let current_val = self.read_place(&place, span.clone());
-        let current_ty = self.get_value_type(&current_val).clone();
+        let current_ty = self.get_value_type(current_val).clone();
 
         let variants = current_ty
             .as_union_variants()

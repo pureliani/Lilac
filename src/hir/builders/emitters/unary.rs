@@ -11,7 +11,7 @@ use crate::{
 
 impl<'a> Builder<'a, InBlock> {
     pub fn emit_neg(&mut self, src: ValueId, span: Span) -> ValueId {
-        let ty = self.get_value_type(&src);
+        let ty = self.get_value_type(src);
 
         if !is_signed(ty) {
             return self.report_error_and_get_poison(SemanticError {
@@ -26,7 +26,7 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn emit_not(&mut self, src: ValueId, span: Span) -> ValueId {
-        let ty = self.get_value_type(&src);
+        let ty = self.get_value_type(src);
 
         if !check_structural_compatibility(ty, &Type::Bool) {
             return self.report_error_and_get_poison(SemanticError {

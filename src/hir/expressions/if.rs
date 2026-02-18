@@ -46,7 +46,7 @@ impl<'a> Builder<'a, InBlock> {
 
             let condition_span = condition.span.clone();
             let cond_id = self.build_expr(*condition);
-            let cond_ty = self.get_value_type(&cond_id);
+            let cond_ty = self.get_value_type(cond_id);
 
             if !check_structural_compatibility(cond_ty, &Type::Bool) {
                 return self.report_error_and_get_poison(SemanticError {
@@ -110,7 +110,7 @@ impl<'a> Builder<'a, InBlock> {
         if context == IfContext::Expression {
             let type_entries: Vec<Type> = branch_results
                 .iter()
-                .map(|(_, val, _)| self.get_value_type(val).clone())
+                .map(|(_, val, _)| self.get_value_type(*val).clone())
                 .collect();
 
             let result_type = Type::make_union(type_entries);
@@ -158,28 +158,20 @@ impl<'a> Builder<'a, InBlock> {
     /// - Union narrowed to a smaller union (subset): narrow_union.
     pub fn apply_narrowing(&mut self, place: Place, new_type: Type, span: Span) {
         let current_val = self.read_place(&place, span.clone());
-        let current_ty = self.get_value_type(&current_val).clone();
+        let current_ty = self.get_value_type(current_val).clone();
 
         if check_structural_compatibility(&current_ty, &new_type) {
             return;
         }
 
-        let source_variants = current_ty.as_union_variants().unwrap_or_else(|| {
-            panic!(
-                "INTERNAL COMPILER ERROR: apply_narrowing called but current type \
-                 is neither compatible nor a union"
-            )
-        });
-
         if new_type.as_union_variants().is_none() {
-            let narrowed = self.unwrap_from_union(current_val, &new_type);
+            let narrowed = self.emit_unwrap_from_union(current_val, &new_type);
             self.remap_place(&place, narrowed);
             return;
         }
 
         let target_variants = new_type.as_union_variants().unwrap();
-        let narrowed =
-            self.narrow_union(current_val, source_variants, target_variants, span);
+        let narrowed = self.emit_narrow_union(current_val, target_variants);
         self.remap_place(&place, narrowed);
     }
 }
