@@ -7,24 +7,12 @@ pub trait Id: Copy + Eq + Hash {
     fn to_usize(&self) -> usize;
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StringId(pub usize);
 
 impl Id for StringId {
     fn from_usize(index: usize) -> Self {
         StringId(index)
-    }
-    fn to_usize(&self) -> usize {
-        self.0
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TagId(pub usize);
-
-impl Id for TagId {
-    fn from_usize(index: usize) -> Self {
-        TagId(index)
     }
     fn to_usize(&self) -> usize {
         self.0
@@ -155,4 +143,3 @@ where
 }
 
 pub type SharedStringInterner = SharedInterner<String, StringId>;
-pub type SharedTagInterner = SharedInterner<StringId, TagId>;

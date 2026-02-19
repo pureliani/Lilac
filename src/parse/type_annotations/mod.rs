@@ -1,7 +1,6 @@
 pub mod parse_fn_type_annotation;
 pub mod parse_parenthesized_type_annotation;
 pub mod parse_struct_type_annotation;
-pub mod parse_tag_type_annotation;
 
 use super::{Parser, ParsingError, ParsingErrorKind};
 use crate::{
@@ -9,6 +8,8 @@ use crate::{
         type_annotation::{TypeAnnotation, TypeAnnotationKind},
         Span,
     },
+    globals::STRING_INTERNER,
+    hir::types::{checked_type::LiteralType, ordered_number_kind::OrderedNumberKind},
     tokenize::{KeywordKind, PunctuationKind, TokenKind},
 };
 
@@ -173,8 +174,48 @@ impl Parser {
                     span,
                 }
             }
-            TokenKind::Punctuation(PunctuationKind::Hash) => {
-                self.parse_tag_type_annotation()?
+            TokenKind::Keyword(KeywordKind::Null) => {
+                let span = token.span.clone();
+                self.advance();
+                TypeAnnotation {
+                    kind: TypeAnnotationKind::Null,
+                    span,
+                }
+            }
+            TokenKind::Number(num_kind) => {
+                let span = token.span.clone();
+                self.advance();
+                TypeAnnotation {
+                    kind: TypeAnnotationKind::Literal(LiteralType::Number(
+                        OrderedNumberKind(num_kind),
+                    )),
+                    span,
+                }
+            }
+            TokenKind::String(ref s) => {
+                let span = token.span.clone();
+                let id = STRING_INTERNER.intern(s);
+                self.advance();
+                TypeAnnotation {
+                    kind: TypeAnnotationKind::Literal(LiteralType::String(id)),
+                    span,
+                }
+            }
+            TokenKind::Keyword(KeywordKind::True) => {
+                let span = token.span.clone();
+                self.advance();
+                TypeAnnotation {
+                    kind: TypeAnnotationKind::Literal(LiteralType::Bool(true)),
+                    span,
+                }
+            }
+            TokenKind::Keyword(KeywordKind::False) => {
+                let span = token.span.clone();
+                self.advance();
+                TypeAnnotation {
+                    kind: TypeAnnotationKind::Literal(LiteralType::Bool(false)),
+                    span,
+                }
             }
             TokenKind::Punctuation(PunctuationKind::LParen) => {
                 self.parse_parenthesized_type_annotation()?

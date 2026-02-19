@@ -5,7 +5,6 @@ pub mod parse_if_expr;
 pub mod parse_list_literal_expr;
 pub mod parse_parenthesized_expr;
 pub mod parse_struct_init_expr;
-pub mod parse_tag_expr;
 
 use crate::{
     ast::{
@@ -103,7 +102,6 @@ impl Parser {
                 }
             }
             TokenKind::Keyword(KeywordKind::Fn) => self.parse_fn_expr()?,
-            TokenKind::Punctuation(PunctuationKind::Hash) => self.parse_tag_expr()?,
             TokenKind::Punctuation(PunctuationKind::LParen) => {
                 let start_offset = self.offset;
                 let result = self.parse_parenthesized_expr()?;

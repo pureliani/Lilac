@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::{
     ast::DeclarationId,
-    compile::interner::{StringId, TagId},
+    compile::interner::StringId,
     hir::{
         builders::{BasicBlockId, ConstantId, ValueId},
         types::checked_type::Type,
@@ -12,10 +12,6 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub enum ConstInstr {
-    ConstTag {
-        dest: ValueId,
-        val: TagId,
-    },
     ConstNumber {
         dest: ValueId,
         val: NumberKind,
@@ -177,6 +173,27 @@ pub enum ListInstr {
 }
 
 #[derive(Clone, Debug)]
+pub struct CastInstr {
+    pub src: ValueId,
+    pub dest: ValueId,
+}
+
+#[derive(Clone, Debug)]
+pub struct CallInstr {
+    pub dest: ValueId,
+    pub func: ValueId,
+    pub args: Vec<ValueId>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SelectInstr {
+    pub dest: ValueId,
+    pub cond: ValueId,
+    pub true_val: ValueId,
+    pub false_val: ValueId,
+}
+
+#[derive(Clone, Debug)]
 pub enum Instruction {
     Binary(BinaryInstr),
     Unary(UnaryInstr),
@@ -185,17 +202,9 @@ pub enum Instruction {
     Struct(StructInstr),
     Union(UnionInstr),
     List(ListInstr),
-    Call {
-        dest: ValueId,
-        func: ValueId,
-        args: Vec<ValueId>,
-    },
-    Select {
-        dest: ValueId,
-        cond: ValueId,
-        true_val: ValueId,
-        false_val: ValueId,
-    },
+    Cast(CastInstr),
+    Call(CallInstr),
+    Select(SelectInstr),
 }
 
 #[derive(Clone, Debug)]

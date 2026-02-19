@@ -5,7 +5,7 @@ use crate::{
     hir::{
         builders::{BasicBlockId, Builder, InBlock, PhiSource, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        instructions::{Instruction, Terminator},
+        instructions::{CallInstr, Instruction, Terminator},
         types::checked_type::Type,
         utils::adjustments::check_structural_compatibility,
     },
@@ -37,7 +37,7 @@ impl<'a> Builder<'a, InBlock> {
         return_type: Type,
     ) -> ValueId {
         let dest = self.new_value_id(return_type);
-        self.push_instruction(Instruction::Call { dest, func, args });
+        self.push_instruction(Instruction::Call(CallInstr { dest, func, args }));
         dest
     }
 
@@ -82,18 +82,18 @@ impl<'a> Builder<'a, InBlock> {
         left: ValueId,
         left_span: Span,
         produce_right: F,
-    ) -> Result<ValueId, SemanticError>
+    ) -> ValueId
     where
-        F: FnOnce(&mut Self) -> Result<ValueId, SemanticError>,
+        F: FnOnce(&mut Self) -> ValueId,
     {
         let left_type = self.get_value_type(left);
         if !check_structural_compatibility(left_type, &Type::Bool) {
-            return Err(SemanticError {
+            self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,
                     received: left_type.clone(),
                 },
-                span: left_span,
+                span: left_span.clone(),
             });
         }
 
@@ -106,12 +106,12 @@ impl<'a> Builder<'a, InBlock> {
         self.seal_block(right_entry_block);
         self.use_basic_block(right_entry_block);
 
-        let right = produce_right(self)?;
+        let right = produce_right(self);
         let right_block = self.context.block_id;
 
         let right_type = self.get_value_type(right);
         if !check_structural_compatibility(right_type, &Type::Bool) {
-            return Err(SemanticError {
+            self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,
                     received: right_type.clone(),
@@ -141,7 +141,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.insert_phi(self.context.block_id, phi_id, phi_sources);
 
-        Ok(phi_id)
+        phi_id
     }
 
     pub fn emit_logical_and<F>(

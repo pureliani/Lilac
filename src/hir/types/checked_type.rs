@@ -1,8 +1,18 @@
 use crate::{
-    compile::interner::{StringId, TagId},
-    hir::types::checked_declaration::{CheckedParam, FnType},
+    compile::interner::StringId,
+    hir::types::{
+        checked_declaration::{CheckedParam, FnType},
+        ordered_number_kind::OrderedNumberKind,
+    },
 };
 use std::{collections::BTreeSet, hash::Hash};
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum LiteralType {
+    Number(OrderedNumberKind),
+    Bool(bool),
+    String(StringId),
+}
 
 // TODO: make cheaper to clone
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -21,7 +31,8 @@ pub enum Type {
     I64,
     F32,
     F64,
-    Tag(TagId),
+    Null,
+    Literal(LiteralType),
     Struct(Vec<CheckedParam>),
     Union(BTreeSet<Type>),
     List(Box<Type>),

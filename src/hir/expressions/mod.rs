@@ -12,7 +12,6 @@ pub mod or;
 pub mod static_access;
 pub mod string;
 pub mod struct_init;
-pub mod tag;
 pub mod typecast;
 pub mod unary_op;
 
@@ -56,7 +55,6 @@ impl<'a> Builder<'a, InBlock> {
 
             ExprKind::Struct(fields) => self.build_struct_init_expr(fields),
             ExprKind::List(items) => self.build_list_literal_expr(items, span),
-            ExprKind::Tag(tag_id) => self.build_tag_expr(tag_id),
 
             ExprKind::Access { left, field } => self.build_access_expr(*left, field),
             ExprKind::StaticAccess { left, field } => {

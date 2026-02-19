@@ -142,6 +142,7 @@ pub enum KeywordKind {
     F64,
     Fn,
     String,
+    Null,
 }
 
 impl KeywordKind {
@@ -173,6 +174,7 @@ impl KeywordKind {
             KeywordKind::F64 => "f64",
             KeywordKind::Fn => "fn",
             KeywordKind::String => "string",
+            KeywordKind::Null => "null",
         })
     }
 }
@@ -571,6 +573,7 @@ fn is_keyword(identifier: &str) -> Option<KeywordKind> {
         "f32" => Some(KeywordKind::F32),
         "f64" => Some(KeywordKind::F64),
         "string" => Some(KeywordKind::String),
+        "null" => Some(KeywordKind::Null),
         _ => None,
     }
 }

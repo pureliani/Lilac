@@ -1,0 +1,124 @@
+use crate::{
+    ast::Span,
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        errors::{SemanticError, SemanticErrorKind},
+        instructions::{Instruction, ListInstr},
+        types::checked_type::Type,
+        utils::{adjustments::check_structural_compatibility, numeric::is_integer},
+    },
+};
+
+impl<'a> Builder<'a, InBlock> {
+    pub fn emit_list_init(&mut self, element_type: Type, items: Vec<ValueId>) -> ValueId {
+        let dest = self.new_value_id(Type::List(Box::new(element_type.clone())));
+
+        self.push_instruction(Instruction::List(ListInstr::Init {
+            dest,
+            element_type,
+            items,
+        }));
+
+        dest
+    }
+
+    pub fn emit_list_get(
+        &mut self,
+        list: ValueId,
+        index: ValueId,
+        span: Span,
+    ) -> ValueId {
+        let list_type = self.get_value_type(list).clone();
+        let index_type = self.get_value_type(index).clone();
+
+        if !is_integer(&index_type) && !matches!(index_type, Type::Unknown) {
+            self.errors.push(SemanticError {
+                kind: SemanticErrorKind::ExpectedANumericOperand,
+                span: span.clone(),
+            });
+        }
+
+        match list_type {
+            Type::List(inner) => {
+                let result_type = Type::make_union([*inner, Type::Null]);
+
+                let dest = self.new_value_id(result_type);
+                self.push_instruction(Instruction::List(ListInstr::Get {
+                    dest,
+                    list,
+                    index,
+                }));
+                dest
+            }
+            Type::Unknown => self.new_value_id(Type::Unknown),
+            _ => self.report_error_and_get_poison(SemanticError {
+                kind: SemanticErrorKind::CannotIndex(list_type),
+                span,
+            }),
+        }
+    }
+
+    pub fn emit_list_set(
+        &mut self,
+        list: ValueId,
+        index: ValueId,
+        value: ValueId,
+        span: Span,
+    ) -> ValueId {
+        let list_type = self.get_value_type(list).clone();
+        let index_type = self.get_value_type(index).clone();
+        let value_type = self.get_value_type(value).clone();
+
+        if !is_integer(&index_type) && !matches!(index_type, Type::Unknown) {
+            self.errors.push(SemanticError {
+                kind: SemanticErrorKind::ExpectedANumericOperand,
+                span: span.clone(),
+            });
+        }
+
+        match list_type {
+            Type::List(inner) => {
+                if !check_structural_compatibility(&value_type, &inner) {
+                    return self.report_error_and_get_poison(SemanticError {
+                        kind: SemanticErrorKind::TypeMismatch {
+                            expected: *inner,
+                            received: value_type,
+                        },
+                        span,
+                    });
+                }
+
+                let dest = self.new_value_id(Type::List(inner));
+                self.push_instruction(Instruction::List(ListInstr::Set {
+                    dest,
+                    list,
+                    index,
+                    value,
+                }));
+                dest
+            }
+            Type::Unknown => self.new_value_id(Type::Unknown),
+            _ => self.report_error_and_get_poison(SemanticError {
+                kind: SemanticErrorKind::CannotIndex(list_type),
+                span,
+            }),
+        }
+    }
+
+    pub fn emit_list_len(&mut self, list: ValueId, span: Span) -> ValueId {
+        let list_type = self.get_value_type(list).clone();
+
+        match list_type {
+            Type::List(_) => {
+                let dest = self.new_value_id(Type::USize);
+                self.push_instruction(Instruction::List(ListInstr::Len { dest, list }));
+                dest
+            }
+            Type::Unknown => self.new_value_id(Type::Unknown),
+            _ => self.report_error_and_get_poison(SemanticError {
+                kind: SemanticErrorKind::CannotGetLen(list_type),
+                span,
+            }),
+        }
+    }
+}

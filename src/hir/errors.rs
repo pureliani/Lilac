@@ -46,7 +46,7 @@ pub enum SemanticErrorKind {
     BreakKeywordOutsideLoop,
     ContinueKeywordOutsideLoop,
     InvalidLValue,
-
+    CannotGetLen(Type),
     TypeMismatch {
         expected: Type,
         received: Type,
@@ -138,6 +138,7 @@ impl SemanticErrorKind {
             SemanticErrorKind::ExpectedTagWithValue { .. } => 45,
             SemanticErrorKind::UnsupportedUnionNarrowing => 46,
             SemanticErrorKind::ExpectedASignedNumericOperand => 47,
+            SemanticErrorKind::CannotGetLen { .. } => 48,
         }
     }
 }

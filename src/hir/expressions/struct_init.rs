@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::{
     ast::{expr::Expr, IdentifierNode},
@@ -6,7 +6,6 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_declaration::CheckedParam,
     },
 };
 
@@ -15,9 +14,8 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         fields: Vec<(IdentifierNode, Expr)>,
     ) -> ValueId {
-        let mut resolved_fields: Vec<CheckedParam> = Vec::with_capacity(fields.len());
-        let mut field_values: HashMap<StringId, ValueId> =
-            HashMap::with_capacity(fields.len());
+        let mut field_values: Vec<(IdentifierNode, ValueId)> =
+            Vec::with_capacity(fields.len());
         let mut seen_names: HashSet<StringId> = HashSet::new();
 
         for (field_name, field_expr) in fields {
@@ -31,15 +29,9 @@ impl<'a> Builder<'a, InBlock> {
             }
 
             let val_id = self.build_expr(field_expr);
-            let val_type = self.get_value_type(val_id).clone();
-
-            resolved_fields.push(CheckedParam {
-                identifier: field_name.clone(),
-                ty: val_type,
-            });
-            field_values.insert(field_name.name, val_id);
+            field_values.push((field_name, val_id));
         }
 
-        todo!("Emit Instruction::Struct(StructInstr::Construct(..))")
+        self.emit_struct_init(field_values)
     }
 }

@@ -107,8 +107,7 @@ pub fn check_type_annotation(
                 return_type: Box::new(checked_return_type),
             })
         }
-        TypeAnnotationKind::Tag(t) => Type::Tag(*t),
-        // heap-allocated, passed by pointer
+        TypeAnnotationKind::Literal(t) => Type::Literal(t.clone()),
         TypeAnnotationKind::Union(variants) => {
             let mut checked_variants = Vec::new();
 
@@ -127,5 +126,6 @@ pub fn check_type_annotation(
             let checked_field_types = check_params(ctx, items);
             Type::Struct(checked_field_types)
         }
+        TypeAnnotationKind::Null => Type::Null,
     }
 }

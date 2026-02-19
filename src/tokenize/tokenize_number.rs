@@ -60,6 +60,10 @@ fn parse_number(full_number_str: &str) -> Result<NumberKind, TokenizationErrorKi
                     .parse::<f32>()
                     .map(NumberKind::F32)
                     .or(Err(TokenizationErrorKind::InvalidFloatingNumber)),
+                "usize" => numeric_part
+                    .parse::<usize>()
+                    .map(NumberKind::USize)
+                    .or(Err(TokenizationErrorKind::InvalidIntegerNumber)),
                 "u64" => numeric_part
                     .parse::<u64>()
                     .map(NumberKind::U64)
@@ -75,6 +79,10 @@ fn parse_number(full_number_str: &str) -> Result<NumberKind, TokenizationErrorKi
                 "u8" => numeric_part
                     .parse::<u8>()
                     .map(NumberKind::U8)
+                    .or(Err(TokenizationErrorKind::InvalidIntegerNumber)),
+                "isize" => numeric_part
+                    .parse::<isize>()
+                    .map(NumberKind::ISize)
                     .or(Err(TokenizationErrorKind::InvalidIntegerNumber)),
                 "i64" => numeric_part
                     .parse::<i64>()

@@ -257,6 +257,9 @@ impl Compiler {
                         .with_labels(vec![Label::primary(file_id, range.clone())]);
 
                     match &e.kind {
+                        SemanticErrorKind::CannotGetLen(_ty) => {
+                            diag.with_message("Cannot get length")
+                        }
                         SemanticErrorKind::CannotNarrowNonUnion(ty) => {
                             let type_str = type_to_string(ty);
                             diag.with_message("Redundant type check").with_labels(vec![

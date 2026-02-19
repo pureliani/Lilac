@@ -1,11 +1,10 @@
 use std::collections::{BTreeSet, HashSet};
 
 use crate::{
-    compile::interner::TagId,
-    globals::{STRING_INTERNER, TAG_INTERNER},
+    globals::STRING_INTERNER,
     hir::types::{
         checked_declaration::{CheckedParam, FnType},
-        checked_type::Type,
+        checked_type::{LiteralType, Type},
     },
     tokenize::TokenKind,
 };
@@ -47,8 +46,9 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
         Type::F32 => String::from("f32"),
         Type::F64 => String::from("f64"),
         Type::String => String::from("string"),
+        Type::Null => String::from("null"),
         Type::Unknown => String::from("unknown"),
-        Type::Tag(tag_id) => tag_to_string(*tag_id),
+        Type::Literal(literal) => literal_to_string(literal),
         Type::Never => String::from("never"),
         Type::Struct(s) => struct_to_string(s, visited_set),
         Type::Union(variants) => union_variants_to_string(variants, visited_set),
@@ -61,10 +61,12 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
     result
 }
 
-pub fn tag_to_string(tag_id: TagId) -> String {
-    let name_string_id = TAG_INTERNER.resolve(tag_id);
-    let name = STRING_INTERNER.resolve(name_string_id);
-    format!("#{0}", name)
+pub fn literal_to_string(literal: &LiteralType) -> String {
+    match literal {
+        LiteralType::Number(ordered_number_kind) => ordered_number_kind.0.to_string(),
+        LiteralType::Bool(value) => format!("{}", value.to_string()),
+        LiteralType::String(id) => STRING_INTERNER.resolve(*id).to_string(),
+    }
 }
 
 fn struct_to_string(fields: &[CheckedParam], visited_set: &mut HashSet<Type>) -> String {

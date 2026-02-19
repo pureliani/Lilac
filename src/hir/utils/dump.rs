@@ -1,9 +1,10 @@
 use crate::{
-    globals::{STRING_INTERNER, TAG_INTERNER},
+    globals::STRING_INTERNER,
     hir::{
         builders::{BasicBlockId, Function, Program, ValueId},
         instructions::{
-            BinaryInstr, CompInstr, ConstInstr, Instruction, Terminator, UnaryInstr,
+            BinaryInstr, CallInstr, CompInstr, ConstInstr, Instruction, SelectInstr,
+            Terminator, UnaryInstr,
         },
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::type_to_string::type_to_string,
@@ -202,13 +203,6 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     )
                     .unwrap();
                 }
-                ConstInstr::ConstTag { dest, val } => {
-                    let string_id = TAG_INTERNER.resolve(*val);
-                    let name = STRING_INTERNER.resolve(string_id);
-
-                    writeln!(out, "v{}: {} = #{};", dest.0, get_vt(p, dest), name)
-                        .unwrap();
-                }
             },
             Instruction::Unary(kind) => match kind {
                 UnaryInstr::Neg { dest, src } => {
@@ -257,12 +251,12 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     .unwrap();
                 }
             },
-            Instruction::Select {
+            Instruction::Select(SelectInstr {
                 dest,
                 cond,
                 true_val,
                 false_val,
-            } => {
+            }) => {
                 writeln!(
                     out,
                     "v{}: {} = v{} ? v{} : v{};",
@@ -274,7 +268,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 )
                 .unwrap();
             }
-            Instruction::Call { dest, func, args } => {
+            Instruction::Call(CallInstr { dest, func, args }) => {
                 let args = args
                     .iter()
                     .map(|a| format!("v{}", a.0))
@@ -294,6 +288,7 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
             Instruction::Struct(struct_instr) => todo!(),
             Instruction::Union(union_instr) => todo!(),
             Instruction::List(list_instr) => todo!(),
+            Instruction::Cast(cast_instr) => todo!(),
         }
     }
 }

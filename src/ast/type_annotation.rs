@@ -1,6 +1,6 @@
 use crate::{
     ast::{IdentifierNode, Span},
-    compile::interner::TagId,
+    hir::types::checked_type::LiteralType,
 };
 
 use super::decl::Param;
@@ -20,9 +20,10 @@ pub enum TypeAnnotationKind {
     F32,
     F64,
     String,
+    Null,
     Identifier(IdentifierNode),
     Struct(Vec<Param>),
-    Tag(TagId),
+    Literal(LiteralType),
     Union(Vec<TypeAnnotation>),
     List(Box<TypeAnnotation>),
     FnType {

@@ -1,6 +1,5 @@
 use crate::{
     ast::{decl::FnDecl, IdentifierNode, Span, StringNode},
-    compile::interner::TagId,
     tokenize::NumberKind,
 };
 
@@ -90,7 +89,6 @@ pub enum ExprKind {
         left: Box<Expr>,
         ty: TypeAnnotation,
     },
-    Tag(TagId),
     FnCall {
         left: Box<Expr>,
         args: Vec<Expr>,

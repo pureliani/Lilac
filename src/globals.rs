@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::LazyLock;
 
 use crate::ast::DeclarationId;
-use crate::compile::interner::{SharedStringInterner, SharedTagInterner, StringId};
+use crate::compile::interner::{SharedStringInterner, StringId};
 use crate::hir::builders::{BasicBlockId, ConstantId, ValueId};
 
 pub struct CommonIdentifiers {
@@ -20,8 +20,6 @@ pub static CONSTANT_COUNTER: LazyLock<AtomicUsize> =
     LazyLock::new(|| AtomicUsize::new(0));
 pub static DECLARATION_COUNTER: LazyLock<AtomicUsize> =
     LazyLock::new(|| AtomicUsize::new(0));
-pub static TAG_INTERNER: LazyLock<SharedTagInterner> =
-    LazyLock::new(SharedTagInterner::default);
 pub static STRING_INTERNER: LazyLock<SharedStringInterner> =
     LazyLock::new(SharedStringInterner::default);
 pub static COMMON_IDENTIFIERS: LazyLock<CommonIdentifiers> =
@@ -55,6 +53,5 @@ pub fn reset_globals() {
     BLOCK_COUNTER.store(0, Ordering::SeqCst);
     CONSTANT_COUNTER.store(0, Ordering::SeqCst);
     DECLARATION_COUNTER.store(0, Ordering::SeqCst);
-    TAG_INTERNER.clear();
     STRING_INTERNER.clear();
 }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     ast::IdentifierNode,
     compile::interner::StringId,
@@ -5,14 +7,49 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, StructInstr},
-        types::checked_type::Type,
-        utils::adjustments::check_structural_compatibility,
+        types::{checked_declaration::CheckedParam, checked_type::Type},
+        utils::{adjustments::check_structural_compatibility, layout::pack_struct},
     },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn emit_struct_init(fields: Vec<(StringId, ValueId)>) -> ValueId {
-        todo!()
+    pub fn emit_struct_init(
+        &mut self,
+        fields: Vec<(IdentifierNode, ValueId)>,
+    ) -> ValueId {
+        let type_fields: Vec<CheckedParam> = fields
+            .iter()
+            .map(|(ident, val_id)| CheckedParam {
+                identifier: ident.clone(),
+                ty: self.get_value_type(*val_id).clone(),
+            })
+            .collect();
+
+        let packed_fields = pack_struct(type_fields);
+
+        let mut instr_fields = Vec::with_capacity(fields.len());
+
+        let val_lookup: HashMap<StringId, ValueId> = fields
+            .into_iter()
+            .map(|(ident, val)| (ident.name, val))
+            .collect();
+
+        for param in &packed_fields {
+            let val_id = val_lookup
+                .get(&param.identifier.name)
+                .expect("Field missing after sort");
+            instr_fields.push((param.identifier.name, *val_id));
+        }
+
+        let struct_type = Type::Struct(packed_fields);
+        let dest = self.new_value_id(struct_type);
+
+        self.push_instruction(Instruction::Struct(StructInstr::Construct {
+            dest,
+            fields: instr_fields,
+        }));
+
+        dest
     }
 
     pub fn emit_read_struct_field(
@@ -20,28 +57,31 @@ impl<'a> Builder<'a, InBlock> {
         base: ValueId,
         field_identifier: IdentifierNode,
     ) -> ValueId {
-        let source_type = self.get_value_type(base);
+        let source_type = self.get_value_type(base).clone();
 
-        if let Type::Struct(_) = source_type {
-            let field = source_type.get_field(&field_identifier.name);
+        match source_type {
+            Type::Struct(_) => {
+                if let Some((_, ty)) = source_type.get_field(&field_identifier.name) {
+                    let dest = self.new_value_id(ty);
+                    self.push_instruction(Instruction::Struct(StructInstr::ReadField {
+                        dest,
+                        base,
+                        field: field_identifier.name,
+                    }));
 
-            if let Some((_, ty)) = field {
-                let dest = self.new_value_id(ty);
-                self.push_instruction(Instruction::Struct(StructInstr::ReadField {
-                    dest,
-                    base,
-                    field: field_identifier.name,
-                }));
-
-                dest
-            } else {
-                return self.report_error_and_get_poison(SemanticError {
-                    span: field_identifier.span.clone(),
-                    kind: SemanticErrorKind::AccessToUndefinedField(field_identifier),
-                });
+                    dest
+                } else {
+                    self.report_error_and_get_poison(SemanticError {
+                        span: field_identifier.span.clone(),
+                        kind: SemanticErrorKind::AccessToUndefinedField(field_identifier),
+                    })
+                }
             }
-        } else {
-            panic!("INTERNAL COMPILER ERROR: Expected emit_read_struct_field to be called on a struct type")
+            Type::Unknown => self.new_value_id(Type::Unknown),
+            _ => panic!(
+                "INTERNAL COMPILER ERROR: Expected emit_read_struct_field to be called on a struct type, found {:?}", 
+                source_type
+            ),
         }
     }
 
@@ -51,14 +91,45 @@ impl<'a> Builder<'a, InBlock> {
         field_identifier: IdentifierNode,
         value: ValueId,
     ) -> ValueId {
-        todo!("add validations");
-        let updated_base = self.new_value_id(Type::Unknown);
-        self.push_instruction(Instruction::Struct(StructInstr::UpdateField {
-            dest: updated_base,
-            base,
-            field: field_identifier.name,
-            value,
-        }));
-        updated_base
+        let base_type = self.get_value_type(base).clone();
+
+        match base_type {
+            Type::Struct(_) => {
+                if let Some((_, expected_type)) = base_type.get_field(&field_identifier.name) {
+                    let value_type = self.get_value_type(value);
+
+                    if !check_structural_compatibility(value_type, &expected_type) {
+                        return self.report_error_and_get_poison(SemanticError {
+                            kind: SemanticErrorKind::TypeMismatch {
+                                expected: expected_type,
+                                received: value_type.clone(),
+                            },
+                            span: field_identifier.span.clone(),
+                        });
+                    }
+
+                    // TODO: Should the union narrowing case be handled here? in that case base_type is not correct
+                    let updated_base = self.new_value_id(base_type);
+                    self.push_instruction(Instruction::Struct(StructInstr::UpdateField {
+                        dest: updated_base,
+                        base,
+                        field: field_identifier.name,
+                        value,
+                    }));
+                    
+                    updated_base
+                } else {
+                    self.report_error_and_get_poison(SemanticError {
+                        span: field_identifier.span.clone(),
+                        kind: SemanticErrorKind::AccessToUndefinedField(field_identifier),
+                    })
+                }
+            }
+            Type::Unknown => self.new_value_id(Type::Unknown),
+            _ => panic!(
+                "INTERNAL COMPILER ERROR: Expected emit_update_struct_field to be called on a struct type, found {:?}", 
+                base_type
+            ),
+        }
     }
 }

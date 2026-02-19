@@ -1,9 +1,6 @@
 use crate::{
     ast::expr::Expr,
-    hir::{
-        builders::{Builder, InBlock, ValueId},
-        errors::SemanticError,
-    },
+    hir::builders::{Builder, InBlock, ValueId},
 };
 
 impl<'a> Builder<'a, InBlock> {

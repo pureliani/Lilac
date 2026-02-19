@@ -1,45 +1,103 @@
-use crate::hir::{
-    builders::{Builder, InBlock, ValueId},
-    instructions::{CompInstr, Instruction},
-    types::checked_type::Type,
-    utils::adjustments::check_structural_compatibility,
+use crate::{
+    ast::Span,
+    hir::{
+        builders::{Builder, InBlock, ValueId},
+        instructions::{CompInstr, Instruction, SelectInstr},
+        types::checked_type::Type,
+        utils::adjustments::check_structural_compatibility,
+    },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn emit_eq(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
+    fn emit_comp_op<F>(
+        &mut self,
+        lhs: ValueId,
+        _lhs_span: Span,
+        rhs: ValueId,
+        _rhs_span: Span,
+        make_instr: F,
+    ) -> ValueId
+    where
+        F: FnOnce(ValueId, ValueId, ValueId) -> CompInstr,
+    {
+        // TODO: validate that operation is allowed using lhs_span and rhs_span
+        // e.g. check if types are comparable
+
         let dest = self.new_value_id(Type::Bool);
-        self.push_instruction(Instruction::Comp(CompInstr::Eq { dest, lhs, rhs }));
+        self.push_instruction(Instruction::Comp(make_instr(dest, lhs, rhs)));
         dest
     }
 
-    pub fn emit_neq(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool);
-        self.push_instruction(Instruction::Comp(CompInstr::Neq { dest, lhs, rhs }));
-        dest
+    pub fn emit_eq(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> ValueId {
+        self.emit_comp_op(lhs, lhs_span, rhs, rhs_span, |dest, lhs, rhs| {
+            CompInstr::Eq { dest, lhs, rhs }
+        })
     }
 
-    pub fn emit_lt(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool);
-        self.push_instruction(Instruction::Comp(CompInstr::Lt { dest, lhs, rhs }));
-        dest
+    pub fn emit_neq(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> ValueId {
+        self.emit_comp_op(lhs, lhs_span, rhs, rhs_span, |dest, lhs, rhs| {
+            CompInstr::Neq { dest, lhs, rhs }
+        })
     }
 
-    pub fn emit_lte(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool);
-        self.push_instruction(Instruction::Comp(CompInstr::Lte { dest, lhs, rhs }));
-        dest
+    pub fn emit_lt(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> ValueId {
+        self.emit_comp_op(lhs, lhs_span, rhs, rhs_span, |dest, lhs, rhs| {
+            CompInstr::Lt { dest, lhs, rhs }
+        })
     }
 
-    pub fn emit_gt(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool);
-        self.push_instruction(Instruction::Comp(CompInstr::Gt { dest, lhs, rhs }));
-        dest
+    pub fn emit_lte(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> ValueId {
+        self.emit_comp_op(lhs, lhs_span, rhs, rhs_span, |dest, lhs, rhs| {
+            CompInstr::Lte { dest, lhs, rhs }
+        })
     }
 
-    pub fn emit_gte(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool);
-        self.push_instruction(Instruction::Comp(CompInstr::Gte { dest, lhs, rhs }));
-        dest
+    pub fn emit_gt(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> ValueId {
+        self.emit_comp_op(lhs, lhs_span, rhs, rhs_span, |dest, lhs, rhs| {
+            CompInstr::Gt { dest, lhs, rhs }
+        })
+    }
+
+    pub fn emit_gte(
+        &mut self,
+        lhs: ValueId,
+        lhs_span: Span,
+        rhs: ValueId,
+        rhs_span: Span,
+    ) -> ValueId {
+        self.emit_comp_op(lhs, lhs_span, rhs, rhs_span, |dest, lhs, rhs| {
+            CompInstr::Gte { dest, lhs, rhs }
+        })
     }
 
     pub fn emit_select(
@@ -68,12 +126,12 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         let dest = self.new_value_id(true_value_type.clone());
-        self.push_instruction(Instruction::Select {
+        self.push_instruction(Instruction::Select(SelectInstr {
             dest,
             cond: condition,
             true_val: true_value,
             false_val: false_value,
-        });
+        }));
 
         dest
     }
