@@ -3,10 +3,10 @@ use crate::{
     hir::{
         builders::{BasicBlockId, Function, Program, ValueId},
         instructions::{
-            BinaryInstr, CallInstr, CompInstr, ConstInstr, Instruction, SelectInstr,
-            Terminator, UnaryInstr,
+            BinaryInstr, CallInstr, CompInstr, ConstInstr, Instruction, ListInstr,
+            SelectInstr, StructInstr, Terminator, UnaryInstr, UnionInstr,
         },
-        types::{checked_declaration::CheckedDeclaration, checked_type::Type},
+        types::checked_declaration::CheckedDeclaration,
         utils::type_to_string::type_to_string,
     },
     tokenize::number_kind_to_suffix,
@@ -285,10 +285,175 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 )
                 .unwrap();
             }
-            Instruction::Struct(struct_instr) => todo!(),
-            Instruction::Union(union_instr) => todo!(),
-            Instruction::List(list_instr) => todo!(),
-            Instruction::Cast(cast_instr) => todo!(),
+            Instruction::Struct(struct_instr) => match struct_instr {
+                StructInstr::Construct { dest, fields } => {
+                    let fields_str = fields
+                        .iter()
+                        .map(|(name, val)| {
+                            format!("{}: v{}", STRING_INTERNER.resolve(*name), val.0)
+                        })
+                        .collect::<Vec<String>>()
+                        .join(", ");
+                    writeln!(
+                        out,
+                        "v{}: {} = struct {{ {} }};",
+                        dest.0,
+                        get_vt(p, dest),
+                        fields_str
+                    )
+                    .unwrap();
+                }
+                StructInstr::ReadField { dest, base, field } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = v{}.{};",
+                        dest.0,
+                        get_vt(p, dest),
+                        base.0,
+                        STRING_INTERNER.resolve(*field)
+                    )
+                    .unwrap();
+                }
+                StructInstr::UpdateField {
+                    dest,
+                    base,
+                    field,
+                    value,
+                } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = update v{} {{ {}: v{} }};",
+                        dest.0,
+                        get_vt(p, dest),
+                        base.0,
+                        STRING_INTERNER.resolve(*field),
+                        value.0
+                    )
+                    .unwrap();
+                }
+            },
+            Instruction::Union(union_instr) => match union_instr {
+                UnionInstr::WrapInUnion {
+                    dest,
+                    src,
+                    target_variants: _,
+                } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = wrap_union v{};",
+                        dest.0,
+                        get_vt(p, dest),
+                        src.0
+                    )
+                    .unwrap();
+                }
+                UnionInstr::UnwrapUnion {
+                    dest,
+                    src,
+                    variant_type,
+                } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = unwrap_union v{} as {};",
+                        dest.0,
+                        get_vt(p, dest),
+                        src.0,
+                        type_to_string(variant_type)
+                    )
+                    .unwrap();
+                }
+                UnionInstr::TestVariant {
+                    dest,
+                    src,
+                    variant_type,
+                } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = test_variant v{} is {};",
+                        dest.0,
+                        get_vt(p, dest),
+                        src.0,
+                        type_to_string(variant_type)
+                    )
+                    .unwrap();
+                }
+                UnionInstr::WidenUnion { dest, src } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = widen_union v{};",
+                        dest.0,
+                        get_vt(p, dest),
+                        src.0
+                    )
+                    .unwrap();
+                }
+                UnionInstr::NarrowUnion { dest, src } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = narrow_union v{};",
+                        dest.0,
+                        get_vt(p, dest),
+                        src.0
+                    )
+                    .unwrap();
+                }
+            },
+            Instruction::List(list_instr) => match list_instr {
+                ListInstr::Init {
+                    dest,
+                    element_type: _,
+                    items,
+                } => {
+                    let items_str = items
+                        .iter()
+                        .map(|v| format!("v{}", v.0))
+                        .collect::<Vec<String>>()
+                        .join(", ");
+                    writeln!(out, "v{}: {} = [{}];", dest.0, get_vt(p, dest), items_str)
+                        .unwrap();
+                }
+                ListInstr::Get { dest, list, index } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = v{}[{}];",
+                        dest.0,
+                        get_vt(p, dest),
+                        list.0,
+                        index.0
+                    )
+                    .unwrap();
+                }
+                ListInstr::Set {
+                    dest,
+                    list,
+                    index,
+                    value,
+                } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = setListItem(v{}[{}] to v{});",
+                        dest.0,
+                        get_vt(p, dest),
+                        list.0,
+                        index.0,
+                        value.0
+                    )
+                    .unwrap();
+                }
+                ListInstr::Len { dest, list } => {
+                    writeln!(out, "v{}: {} = len(v{});", dest.0, get_vt(p, dest), list.0)
+                        .unwrap();
+                }
+            },
+            Instruction::Cast(cast_instr) => {
+                let dest_type_str = get_vt(p, &cast_instr.dest);
+                writeln!(
+                    out,
+                    "v{}: {} = v{}::as({})",
+                    cast_instr.dest.0, dest_type_str, cast_instr.src.0, dest_type_str,
+                )
+                .unwrap();
+            }
         }
     }
 }
