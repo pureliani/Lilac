@@ -1,6 +1,5 @@
 use crate::{
     ast::{expr::Expr, type_annotation::TypeAnnotation, Span},
-    globals::COMMON_IDENTIFIERS,
     hir::{
         builders::{Builder, InBlock, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
@@ -10,44 +9,38 @@ use crate::{
             union::{get_matching_variant_indices, get_non_matching_variant_indices},
         },
     },
-    tokenize::NumberKind,
 };
 
 impl<'a> Builder<'a, InBlock> {
     /// Emits a runtime check that tests the union discriminant against
-    /// one or more matching variant indices. Returns a bool ValueId.
+    /// one or more matching variant types. Returns a bool ValueId.
     fn emit_is_type_check(
         &mut self,
         union: ValueId,
-        matching_indices: &[u16],
+        matching_variants: &[Type],
         total_variants: usize,
         span: Span,
     ) -> ValueId {
-        if matching_indices.is_empty() {
+        if matching_variants.is_empty() {
             return self.emit_const_bool(false);
         }
 
-        if matching_indices.len() == total_variants {
+        if matching_variants.len() == total_variants {
             return self.emit_const_bool(true);
         }
 
-        let id_ptr = self.get_field_ptr(union, COMMON_IDENTIFIERS.id);
-        let active_id = self.emit_load(id_ptr);
+        let mut iter = matching_variants.iter();
+        let first_variant = iter.next().unwrap();
 
-        let mut iter = matching_indices.iter();
-        let &first_idx = iter.next().unwrap();
+        let mut result_id = self.emit_test_variant(union, first_variant);
 
-        let idx_val = self.emit_const_number(NumberKind::U16(first_idx));
-        let mut result_id = self.emit_ieq(active_id, idx_val);
-
-        for &match_idx in iter {
+        for variant in iter {
             result_id = self.emit_logical_or(result_id, span.clone(), |builder| {
-                let idx_val = builder.emit_const_number(NumberKind::U16(match_idx));
-                Ok(builder.emit_ieq(active_id, idx_val))
-            })?;
+                builder.emit_test_variant(union, variant)
+            });
         }
 
-        Ok(result_id)
+        result_id
     }
 
     pub fn build_is_type_expr(&mut self, left: Expr, ty: TypeAnnotation) -> ValueId {
@@ -61,12 +54,15 @@ impl<'a> Builder<'a, InBlock> {
         let current_val = self.read_place(&place, span.clone());
         let current_ty = self.get_value_type(current_val).clone();
 
-        let variants = current_ty
-            .as_union_variants()
-            .ok_or_else(|| SemanticError {
-                span: span.clone(),
-                kind: SemanticErrorKind::CannotNarrowNonUnion(current_ty.clone()),
-            })?;
+        let variants = match current_ty.as_union_variants() {
+            Some(v) => v,
+            None => {
+                return self.report_error_and_get_poison(SemanticError {
+                    span: span.clone(),
+                    kind: SemanticErrorKind::CannotNarrowNonUnion(current_ty.clone()),
+                });
+            }
+        };
 
         let mut type_ctx = TypeCheckerContext {
             scope: self.current_scope.clone(),
@@ -87,16 +83,18 @@ impl<'a> Builder<'a, InBlock> {
         let non_match_indices =
             get_non_matching_variant_indices(variants, &place_path, &target_type);
 
+        let matching_variants = filter_variants(variants, &match_indices);
+
         let result_id = self.emit_is_type_check(
             current_val,
-            &match_indices,
+            &matching_variants,
             variants.len(),
             span.clone(),
-        )?;
+        );
 
         let true_type =
             if !match_indices.is_empty() && match_indices.len() < variants.len() {
-                Some(Type::make_union(filter_variants(variants, &match_indices)))
+                Some(Type::make_union(matching_variants))
             } else {
                 None
             };
