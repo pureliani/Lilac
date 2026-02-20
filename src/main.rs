@@ -1,5 +1,5 @@
+use lilac::compile::Compiler;
 use std::path::PathBuf;
-use willow::compile::Compiler;
 
 fn main() {
     let file_path = std::env::args()

@@ -51,6 +51,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
+name = "lilac"
+version = "0.1.0"
+dependencies = [
+ "codespan-reporting",
+ "pretty_assertions",
+ "rayon",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "pretty_assertions"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -165,16 +175,6 @@ name = "unicode-width"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
-
-[[package]]
-name = "willow"
-version = "0.1.0"
-dependencies = [
- "codespan-reporting",
- "pretty_assertions",
- "rayon",
- "unicode-segmentation",
-]
 
 [[package]]
 name = "winapi-util"

@@ -6,9 +6,15 @@
       "request": "launch",
       "name": "Debug code.wl",
       "cargo": {
-        "args": ["build", "--bin", "willow"]
+        "args": [
+          "build",
+          "--bin",
+          "lilac"
+        ]
       },
-      "args": ["./code.wl"],
+      "args": [
+        "./code.wl"
+      ],
       "cwd": "${workspaceFolder}"
     }
   ]
