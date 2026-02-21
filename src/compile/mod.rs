@@ -109,6 +109,7 @@ impl Compiler {
         let mut incomplete_phis = HashMap::new();
         let mut aliases = HashMap::new();
         let mut type_predicates = HashMap::new();
+        let mut narrowed_fields = HashMap::new();
 
         let mut program = Program {
             constant_data: HashMap::new(),
@@ -128,6 +129,7 @@ impl Compiler {
             incomplete_phis: &mut incomplete_phis,
             aliases: &mut aliases,
             type_predicates: &mut type_predicates,
+            narrowed_fields: &mut narrowed_fields,
         };
 
         program_builder.build(modules_to_compile);

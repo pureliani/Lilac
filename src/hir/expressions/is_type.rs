@@ -5,8 +5,9 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::Type,
         utils::{
+            adjustments::check_structural_compatibility,
             check_type::{check_type_annotation, TypeCheckerContext},
-            union::{get_matching_variant_indices, get_non_matching_variant_indices},
+            place::Place,
         },
     },
 };
@@ -35,8 +36,9 @@ impl<'a> Builder<'a, InBlock> {
         let mut result_id = self.emit_test_variant(union, first_variant);
 
         for variant in iter {
+            let variant_clone = variant.clone();
             result_id = self.emit_logical_or(result_id, span.clone(), |builder| {
-                builder.emit_test_variant(union, variant)
+                builder.emit_test_variant(union, &variant_clone)
             });
         }
 
@@ -49,7 +51,6 @@ impl<'a> Builder<'a, InBlock> {
             Ok(p) => p,
             Err(e) => return self.report_error_and_get_poison(e),
         };
-        let place_path = place.path();
 
         let current_val = self.read_place(&place, span.clone());
         let current_ty = self.get_value_type(current_val).clone();
@@ -78,12 +79,16 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
-        let match_indices =
-            get_matching_variant_indices(variants, &place_path, &target_type);
-        let non_match_indices =
-            get_non_matching_variant_indices(variants, &place_path, &target_type);
+        let mut matching_variants = Vec::new();
+        let mut non_matching_variants = Vec::new();
 
-        let matching_variants = filter_variants(variants, &match_indices);
+        for variant in variants {
+            if check_structural_compatibility(variant, &target_type) {
+                matching_variants.push(variant.clone());
+            } else {
+                non_matching_variants.push(variant.clone());
+            }
+        }
 
         let result_id = self.emit_is_type_check(
             current_val,
@@ -92,25 +97,25 @@ impl<'a> Builder<'a, InBlock> {
             span.clone(),
         );
 
-        let true_type =
-            if !match_indices.is_empty() && match_indices.len() < variants.len() {
-                Some(Type::make_union(matching_variants))
-            } else {
-                None
-            };
-
-        let false_type = if !non_match_indices.is_empty()
-            && non_match_indices.len() < variants.len()
+        let true_type = if !matching_variants.is_empty()
+            && matching_variants.len() < variants.len()
         {
-            Some(Type::make_union(filter_variants(
-                variants,
-                &non_match_indices,
-            )))
+            Some(Type::make_union(matching_variants))
         } else {
             None
         };
 
-        if true_type.is_some() || false_type.is_some() {
+        let false_type = if !non_matching_variants.is_empty()
+            && non_matching_variants.len() < variants.len()
+        {
+            Some(Type::make_union(non_matching_variants))
+        } else {
+            None
+        };
+
+        if !matches!(place, Place::Temporary(_))
+            && (true_type.is_some() || false_type.is_some())
+        {
             self.type_predicates.insert(
                 result_id,
                 TypePredicate {
@@ -123,23 +128,4 @@ impl<'a> Builder<'a, InBlock> {
 
         result_id
     }
-}
-
-fn filter_variants(
-    variants: &std::collections::BTreeSet<Type>,
-    indices: &[u16],
-) -> Vec<Type> {
-    let mut result = Vec::with_capacity(indices.len());
-    let mut indices_iter = indices.iter().peekable();
-
-    for (i, variant) in variants.iter().enumerate() {
-        if let Some(&&next_idx) = indices_iter.peek() {
-            if next_idx == i as u16 {
-                result.push(variant.clone());
-                indices_iter.next();
-            }
-        }
-    }
-
-    result
 }

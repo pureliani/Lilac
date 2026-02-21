@@ -10,7 +10,6 @@ use crate::{
         utils::{
             adjustments::check_structural_compatibility,
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
-            place::Place,
             scope::ScopeKind,
         },
     },
@@ -75,6 +74,7 @@ impl<'a> Builder<'a, InModule> {
             incomplete_phis: self.incomplete_phis,
             aliases: self.aliases,
             type_predicates: self.type_predicates,
+            narrowed_fields: self.narrowed_fields,
         };
 
         let entry_bb = BasicBlock {
@@ -102,7 +102,7 @@ impl<'a> Builder<'a, InModule> {
                 .current_defs
                 .entry(entry_block_id)
                 .or_default()
-                .insert(Place::Local(param_decl_id), identity_id);
+                .insert(param_decl_id, identity_id);
 
             fn_builder
                 .program

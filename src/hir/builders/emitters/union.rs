@@ -19,8 +19,7 @@ impl<'a> Builder<'a, InBlock> {
         assert!(
             variants
                 .iter()
-                .position(|v| check_structural_compatibility(v, &source_type))
-                .is_some(),
+                .any(|v| check_structural_compatibility(v, &source_type)),
             "INTERNAL COMPILER ERROR: wrap_in_union - source type is not a \
                      variant of the union"
         );
@@ -77,8 +76,7 @@ impl<'a> Builder<'a, InBlock> {
         assert!(
             variants
                 .iter()
-                .position(|v| check_structural_compatibility(v, variant_type))
-                .is_some(),
+                .any(|v| check_structural_compatibility(v, variant_type)),
             "INTERNAL COMPILER ERROR: variant not found in union"
         );
 

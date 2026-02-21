@@ -14,6 +14,10 @@ pub enum SemanticErrorKind {
     ExpectedTagWithValue {
         expected: Type,
     },
+    ArgumentAliasing {
+        passed: String,
+        aliased_with: String,
+    },
     UnsupportedUnionNarrowing,
     CannotNarrowNonUnion(Type),
     ValuedTagInIsExpression,
@@ -139,6 +143,7 @@ impl SemanticErrorKind {
             SemanticErrorKind::UnsupportedUnionNarrowing => 46,
             SemanticErrorKind::ExpectedASignedNumericOperand => 47,
             SemanticErrorKind::CannotGetLen { .. } => 48,
+            SemanticErrorKind::ArgumentAliasing { .. } => 49,
         }
     }
 }

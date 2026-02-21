@@ -94,9 +94,12 @@ pub struct Builder<'a, C: BuilderContext> {
     pub current_scope: Scope,
 
     pub type_predicates: &'a mut HashMap<ValueId, TypePredicate>,
-    pub current_defs: &'a mut HashMap<BasicBlockId, HashMap<Place, ValueId>>,
+
+    pub current_defs: &'a mut HashMap<BasicBlockId, HashMap<DeclarationId, ValueId>>,
+    pub incomplete_phis:
+        &'a mut HashMap<BasicBlockId, Vec<(ValueId, DeclarationId, Span)>>,
     pub aliases: &'a mut HashMap<DeclarationId, Place>,
-    pub incomplete_phis: &'a mut HashMap<BasicBlockId, Vec<(ValueId, Place, Span)>>,
+    pub narrowed_fields: &'a mut HashMap<Place, ValueId>,
 }
 
 pub struct InGlobal;

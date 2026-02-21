@@ -1,65 +1,32 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
-use crate::ast::Span;
+use crate::ast::{IdentifierNode, Span};
 use crate::compile::interner::StringId;
 use crate::hir::builders::{Builder, InBlock, ValueId};
 use crate::hir::errors::{SemanticError, SemanticErrorKind};
+use crate::hir::instructions::{CastInstr, Instruction};
 use crate::hir::types::checked_type::Type;
 use crate::hir::utils::numeric::{
     get_numeric_type_rank, is_float, is_integer, is_signed,
 };
-use crate::tokenize::NumberKind;
 
 pub enum Adjustment {
-    /// No conversion needed.
     Identity,
-
-    // Numeric conversions
-    SExt {
+    NumericCast {
         target: Type,
     },
-    ZExt {
+    UnionCoercion {
         target: Type,
     },
-    Trunc {
+    UnwrapUnion {
         target: Type,
     },
-    FExt {
-        target: Type,
-    },
-    FTrunc {
-        target: Type,
-    },
-    SIToF {
-        target: Type,
-    },
-    UIToF {
-        target: Type,
-    },
-    FToSI {
-        target: Type,
-    },
-    FToUI {
-        target: Type,
-    },
-
-    // Union conversions
-    WrapInUnion {
-        variants: BTreeSet<Type>,
-    },
-    WidenUnion {
-        source_variants: BTreeSet<Type>,
-        target_variants: BTreeSet<Type>,
-    },
-
-    /// Struct conversion
     CoerceStruct {
-        target_inner_type: Type,
         field_adjustments: Vec<(StringId, Adjustment)>,
     },
 }
 
-/// Computes the adjustment needed to convert `source_type` to `target_type`.
+/// Computes the adjustment needed to convert `source_type` to `target_type`
 pub fn compute_type_adjustment(
     source_type: &Type,
     target: &Type,
@@ -71,21 +38,11 @@ pub fn compute_type_adjustment(
 
     // Integer -> Integer
     if is_integer(source_type) && is_integer(target) {
-        let s_rank = get_numeric_type_rank(source_type);
-        let t_rank = get_numeric_type_rank(target);
+        let s_rank = get_numeric_type_rank(source_type).unwrap();
+        let t_rank = get_numeric_type_rank(target).unwrap();
 
-        if t_rank > s_rank {
-            return if is_signed(source_type) {
-                Ok(Adjustment::SExt {
-                    target: target.clone(),
-                })
-            } else {
-                Ok(Adjustment::ZExt {
-                    target: target.clone(),
-                })
-            };
-        } else if t_rank < s_rank && is_explicit {
-            return Ok(Adjustment::Trunc {
+        if t_rank > s_rank || (t_rank < s_rank && is_explicit) {
+            return Ok(Adjustment::NumericCast {
                 target: target.clone(),
             });
         }
@@ -93,15 +50,11 @@ pub fn compute_type_adjustment(
 
     // Float -> Float
     if is_float(source_type) && is_float(target) {
-        let s_rank = get_numeric_type_rank(source_type);
-        let t_rank = get_numeric_type_rank(target);
+        let s_rank = get_numeric_type_rank(source_type).unwrap();
+        let t_rank = get_numeric_type_rank(target).unwrap();
 
-        if t_rank > s_rank {
-            return Ok(Adjustment::FExt {
-                target: target.clone(),
-            });
-        } else if t_rank < s_rank && is_explicit {
-            return Ok(Adjustment::FTrunc {
+        if t_rank > s_rank || (t_rank < s_rank && is_explicit) {
+            return Ok(Adjustment::NumericCast {
                 target: target.clone(),
             });
         }
@@ -109,57 +62,58 @@ pub fn compute_type_adjustment(
 
     // Integer -> Float
     if is_integer(source_type) && is_float(target) {
-        return if is_signed(source_type) {
-            Ok(Adjustment::SIToF {
-                target: target.clone(),
-            })
-        } else {
-            Ok(Adjustment::UIToF {
-                target: target.clone(),
-            })
-        };
+        return Ok(Adjustment::NumericCast {
+            target: target.clone(),
+        });
     }
 
     // Float -> Integer (explicit only)
     if is_float(source_type) && is_integer(target) && is_explicit {
-        return if is_signed(target) {
-            Ok(Adjustment::FToSI {
-                target: target.clone(),
-            })
-        } else {
-            Ok(Adjustment::FToUI {
-                target: target.clone(),
-            })
-        };
+        return Ok(Adjustment::NumericCast {
+            target: target.clone(),
+        });
     }
 
-    // Variant -> Union
+    // Union Coercions (Wrapping, Widening, Narrowing)
     if let Some(target_variants) = target.as_union_variants() {
-        if target_variants
-            .iter()
-            .any(|v| check_structural_compatibility(source_type, v))
-        {
-            return Ok(Adjustment::WrapInUnion {
-                variants: target_variants.clone(),
+        let is_valid = if let Some(source_variants) = source_type.as_union_variants() {
+            let is_widen = source_variants.iter().all(|sv| {
+                target_variants
+                    .iter()
+                    .any(|tv| check_structural_compatibility(sv, tv))
+            });
+
+            let is_narrow = target_variants.iter().all(|tv| {
+                source_variants
+                    .iter()
+                    .any(|sv| check_structural_compatibility(tv, sv))
+            });
+
+            is_widen || (is_narrow && is_explicit)
+        } else {
+            target_variants
+                .iter()
+                .any(|v| check_structural_compatibility(source_type, v))
+        };
+
+        if is_valid {
+            return Ok(Adjustment::UnionCoercion {
+                target: target.clone(),
             });
         }
     }
 
-    // Union -> Union (widening)
-    if let (Some(source_variants), Some(target_variants)) =
-        (source_type.as_union_variants(), target.as_union_variants())
-    {
-        let all_present = source_variants.iter().all(|sv| {
-            target_variants
+    // Union -> Single Variant (Unwrapping / Narrowing to 1)
+    if is_explicit {
+        if let Some(source_variants) = source_type.as_union_variants() {
+            if source_variants
                 .iter()
-                .any(|tv| check_structural_compatibility(sv, tv))
-        });
-
-        if all_present {
-            return Ok(Adjustment::WidenUnion {
-                source_variants: source_variants.clone(),
-                target_variants: target_variants.clone(),
-            });
+                .any(|sv| check_structural_compatibility(sv, target))
+            {
+                return Ok(Adjustment::UnwrapUnion {
+                    target: target.clone(),
+                });
+            }
         }
     }
 
@@ -194,10 +148,7 @@ pub fn compute_type_adjustment(
                 if field_adjustments.is_empty() {
                     return Ok(Adjustment::Identity);
                 }
-                return Ok(Adjustment::CoerceStruct {
-                    target_inner_type: (**t_inner).clone(),
-                    field_adjustments,
-                });
+                return Ok(Adjustment::CoerceStruct { field_adjustments });
             }
         }
     }
@@ -209,7 +160,6 @@ pub fn compute_type_adjustment(
 }
 
 impl<'a> Builder<'a, InBlock> {
-    /// Computes the adjustment needed for a specific value.
     pub fn compute_adjustment(
         &self,
         source: ValueId,
@@ -220,49 +170,84 @@ impl<'a> Builder<'a, InBlock> {
         compute_type_adjustment(&source_type, target, is_explicit)
     }
 
-    /// Allocates a new struct with the target layout, copies all fields
-    /// from the source, and applies per-field adjustments where needed.
+    pub fn adjust_value(
+        &mut self,
+        source: ValueId,
+        span: Span,
+        target: Type,
+        is_explicit: bool,
+    ) -> Result<ValueId, SemanticError> {
+        let adj = self
+            .compute_adjustment(source, &target, is_explicit)
+            .map_err(|kind| SemanticError {
+                kind,
+                span: span.clone(),
+            })?;
+        Ok(self.apply_adjustment(source, adj, span))
+    }
+
+    pub fn apply_adjustment(
+        &mut self,
+        source: ValueId,
+        adjustment: Adjustment,
+        span: Span,
+    ) -> ValueId {
+        match adjustment {
+            Adjustment::Identity => source,
+            Adjustment::NumericCast { target } => {
+                let dest = self.new_value_id(target);
+                self.push_instruction(Instruction::Cast(CastInstr { src: source, dest }));
+                dest
+            }
+            Adjustment::UnionCoercion { target } => {
+                self.coerce_to_union(source, &target, span)
+            }
+            Adjustment::UnwrapUnion { target } => {
+                self.emit_unwrap_from_union(source, &target)
+            }
+            Adjustment::CoerceStruct { field_adjustments } => {
+                self.apply_struct_coercion(source, field_adjustments, span)
+            }
+        }
+    }
+
     fn apply_struct_coercion(
         &mut self,
         source: ValueId,
-        target_struct_type: Type,
         field_adjustments: Vec<(StringId, Adjustment)>,
         span: Span,
     ) -> ValueId {
         let source_type = self.get_value_type(source).clone();
-        let source_inner = source_type
-            .try_unwrap_pointer()
-            .expect("INTERNAL COMPILER ERROR: CoerceStruct source is not a pointer");
 
-        let source_fields = match &source_inner {
-            Type::Struct(StructKind::UserDefined(fields)) => fields,
-            _ => panic!(
-                "INTERNAL COMPILER ERROR: CoerceStruct source is not a \
-                 user-defined struct"
-            ),
+        let source_fields = match &source_type {
+            Type::Struct(fields) => fields,
+            _ => panic!("INTERNAL COMPILER ERROR: CoerceStruct source is not a struct"),
         };
-
-        let one = self.emit_const_number(NumberKind::USize(1));
-        let new_ptr = self.emit_heap_alloc(target_struct_type, one);
 
         let mut adj_map: HashMap<StringId, Adjustment> =
             field_adjustments.into_iter().collect();
 
+        let mut new_fields = Vec::with_capacity(source_fields.len());
+
         for field in source_fields.clone() {
             let name = field.identifier.name;
-            let src_field_ptr = self.get_field_ptr(source, name);
-            let src_val = self.emit_load(src_field_ptr);
-            let dst_field_ptr = self.get_field_ptr(new_ptr, name);
+            let ident = IdentifierNode {
+                name,
+                span: span.clone(),
+            };
 
-            if let Some(adj) = adj_map.remove(&name) {
-                let adjusted = self.apply_adjustment(src_val, adj, span.clone());
-                self.emit_store(dst_field_ptr, adjusted, span.clone());
+            let src_val = self.emit_read_struct_field(source, ident.clone());
+
+            let final_val = if let Some(adj) = adj_map.remove(&name) {
+                self.apply_adjustment(src_val, adj, span.clone())
             } else {
-                self.emit_store(dst_field_ptr, src_val, span.clone());
-            }
+                src_val
+            };
+
+            new_fields.push((ident, final_val));
         }
 
-        new_ptr
+        self.emit_struct_init(new_fields)
     }
 }
 
@@ -341,6 +326,10 @@ fn check_recursive<'a>(
         }
 
         (Type::Union(source_variants), Type::Union(target_variants)) => {
+            if source_variants.len() != target_variants.len() {
+                return false;
+            }
+
             source_variants.iter().all(|sv| {
                 target_variants
                     .iter()

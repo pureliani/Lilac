@@ -58,11 +58,7 @@ impl<'a> Builder<'a, InGlobal> {
             for stmt in m.statements {
                 match stmt.kind {
                     StmtKind::From { path, identifiers } => {
-                        if let Err(e) =
-                            module_builder.build_from_stmt(path, identifiers, stmt.span)
-                        {
-                            module_builder.errors.push(e);
-                        };
+                        module_builder.build_from_stmt(path, identifiers, stmt.span);
                     }
                     StmtKind::Expression(expr) => {
                         if let ExprKind::Fn(f) = expr.kind {
@@ -88,6 +84,7 @@ impl<'a> Builder<'a, InGlobal> {
             aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
             type_predicates: self.type_predicates,
+            narrowed_fields: self.narrowed_fields,
         }
     }
 }

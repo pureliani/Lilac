@@ -64,7 +64,7 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
 pub fn literal_to_string(literal: &LiteralType) -> String {
     match literal {
         LiteralType::Number(ordered_number_kind) => ordered_number_kind.0.to_string(),
-        LiteralType::Bool(value) => format!("{}", value.to_string()),
+        LiteralType::Bool(value) => value.to_string(),
         LiteralType::String(id) => STRING_INTERNER.resolve(*id).to_string(),
     }
 }

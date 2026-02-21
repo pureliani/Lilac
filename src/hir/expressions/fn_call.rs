@@ -46,10 +46,15 @@ impl<'a> Builder<'a, InBlock> {
             let param_type = params[i].ty.clone();
 
             let coerced_arg_value =
-                self.adjust_value(arg_value, arg_span, param_type, false)?;
+                match self.adjust_value(arg_value, arg_span, param_type, false) {
+                    Ok(v) => v,
+                    Err(e) => return self.report_error_and_get_poison(e),
+                };
 
             final_args.push(coerced_arg_value);
         }
+
+        self.narrowed_fields.clear();
 
         self.emit_call(func_id, final_args, return_type)
     }

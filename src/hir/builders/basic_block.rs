@@ -1,16 +1,18 @@
 use std::collections::HashSet;
 
 use crate::{
-    ast::Span,
+    ast::{DeclarationId, Span},
     globals::next_value_id,
     hir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
-            InModule, PhiSource, Place, ValueId,
+            InModule, PhiSource, ValueId,
         },
         instructions::Terminator,
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
-        utils::type_to_string::type_to_string,
+        utils::{
+            adjustments::check_structural_compatibility, type_to_string::type_to_string,
+        },
     },
 };
 
@@ -25,6 +27,7 @@ impl<'a> Builder<'a, InBlock> {
             aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
             type_predicates: self.type_predicates,
+            narrowed_fields: self.narrowed_fields,
         }
     }
 
@@ -40,6 +43,7 @@ impl<'a> Builder<'a, InBlock> {
             aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
             type_predicates: self.type_predicates,
+            narrowed_fields: self.narrowed_fields,
         }
     }
 
@@ -56,6 +60,7 @@ impl<'a> Builder<'a, InBlock> {
             aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
             type_predicates: self.type_predicates,
+            narrowed_fields: self.narrowed_fields,
         }
     }
 
@@ -274,9 +279,9 @@ impl<'a> Builder<'a, InBlock> {
 
         if let Some(source_variants) = val_type.as_union_variants() {
             let source_is_subset = source_variants.iter().all(|sv| {
-                target_variants.iter().any(|tv| {
-                    crate::hir::utils::adjustments::check_structural_compatibility(sv, tv)
-                })
+                target_variants
+                    .iter()
+                    .any(|tv| check_structural_compatibility(sv, tv))
             });
 
             if source_is_subset {
@@ -293,7 +298,7 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         block_id: BasicBlockId,
         phi_id: ValueId,
-        place: &Place,
+        variable_id: DeclarationId,
         span: Span,
     ) {
         let predecessors: Vec<BasicBlockId> =
@@ -303,7 +308,7 @@ impl<'a> Builder<'a, InBlock> {
         let mut incoming_types = Vec::new();
 
         for pred in &predecessors {
-            let val = self.read_place_from_block(*pred, place, span.clone());
+            let val = self.read_variable(variable_id, *pred, span.clone());
             phi_sources.push((*pred, val));
             incoming_types.push(self.get_value_type(val).clone());
         }
@@ -370,8 +375,8 @@ impl<'a> Builder<'a, InBlock> {
         let block_id = self.context.block_id;
         let incomplete = self.incomplete_phis.remove(&block_id).unwrap_or_default();
 
-        for (phi_id, place, span) in incomplete {
-            self.resolve_phi(block_id, phi_id, &place, span);
+        for (phi_id, variable, span) in incomplete {
+            self.resolve_phi(block_id, phi_id, variable, span);
         }
 
         self.bb_mut().sealed = true;

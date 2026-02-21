@@ -18,6 +18,9 @@ impl<'a> Builder<'a, InBlock> {
         };
         let target_type = check_type_annotation(&mut type_ctx, &target);
 
-        todo!("Add cast instruction")
+        match self.adjust_value(source, source_span, target_type, true) {
+            Ok(val_id) => val_id,
+            Err(e) => self.report_error_and_get_poison(e),
+        }
     }
 }

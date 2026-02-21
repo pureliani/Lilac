@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use crate::{
     ast::{
         expr::{Expr, ExprKind},
-        DeclarationId, Span,
+        DeclarationId, IdentifierNode, Span,
     },
     compile::interner::StringId,
+    globals::STRING_INTERNER,
     hir::{
         builders::{BasicBlockId, Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
@@ -44,6 +45,26 @@ impl Place {
         path
     }
 
+    /// e.g. `a.b.c.starts_with(a.b)` is true. `a.b.starts_with(a.c)` is false
+    pub fn starts_with(&self, prefix: &Place) -> bool {
+        if self.root() != prefix.root() {
+            return false;
+        }
+
+        if self.root().is_none() {
+            return false;
+        }
+
+        let self_path = self.path();
+        let prefix_path = prefix.path();
+
+        if prefix_path.len() > self_path.len() {
+            return false;
+        }
+
+        self_path[..prefix_path.len()] == prefix_path[..]
+    }
+
     pub fn is_local(&self) -> bool {
         matches!(self, Place::Local(_))
     }
@@ -66,6 +87,28 @@ impl Place {
 }
 
 impl<'a> Builder<'a, InBlock> {
+    pub fn place_to_string(&self, place: &Place) -> String {
+        match place {
+            Place::Local(decl_id) => {
+                let decl = self.program.declarations.get(decl_id).unwrap();
+                let name_id = match decl {
+                    CheckedDeclaration::Var(v) => v.identifier.name,
+                    CheckedDeclaration::Function(f) => f.identifier.name,
+                    _ => panic!("INTERNAL COMPILER ERROR: Place referred to neither a variable or a function")
+                };
+                STRING_INTERNER.resolve(name_id).to_string()
+            }
+            Place::Field(base, field) => {
+                format!(
+                    "{}.{}",
+                    self.place_to_string(base),
+                    STRING_INTERNER.resolve(*field)
+                )
+            }
+            Place::Temporary(_) => "<temporary>".to_string(),
+        }
+    }
+
     pub fn resolve_place(&mut self, expr: Expr) -> Result<Place, SemanticError> {
         let span = expr.span.clone();
 
@@ -99,78 +142,139 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn read_place(&mut self, place: &Place, span: Span) -> ValueId {
-        let canonical = place.canonicalize(self.aliases);
-        self.read_place_from_block(self.context.block_id, &canonical, span)
+    pub fn write_variable(
+        &mut self,
+        variable: DeclarationId,
+        block: BasicBlockId,
+        value: ValueId,
+    ) {
+        self.current_defs
+            .entry(block)
+            .or_default()
+            .insert(variable, value);
     }
 
-    pub fn read_place_from_block(
+    pub fn read_variable(
         &mut self,
-        block_id: BasicBlockId,
-        place: &Place,
+        variable: DeclarationId,
+        block: BasicBlockId,
         span: Span,
     ) -> ValueId {
-        if let Place::Temporary(val_id) = place {
-            return *val_id;
-        }
-
-        if let Some(block_defs) = self.current_defs.get(&block_id) {
-            if let Some(val) = block_defs.get(place) {
+        if let Some(block_defs) = self.current_defs.get(&block) {
+            if let Some(val) = block_defs.get(&variable) {
                 return *val;
             }
         }
+        self.read_variable_recursive(variable, block, span)
+    }
 
+    fn read_variable_recursive(
+        &mut self,
+        variable: DeclarationId,
+        block: BasicBlockId,
+        span: Span,
+    ) -> ValueId {
+        let val_id;
+        let sealed = self.get_bb(block).sealed;
         let predecessors: Vec<BasicBlockId> =
-            self.get_bb(block_id).predecessors.iter().cloned().collect();
+            self.get_bb(block).predecessors.iter().cloned().collect();
 
-        let val_id = if !self.get_bb(block_id).sealed {
-            let val_id = self.new_value_id(Type::Unknown);
-            self.incomplete_phis.entry(block_id).or_default().push((
+        if !sealed {
+            val_id = self.new_value_id(Type::Unknown);
+            self.incomplete_phis.entry(block).or_default().push((
                 val_id,
-                place.clone(),
-                span,
+                variable,
+                span.clone(),
             ));
-            val_id
         } else if predecessors.len() == 1 {
-            self.read_place_from_block(predecessors[0], place, span)
+            val_id = self.read_variable(variable, predecessors[0], span.clone());
         } else if predecessors.is_empty() {
-            panic!(
-                "INTERNAL COMPILER ERROR: Tried to read place in a basic block which \
-                 neither defined the place nor had the predecessors"
-            );
+            panic!("INTERNAL COMPILER ERROR: Uninitialized local variable read");
         } else {
-            let val_id = self.new_value_id(Type::Unknown);
+            val_id = self.new_value_id(Type::Unknown);
+            self.write_variable(variable, block, val_id);
 
-            self.current_defs
-                .entry(block_id)
-                .or_default()
-                .insert(place.clone(), val_id);
+            self.resolve_phi(block, val_id, variable, span.clone());
+        }
 
-            self.resolve_phi(block_id, val_id, place, span);
-            val_id
-        };
-
-        self.current_defs
-            .entry(block_id)
-            .or_default()
-            .insert(place.clone(), val_id);
-
+        self.write_variable(variable, block, val_id);
         val_id
     }
 
-    pub fn remap_place(&mut self, place: &Place, value: ValueId) {
-        if let Place::Temporary(_) = place {
-            panic!(
-                "INTERNAL COMPILER ERROR: Cannot remap (SSA update) a temporary place, \
-                 temporaries are R-Values"
-            );
-        }
-
+    pub fn read_place(&mut self, place: &Place, span: Span) -> ValueId {
         let canonical = place.canonicalize(self.aliases);
-        self.current_defs
-            .entry(self.context.block_id)
-            .or_default()
-            .insert(canonical, value);
+        self.read_place_internal(&canonical, span)
+    }
+
+    fn read_place_internal(&mut self, place: &Place, span: Span) -> ValueId {
+        match place {
+            Place::Temporary(val_id) => *val_id,
+
+            Place::Local(decl_id) => {
+                self.read_variable(*decl_id, self.context.block_id, span)
+            }
+
+            Place::Field(base, field) => {
+                if let Some(val) = self.narrowed_fields.get(place) {
+                    return *val;
+                }
+
+                let base_val = self.read_place_internal(base, span.clone());
+                let ident = IdentifierNode {
+                    name: *field,
+                    span: span.clone(),
+                };
+
+                let val_id = self.emit_read_struct_field(base_val, ident);
+
+                self.narrowed_fields.insert(place.clone(), val_id);
+                val_id
+            }
+        }
+    }
+
+    pub fn write_place(&mut self, place: &Place, value: ValueId, span: Span) {
+        let canonical = place.canonicalize(self.aliases);
+        self.write_place_internal(&canonical, value, span);
+    }
+
+    fn write_place_internal(&mut self, place: &Place, value: ValueId, span: Span) {
+        match place {
+            Place::Temporary(_) => {
+                panic!("INTERNAL COMPILER ERROR: Cannot write to a temporary place");
+            }
+            Place::Local(decl_id) => {
+                self.write_variable(*decl_id, self.context.block_id, value);
+                self.narrowed_fields.retain(|k, _| !k.starts_with(place));
+            }
+            Place::Field(base, field) => {
+                let base_val = self.read_place_internal(base, span.clone());
+                let ident = IdentifierNode {
+                    name: *field,
+                    span: span.clone(),
+                };
+
+                self.emit_update_struct_field(base_val, ident, value);
+
+                self.narrowed_fields.retain(|k, _| !k.starts_with(place));
+                self.narrowed_fields.insert(place.clone(), value);
+            }
+        }
+    }
+
+    pub fn remap_place(&mut self, place: &Place, value: ValueId) {
+        let canonical = place.canonicalize(self.aliases);
+        match canonical {
+            Place::Temporary(_) => {
+                panic!("INTERNAL COMPILER ERROR: Cannot remap temporary")
+            }
+            Place::Local(decl_id) => {
+                self.write_variable(decl_id, self.context.block_id, value);
+            }
+            Place::Field(_, _) => {
+                self.narrowed_fields.insert(canonical, value);
+            }
+        }
     }
 
     pub fn type_of_place(&self, place: &Place) -> Type {

@@ -257,6 +257,15 @@ impl Compiler {
                         .with_labels(vec![Label::primary(file_id, range.clone())]);
 
                     match &e.kind {
+                        SemanticErrorKind::ArgumentAliasing {
+                            passed,
+                            aliased_with,
+                        } => diag.with_message("Argument aliasing detected").with_labels(
+                            vec![Label::primary(file_id, range).with_message(format!(
+            "Cannot pass argument '{}' which is an alias of another argument '{}'",
+            passed, aliased_with
+        ))],
+                        ),
                         SemanticErrorKind::CannotGetLen(_ty) => {
                             diag.with_message("Cannot get length")
                         }

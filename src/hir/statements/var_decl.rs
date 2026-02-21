@@ -4,10 +4,7 @@ use crate::{
         builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
-        utils::{
-            check_type::{check_type_annotation, TypeCheckerContext},
-            place::Place,
-        },
+        utils::check_type::{check_type_annotation, TypeCheckerContext},
     },
 };
 
@@ -39,10 +36,15 @@ impl<'a> Builder<'a, InBlock> {
         };
 
         let final_val_id =
-            self.adjust_value(val_id, value_span, constraint.clone(), false)?;
+            match self.adjust_value(val_id, value_span, constraint.clone(), false) {
+                Ok(id) => id,
+                Err(e) => {
+                    self.errors.push(e);
+                    return;
+                }
+            };
 
-        let place = Place::Local(var_decl.id);
-        self.remap_place(&place, final_val_id);
+        self.write_variable(var_decl.id, self.context.block_id, final_val_id);
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
