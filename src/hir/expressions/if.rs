@@ -163,23 +163,24 @@ impl<'a> Builder<'a, InBlock> {
 
                         let final_sources = if unified_type.as_union_variants().is_some()
                         {
-                            let current_block = self.context.block_id;
                             let mut coerced_sources = HashSet::new();
                             for source in phi_sources {
-                                let coercion_block =
-                                    self.get_coercion_block(source.from, merge_block_id);
-                                self.use_basic_block(coercion_block);
-                                let coerced = self.coerce_to_union(
-                                    source.value,
-                                    &unified_type,
-                                    expr_span.clone(),
+                                let (coercion_block, coerced) = self.insert_on_edge(
+                                    source.from,
+                                    merge_block_id,
+                                    |b| {
+                                        b.coerce_to_union(
+                                            source.value,
+                                            &unified_type,
+                                            expr_span.clone(),
+                                        )
+                                    },
                                 );
                                 coerced_sources.insert(PhiSource {
                                     from: coercion_block,
                                     value: coerced,
                                 });
                             }
-                            self.use_basic_block(current_block);
                             coerced_sources
                         } else {
                             phi_sources
@@ -197,6 +198,10 @@ impl<'a> Builder<'a, InBlock> {
         *self.narrowed_fields = merged_fields;
 
         if context == IfContext::Expression {
+            if branch_results.is_empty() {
+                return self.new_value_id(Type::Never);
+            }
+
             let type_entries: Vec<Type> = branch_results
                 .iter()
                 .map(|(_, val, _)| self.get_value_type(*val).clone())
@@ -205,14 +210,13 @@ impl<'a> Builder<'a, InBlock> {
             let result_type = Type::make_union(type_entries);
 
             if result_type.as_union_variants().is_some() {
-                let current_block = self.context.block_id;
                 let mut coerced_sources = HashSet::new();
 
                 for (from_block, val, span) in branch_results {
-                    let coercion_block =
-                        self.get_coercion_block(from_block, merge_block_id);
-                    self.use_basic_block(coercion_block);
-                    let coerced = self.coerce_to_union(val, &result_type, span);
+                    let (coercion_block, coerced) =
+                        self.insert_on_edge(from_block, merge_block_id, |b| {
+                            b.coerce_to_union(val, &result_type, span)
+                        });
 
                     coerced_sources.insert(PhiSource {
                         from: coercion_block,
@@ -220,7 +224,6 @@ impl<'a> Builder<'a, InBlock> {
                     });
                 }
 
-                self.use_basic_block(current_block);
                 let phi_id = self.new_value_id(result_type);
                 self.insert_phi(merge_block_id, phi_id, coerced_sources);
                 phi_id

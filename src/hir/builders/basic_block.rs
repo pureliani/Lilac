@@ -294,6 +294,30 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
+    pub fn insert_on_edge<F, R>(
+        &mut self,
+        pred: BasicBlockId,
+        succ: BasicBlockId,
+        f: F,
+    ) -> (BasicBlockId, R)
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let coercion_block = self.get_coercion_block(pred, succ);
+        let old_block = self.context.block_id;
+
+        self.use_basic_block(coercion_block);
+        let term = self.bb_mut().terminator.take();
+
+        let result = f(self);
+
+        self.bb_mut().terminator = term;
+
+        self.use_basic_block(old_block);
+
+        (coercion_block, result)
+    }
+
     pub fn resolve_phi(
         &mut self,
         block_id: BasicBlockId,
@@ -316,14 +340,13 @@ impl<'a> Builder<'a, InBlock> {
         let unified_type = Type::make_union(incoming_types);
 
         let final_sources = if unified_type.as_union_variants().is_some() {
-            let current_block = self.context.block_id;
             let mut wrapped = HashSet::new();
 
             for (pred_block, val) in phi_sources {
-                let coercion_block = self.get_coercion_block(pred_block, block_id);
-
-                self.use_basic_block(coercion_block);
-                let final_val = self.coerce_to_union(val, &unified_type, span.clone());
+                let (coercion_block, final_val) =
+                    self.insert_on_edge(pred_block, block_id, |b| {
+                        b.coerce_to_union(val, &unified_type, span.clone())
+                    });
 
                 wrapped.insert(PhiSource {
                     from: coercion_block,
@@ -331,7 +354,6 @@ impl<'a> Builder<'a, InBlock> {
                 });
             }
 
-            self.use_basic_block(current_block);
             wrapped
         } else {
             phi_sources
