@@ -101,6 +101,8 @@ impl<'a> Builder<'a, InBlock> {
         let right_entry_block = self.as_fn().new_bb();
         let merge_block = self.as_fn().new_bb();
 
+        let const_true = self.emit_const_bool(true);
+
         self.emit_cond_jmp(left, merge_block, right_entry_block);
 
         self.seal_block(right_entry_block);
@@ -124,8 +126,6 @@ impl<'a> Builder<'a, InBlock> {
 
         self.seal_block(merge_block);
         self.use_basic_block(merge_block);
-
-        let const_true = self.emit_const_bool(true);
 
         let phi_id = self.new_value_id(Type::Bool);
         let phi_sources = HashSet::from([
@@ -168,6 +168,8 @@ impl<'a> Builder<'a, InBlock> {
         let right_entry_block = self.as_fn().new_bb();
         let merge_block = self.as_fn().new_bb();
 
+        let const_false = self.emit_const_bool(false);
+
         self.emit_cond_jmp(left, right_entry_block, merge_block);
 
         self.seal_block(right_entry_block);
@@ -191,8 +193,6 @@ impl<'a> Builder<'a, InBlock> {
 
         self.seal_block(merge_block);
         self.use_basic_block(merge_block);
-
-        let const_false = self.emit_const_bool(false);
 
         let phi_id = self.new_value_id(Type::Bool);
         let phi_sources = HashSet::from([
