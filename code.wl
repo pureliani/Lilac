@@ -1,15 +1,11 @@
-type Foo = {
-    bar: string | i32,
-};
+type Data = { val: i32 };
+type Node = { left: Data, right: Data };
+
+fn process(a: Node) {}
 
 fn main() {
-    let f: Foo = { bar: 1 };
+    let shared_data: Data = { val: 99 };
+    let bad_node: Node = { left: shared_data, right: shared_data };
 
-    let bar_is_number = f.bar::is(i32);
-    
-    let value = if bar_is_number {
-        f.bar
-    } else {
-        123
-    };
+    process(bad_node);
 }

@@ -1,0 +1,17 @@
+error[S49]: Argument aliasing detected
+   ┌─ /home/gabriel/Desktop/Lilac/code.wl:23:13
+   │
+15 │     process(safe_node.left, safe_node.right);
+16 │ 
+17 │     // --- SCENARIO 2: Deep Aliasing ---
+18 │     let shared_data: Data = { val: 99 };
+19 │     let bad_node: Node = { left: shared_data, right: shared_data };
+20 │ 
+21 │     // The compiler should catch this and throw an error, 
+22 │     // because both fields reach `shared_data`!
+23 │     process(bad_node.left, bad_node.right);
+   │             ^^^^^^^^^^^^^
+   │             │
+   │             Cannot pass argument `bad_node.left` which is an alias of another argument `bad_node.right`
+24 │ }
+

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{DeclarationId, IdentifierNode, ModulePath, Span},
+    ast::{expr::Expr, DeclarationId, IdentifierNode, ModulePath, Span},
     hir::{
         errors::SemanticError,
         instructions::{Instruction, Terminator},
@@ -9,7 +9,7 @@ use crate::{
             checked_declaration::{CheckedDeclaration, CheckedParam},
             checked_type::Type,
         },
-        utils::{place::Place, scope::Scope},
+        utils::{points_to::PointsToGraph, scope::Scope},
     },
 };
 
@@ -30,7 +30,7 @@ pub struct ConstantId(pub usize);
 
 #[derive(Debug, Clone)]
 pub struct TypePredicate {
-    pub place: Place,
+    pub target: Expr,
     pub on_true_type: Option<Type>,
     pub on_false_type: Option<Type>,
 }
@@ -67,6 +67,7 @@ pub struct Function {
     pub blocks: HashMap<BasicBlockId, BasicBlock>,
 
     pub value_definitions: HashMap<ValueId, BasicBlockId>,
+    pub ptg: PointsToGraph,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -98,8 +99,8 @@ pub struct Builder<'a, C: BuilderContext> {
     pub current_defs: &'a mut HashMap<BasicBlockId, HashMap<DeclarationId, ValueId>>,
     pub incomplete_phis:
         &'a mut HashMap<BasicBlockId, Vec<(ValueId, DeclarationId, Span)>>,
-    pub aliases: &'a mut HashMap<DeclarationId, Place>,
-    pub narrowed_fields: &'a mut HashMap<Place, ValueId>,
+
+    pub ptg: &'a mut PointsToGraph,
 }
 
 pub struct InGlobal;

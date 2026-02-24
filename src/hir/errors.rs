@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::{
     ast::{IdentifierNode, ModulePath, Span},
     compile::interner::StringId,
-    hir::types::checked_type::Type,
+    hir::{types::checked_type::Type, utils::points_to::PathSegment},
 };
 
 #[derive(Debug, Clone)]
@@ -15,8 +15,10 @@ pub enum SemanticErrorKind {
         expected: Type,
     },
     ArgumentAliasing {
-        passed: String,
-        aliased_with: String,
+        passed_arg_span: Span,
+        passed_path: Vec<PathSegment>,
+        aliased_arg_span: Span,
+        aliased_path: Vec<PathSegment>,
     },
     UnsupportedUnionNarrowing,
     CannotNarrowNonUnion(Type),

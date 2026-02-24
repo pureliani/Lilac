@@ -5,13 +5,28 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, ListInstr},
         types::checked_type::Type,
-        utils::{adjustments::check_structural_compatibility, numeric::is_integer},
+        utils::{
+            adjustments::check_structural_compatibility, numeric::is_integer,
+            points_to::PathSegment,
+        },
     },
 };
 
 impl<'a> Builder<'a, InBlock> {
     pub fn emit_list_init(&mut self, element_type: Type, items: Vec<ValueId>) -> ValueId {
         let dest = self.new_value_id(Type::List(Box::new(element_type.clone())));
+
+        let alloc_id = self.ptg.new_alloc();
+        self.ptg.bind_value_to_alloc(dest, alloc_id);
+
+        for item_val in &items {
+            if let Some(val_allocs) = self.ptg.value_locations.get(item_val).cloned() {
+                for v_alloc in val_allocs {
+                    self.ptg
+                        .add_heap_edge(alloc_id, PathSegment::Index, v_alloc);
+                }
+            }
+        }
 
         self.push_instruction(Instruction::List(ListInstr::Init {
             dest,
@@ -48,6 +63,9 @@ impl<'a> Builder<'a, InBlock> {
                     list,
                     index,
                 }));
+
+                self.ptg.read_path(dest, list, PathSegment::Index);
+
                 dest
             }
             Type::Unknown => self.new_value_id(Type::Unknown),
@@ -95,6 +113,12 @@ impl<'a> Builder<'a, InBlock> {
                     index,
                     value,
                 }));
+
+                if let Some(allocs) = self.ptg.value_locations.get(&list).cloned() {
+                    self.ptg.value_locations.insert(dest, allocs);
+                }
+                self.ptg.update_path(list, PathSegment::Index, value);
+
                 dest
             }
             Type::Unknown => self.new_value_id(Type::Unknown),

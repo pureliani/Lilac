@@ -20,8 +20,8 @@ impl<'a> Builder<'a, InBlock> {
             variants
                 .iter()
                 .any(|v| check_structural_compatibility(v, &source_type)),
-            "INTERNAL COMPILER ERROR: wrap_in_union - source type is not a \
-                     variant of the union"
+            "INTERNAL COMPILER ERROR: wrap_in_union - source type is not a variant of \
+             the union"
         );
 
         let new_union_value = self.new_value_id(Type::Union(variants.clone()));
@@ -46,10 +46,14 @@ impl<'a> Builder<'a, InBlock> {
         assert!(
             union_value_ty
                 .as_union_variants()
-                .expect("INTERNAL COMPILER ERROR: unwrap_from_union - union_value is not a union")
+                .expect(
+                    "INTERNAL COMPILER ERROR: unwrap_from_union - union_value is not a \
+                     union"
+                )
                 .iter()
                 .any(|v| { check_structural_compatibility(v, variant_type) }),
-            "INTERNAL COMPILER ERROR: unwrap_from_union - variant_type is not a member of the union"
+            "INTERNAL COMPILER ERROR: unwrap_from_union - variant_type is not a member \
+             of the union"
         );
 
         let payload_value = self.new_value_id(variant_type.clone());
@@ -105,8 +109,8 @@ impl<'a> Builder<'a, InBlock> {
 
         assert!(
             source_variants.len() <= target_variants.len(),
-            "INTERNAL COMPILER ERROR: widen_union called but source has more \
-             variants than target"
+            "INTERNAL COMPILER ERROR: widen_union called but source has more variants \
+             than target"
         );
 
         for sv in source_variants {
@@ -114,8 +118,8 @@ impl<'a> Builder<'a, InBlock> {
                 target_variants
                     .iter()
                     .any(|tv| check_structural_compatibility(sv, tv)),
-                "INTERNAL COMPILER ERROR: widen_union - source variant not found \
-                 in target union"
+                "INTERNAL COMPILER ERROR: widen_union - source variant not found in \
+                 target union"
             );
         }
 
@@ -149,8 +153,8 @@ impl<'a> Builder<'a, InBlock> {
 
         assert!(
             source_variants.len() > target_variants.len(),
-            "INTERNAL COMPILER ERROR: narrow_union called but target has >= \
-             variants than source (use widen_union instead)"
+            "INTERNAL COMPILER ERROR: narrow_union called but target has >= variants \
+             than source (use widen_union instead)"
         );
 
         for tv in target_variants {
@@ -158,8 +162,8 @@ impl<'a> Builder<'a, InBlock> {
                 source_variants
                     .iter()
                     .any(|sv| check_structural_compatibility(sv, tv)),
-                "INTERNAL COMPILER ERROR: narrow_union - target variant not found \
-                 in source union"
+                "INTERNAL COMPILER ERROR: narrow_union - target variant not found in \
+                 source union"
             );
         }
 

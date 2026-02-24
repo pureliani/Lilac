@@ -1,5 +1,9 @@
 use crate::{
-    ast::{expr::Expr, type_annotation::TypeAnnotation, Span},
+    ast::{
+        expr::{Expr, ExprKind},
+        type_annotation::TypeAnnotation,
+        Span,
+    },
     hir::{
         builders::{Builder, InBlock, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
@@ -7,14 +11,11 @@ use crate::{
         utils::{
             adjustments::check_structural_compatibility,
             check_type::{check_type_annotation, TypeCheckerContext},
-            place::Place,
         },
     },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    /// Emits a runtime check that tests the union discriminant against
-    /// one or more matching variant types. Returns a bool ValueId.
     fn emit_is_type_check(
         &mut self,
         union: ValueId,
@@ -47,12 +48,8 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn build_is_type_expr(&mut self, left: Expr, ty: TypeAnnotation) -> ValueId {
         let span = left.span.clone();
-        let place = match self.resolve_place(left) {
-            Ok(p) => p,
-            Err(e) => return self.report_error_and_get_poison(e),
-        };
 
-        let current_val = self.read_place(&place, span.clone());
+        let current_val = self.build_expr(left.clone());
         let current_ty = self.get_value_type(current_val).clone();
 
         let variants = match current_ty.as_union_variants() {
@@ -113,13 +110,14 @@ impl<'a> Builder<'a, InBlock> {
             None
         };
 
-        if !matches!(place, Place::Temporary(_))
-            && (true_type.is_some() || false_type.is_some())
-        {
+        let is_narrowable =
+            matches!(left.kind, ExprKind::Identifier(_) | ExprKind::Access { .. });
+
+        if is_narrowable && (true_type.is_some() || false_type.is_some()) {
             self.type_predicates.insert(
                 result_id,
                 TypePredicate {
-                    place,
+                    target: left,
                     on_true_type: true_type,
                     on_false_type: false_type,
                 },

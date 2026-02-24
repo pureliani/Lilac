@@ -211,14 +211,19 @@ impl Parser {
                     TokenKind::Punctuation(PunctuationKind::Dot) => {
                         self.consume_punctuation(PunctuationKind::Dot)?;
 
-                        let start_offset = self.offset;
+                        let start_pos = lhs_clone.span.start;
                         let field = self.consume_identifier()?;
+                        let end_pos = field.span.end;
                         Some(Expr {
                             kind: ExprKind::Access {
                                 left: Box::new(lhs_clone),
                                 field,
                             },
-                            span: self.get_span(start_offset, self.offset - 1)?,
+                            span: Span {
+                                start: start_pos,
+                                end: end_pos,
+                                path: self.path.clone(),
+                            },
                         })
                     }
                     TokenKind::Punctuation(PunctuationKind::DoubleCol) => {

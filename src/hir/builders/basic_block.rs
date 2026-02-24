@@ -24,10 +24,9 @@ impl<'a> Builder<'a, InBlock> {
             errors: self.errors,
             current_scope: self.current_scope.clone(),
             current_defs: self.current_defs,
-            aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
             type_predicates: self.type_predicates,
-            narrowed_fields: self.narrowed_fields,
+            ptg: self.ptg,
         }
     }
 
@@ -40,10 +39,9 @@ impl<'a> Builder<'a, InBlock> {
             errors: self.errors,
             current_scope: self.current_scope.clone(),
             current_defs: self.current_defs,
-            aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
             type_predicates: self.type_predicates,
-            narrowed_fields: self.narrowed_fields,
+            ptg: self.ptg,
         }
     }
 
@@ -57,10 +55,9 @@ impl<'a> Builder<'a, InBlock> {
             errors: self.errors,
             current_scope: self.current_scope.clone(),
             current_defs: self.current_defs,
-            aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
             type_predicates: self.type_predicates,
-            narrowed_fields: self.narrowed_fields,
+            ptg: self.ptg,
         }
     }
 
@@ -121,6 +118,64 @@ impl<'a> Builder<'a, InBlock> {
         self.program.value_types.get(&id).unwrap_or_else(|| {
             panic!("INTERNAL COMPILER ERROR: ValueId({}) has no type", id.0)
         })
+    }
+
+    pub fn write_variable(
+        &mut self,
+        variable: DeclarationId,
+        block: BasicBlockId,
+        value: ValueId,
+    ) {
+        self.current_defs
+            .entry(block)
+            .or_default()
+            .insert(variable, value);
+    }
+
+    pub fn read_variable(
+        &mut self,
+        variable: DeclarationId,
+        block: BasicBlockId,
+        span: Span,
+    ) -> ValueId {
+        if let Some(block_defs) = self.current_defs.get(&block) {
+            if let Some(val) = block_defs.get(&variable) {
+                return *val;
+            }
+        }
+        self.read_variable_recursive(variable, block, span)
+    }
+
+    fn read_variable_recursive(
+        &mut self,
+        variable: DeclarationId,
+        block: BasicBlockId,
+        span: Span,
+    ) -> ValueId {
+        let val_id;
+        let sealed = self.get_bb(block).sealed;
+        let predecessors: Vec<BasicBlockId> =
+            self.get_bb(block).predecessors.iter().cloned().collect();
+
+        if !sealed {
+            val_id = self.new_value_id(Type::Unknown);
+            self.incomplete_phis.entry(block).or_default().push((
+                val_id,
+                variable,
+                span.clone(),
+            ));
+        } else if predecessors.len() == 1 {
+            val_id = self.read_variable(variable, predecessors[0], span.clone());
+        } else if predecessors.is_empty() {
+            panic!("INTERNAL COMPILER ERROR: Uninitialized local variable read");
+        } else {
+            val_id = self.new_value_id(Type::Unknown);
+            self.write_variable(variable, block, val_id);
+            self.resolve_phi(block, val_id, variable, span.clone());
+        }
+
+        self.write_variable(variable, block, val_id);
+        val_id
     }
 
     pub fn insert_phi(
@@ -197,8 +252,8 @@ impl<'a> Builder<'a, InBlock> {
                 }
             }
             _ => panic!(
-                "INTERNAL COMPILER ERROR: retarget_terminator: block has no \
-                 branchable terminator"
+                "INTERNAL COMPILER ERROR: retarget_terminator: block has no branchable \
+                 terminator"
             ),
         }
     }
@@ -369,7 +424,11 @@ impl<'a> Builder<'a, InBlock> {
             *ty = unified_type;
         }
 
-        self.insert_phi(block_id, phi_id, final_sources);
+        self.insert_phi(block_id, phi_id, final_sources.clone());
+
+        let source_values: Vec<ValueId> =
+            final_sources.into_iter().map(|s| s.value).collect();
+        self.ptg.merge_values(phi_id, &source_values);
     }
 
     pub fn new_value_id(&mut self, ty: Type) -> ValueId {

@@ -3,7 +3,7 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        utils::place::Place,
+        types::checked_declaration::CheckedDeclaration,
     },
 };
 
@@ -19,12 +19,19 @@ impl<'a> Builder<'a, InBlock> {
             }
         };
 
-        let place = self
-            .aliases
-            .get(&decl_id)
-            .cloned()
-            .unwrap_or(Place::Local(decl_id));
+        let decl = self.program.declarations.get(&decl_id).unwrap();
 
-        self.read_place(&place, identifier.span)
+        match decl {
+            CheckedDeclaration::Function(_) => self.emit_const_fn(decl_id),
+            CheckedDeclaration::Var(_) => {
+                self.read_variable(decl_id, self.context.block_id, identifier.span)
+            }
+            CheckedDeclaration::TypeAlias(_) => {
+                self.report_error_and_get_poison(SemanticError {
+                    span: identifier.span.clone(),
+                    kind: SemanticErrorKind::CannotUseTypeDeclarationAsValue,
+                })
+            }
+        }
     }
 }

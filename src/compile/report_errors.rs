@@ -1,8 +1,10 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::Files;
 use codespan_reporting::term::termcolor::{ColorChoice, NoColor, StandardStream};
 use codespan_reporting::term::{self, Config};
 
 use crate::compile::file_cache::FileCache;
+use crate::hir::utils::points_to::PathSegment;
 use crate::{
     ast::{ModulePath, Span},
     compile::{Compiler, CompilerErrorKind},
@@ -258,14 +260,59 @@ impl Compiler {
 
                     match &e.kind {
                         SemanticErrorKind::ArgumentAliasing {
-                            passed,
-                            aliased_with,
-                        } => diag.with_message("Argument aliasing detected").with_labels(
-                            vec![Label::primary(file_id, range).with_message(format!(
-            "Cannot pass argument '{}' which is an alias of another argument '{}'",
-            passed, aliased_with
-        ))],
-                        ),
+                            passed_arg_span,
+                            passed_path,
+                            aliased_arg_span,
+                            aliased_path,
+                        } => {
+                            let get_snippet = |span: &Span| -> String {
+                                if let Ok(f_id) = self.resolve_file_id(&cache, &span.path)
+                                {
+                                    if let Ok(source) = cache.source(f_id) {
+                                        let start = span.start.byte_offset;
+                                        let end = span.end.byte_offset;
+                                        if start <= source.len() && end <= source.len() {
+                                            return source[start..end].to_string();
+                                        }
+                                    }
+                                }
+                                "<unknown>".to_string()
+                            };
+
+                            let format_full_path =
+                                |span: &Span, path: &[PathSegment]| -> String {
+                                    let mut s = get_snippet(span);
+                                    for seg in path {
+                                        match seg {
+                                            PathSegment::Field(name) => {
+                                                s.push('.');
+                                                s.push_str(
+                                                    &STRING_INTERNER.resolve(*name),
+                                                );
+                                            }
+                                            PathSegment::Index => {
+                                                s.push_str("[index]");
+                                            }
+                                        }
+                                    }
+                                    s
+                                };
+
+                            let passed_str =
+                                format_full_path(passed_arg_span, passed_path);
+                            let aliased_str =
+                                format_full_path(aliased_arg_span, aliased_path);
+
+                            diag.with_message("Argument aliasing detected").with_labels(
+                                vec![Label::primary(file_id, range).with_message(
+                                    format!(
+                                        "Cannot pass argument `{}` which is an alias of \
+                                         another argument `{}`",
+                                        passed_str, aliased_str
+                                    ),
+                                )],
+                            )
+                        }
                         SemanticErrorKind::CannotGetLen(_ty) => {
                             diag.with_message("Cannot get length")
                         }

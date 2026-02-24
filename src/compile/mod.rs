@@ -22,6 +22,7 @@ use crate::{
         errors::SemanticError,
         utils::{
             dump::dump_program,
+            points_to::PointsToGraph,
             scope::{Scope, ScopeKind},
         },
     },
@@ -107,9 +108,7 @@ impl Compiler {
         let mut builder_errors = vec![];
         let mut current_defs = HashMap::new();
         let mut incomplete_phis = HashMap::new();
-        let mut aliases = HashMap::new();
         let mut type_predicates = HashMap::new();
-        let mut narrowed_fields = HashMap::new();
 
         let mut program = Program {
             constant_data: HashMap::new(),
@@ -119,6 +118,7 @@ impl Compiler {
         };
 
         let global_scope = Scope::new_root(ScopeKind::Global, Span::default());
+        let mut global_ptg = PointsToGraph::new();
 
         let mut program_builder = Builder {
             context: InGlobal,
@@ -127,9 +127,8 @@ impl Compiler {
             program: &mut program,
             current_defs: &mut current_defs,
             incomplete_phis: &mut incomplete_phis,
-            aliases: &mut aliases,
             type_predicates: &mut type_predicates,
-            narrowed_fields: &mut narrowed_fields,
+            ptg: &mut global_ptg,
         };
 
         program_builder.build(modules_to_compile);

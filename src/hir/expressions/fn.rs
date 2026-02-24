@@ -10,6 +10,7 @@ use crate::{
         utils::{
             adjustments::check_structural_compatibility,
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
+            points_to::PointsToGraph,
             scope::ScopeKind,
         },
     },
@@ -53,6 +54,7 @@ impl<'a> Builder<'a, InModule> {
             entry_block: entry_block_id,
             blocks: HashMap::new(),
             value_definitions: HashMap::new(),
+            ptg: PointsToGraph::new(),
         };
 
         self.program
@@ -72,9 +74,8 @@ impl<'a> Builder<'a, InModule> {
                 .enter(ScopeKind::FunctionBody, body.span.start),
             current_defs: self.current_defs,
             incomplete_phis: self.incomplete_phis,
-            aliases: self.aliases,
             type_predicates: self.type_predicates,
-            narrowed_fields: self.narrowed_fields,
+            ptg: self.ptg,
         };
 
         let entry_bb = BasicBlock {
@@ -98,11 +99,7 @@ impl<'a> Builder<'a, InModule> {
                 constraint: param.ty.clone(),
             };
 
-            fn_builder
-                .current_defs
-                .entry(entry_block_id)
-                .or_default()
-                .insert(param_decl_id, identity_id);
+            fn_builder.write_variable(param_decl_id, entry_block_id, identity_id);
 
             fn_builder
                 .program
@@ -136,7 +133,10 @@ impl<'a> Builder<'a, InModule> {
 impl<'a> Builder<'a, InBlock> {
     pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> ValueId {
         let id = fn_decl.id;
-        self.as_module().build_fn_body(fn_decl);
+        match self.as_module().build_fn_body(fn_decl) {
+            Ok(v) => v,
+            Err(e) => self.errors.push(e),
+        };
         self.emit_const_fn(id)
     }
 }

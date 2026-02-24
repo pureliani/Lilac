@@ -13,6 +13,7 @@ use crate::{
         types::checked_declaration::CheckedDeclaration,
         utils::{
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
+            points_to::PointsToGraph,
             scope::ScopeKind,
         },
     },
@@ -81,10 +82,9 @@ impl<'a> Builder<'a, InGlobal> {
             errors: self.errors,
             current_scope: scope,
             current_defs: self.current_defs,
-            aliases: self.aliases,
             incomplete_phis: self.incomplete_phis,
             type_predicates: self.type_predicates,
-            narrowed_fields: self.narrowed_fields,
+            ptg: self.ptg,
         }
     }
 }
@@ -109,6 +109,7 @@ impl<'a> Builder<'a, InModule> {
             entry_block: BasicBlockId(0),
             blocks: HashMap::new(),
             value_definitions: HashMap::new(),
+            ptg: PointsToGraph::new(),
         };
 
         self.program

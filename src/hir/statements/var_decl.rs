@@ -38,10 +38,7 @@ impl<'a> Builder<'a, InBlock> {
         let final_val_id =
             match self.adjust_value(val_id, value_span, constraint.clone(), false) {
                 Ok(id) => id,
-                Err(e) => {
-                    self.errors.push(e);
-                    return;
-                }
+                Err(e) => self.report_error_and_get_poison(e),
             };
 
         self.write_variable(var_decl.id, self.context.block_id, final_val_id);

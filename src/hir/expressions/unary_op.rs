@@ -14,7 +14,7 @@ impl<'a> Builder<'a, InBlock> {
             self.type_predicates.insert(
                 result_id,
                 TypePredicate {
-                    place: pred.place,
+                    target: pred.target,
                     on_true_type: pred.on_false_type,
                     on_false_type: pred.on_true_type,
                 },
