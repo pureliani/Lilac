@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{expr::Expr, DeclarationId, IdentifierNode, ModulePath, Span},
+    ast::{DeclarationId, IdentifierNode, ModulePath, Span},
     hir::{
         errors::SemanticError,
         instructions::{Instruction, Terminator},
@@ -30,7 +30,7 @@ pub struct ConstantId(pub usize);
 
 #[derive(Debug, Clone)]
 pub struct TypePredicate {
-    pub target: Expr,
+    pub decl_id: DeclarationId,
     pub on_true_type: Option<Type>,
     pub on_false_type: Option<Type>,
 }
@@ -94,7 +94,7 @@ pub struct Builder<'a, C: BuilderContext> {
     pub errors: &'a mut Vec<SemanticError>,
     pub current_scope: Scope,
 
-    pub type_predicates: &'a mut HashMap<ValueId, TypePredicate>,
+    pub type_predicates: &'a mut HashMap<ValueId, Vec<TypePredicate>>,
 
     pub current_defs: &'a mut HashMap<BasicBlockId, HashMap<DeclarationId, ValueId>>,
     pub incomplete_phis:

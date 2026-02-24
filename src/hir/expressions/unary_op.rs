@@ -10,15 +10,17 @@ impl<'a> Builder<'a, InBlock> {
 
         let result_id = self.emit_not(operand_id, span);
 
-        if let Some(pred) = self.type_predicates.get(&operand_id).cloned() {
-            self.type_predicates.insert(
-                result_id,
-                TypePredicate {
-                    target: pred.target,
+        if let Some(preds) = self.type_predicates.get(&operand_id).cloned() {
+            let flipped: Vec<TypePredicate> = preds
+                .into_iter()
+                .map(|pred| TypePredicate {
+                    decl_id: pred.decl_id,
                     on_true_type: pred.on_false_type,
                     on_false_type: pred.on_true_type,
-                },
-            );
+                })
+                .collect();
+
+            self.type_predicates.insert(result_id, flipped);
         }
 
         result_id

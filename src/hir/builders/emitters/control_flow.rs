@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::{
     ast::Span,
     hir::{
-        builders::{BasicBlockId, Builder, InBlock, PhiSource, ValueId},
+        builders::{BasicBlockId, Builder, InBlock, PhiSource, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{CallInstr, Instruction, Terminator},
         types::checked_type::Type,
@@ -97,6 +97,8 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
+        let left_preds = self.type_predicates.get(&left).cloned().unwrap_or_default();
+
         let left_block = self.context.block_id;
         let right_entry_block = self.as_fn().new_bb();
         let merge_block = self.as_fn().new_bb();
@@ -108,6 +110,8 @@ impl<'a> Builder<'a, InBlock> {
         self.seal_block(right_entry_block);
         self.use_basic_block(right_entry_block);
 
+        self.apply_predicate_list(&left_preds, false, &left_span);
+
         let right = produce_right(self);
         let right_block = self.context.block_id;
 
@@ -118,9 +122,15 @@ impl<'a> Builder<'a, InBlock> {
                     expected: Type::Bool,
                     received: right_type.clone(),
                 },
-                span: left_span,
+                span: left_span.clone(),
             });
         }
+
+        let right_preds = self
+            .type_predicates
+            .get(&right)
+            .cloned()
+            .unwrap_or_default();
 
         self.emit_jmp(merge_block);
 
@@ -140,6 +150,11 @@ impl<'a> Builder<'a, InBlock> {
         ]);
 
         self.insert_phi(self.context.block_id, phi_id, phi_sources);
+
+        let combined = Self::combine_predicates(&left_preds, &right_preds, false);
+        if !combined.is_empty() {
+            self.type_predicates.insert(phi_id, combined);
+        }
 
         phi_id
     }
@@ -164,6 +179,8 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
+        let left_preds = self.type_predicates.get(&left).cloned().unwrap_or_default();
+
         let left_block = self.context.block_id;
         let right_entry_block = self.as_fn().new_bb();
         let merge_block = self.as_fn().new_bb();
@@ -175,6 +192,8 @@ impl<'a> Builder<'a, InBlock> {
         self.seal_block(right_entry_block);
         self.use_basic_block(right_entry_block);
 
+        self.apply_predicate_list(&left_preds, true, &left_span);
+
         let right = produce_right(self);
         let right_block = self.context.block_id;
 
@@ -185,9 +204,15 @@ impl<'a> Builder<'a, InBlock> {
                     expected: Type::Bool,
                     received: right_type.clone(),
                 },
-                span: left_span,
+                span: left_span.clone(),
             });
         }
+
+        let right_preds = self
+            .type_predicates
+            .get(&right)
+            .cloned()
+            .unwrap_or_default();
 
         self.emit_jmp(merge_block);
 
@@ -208,6 +233,37 @@ impl<'a> Builder<'a, InBlock> {
 
         self.insert_phi(self.context.block_id, phi_id, phi_sources);
 
+        let combined = Self::combine_predicates(&left_preds, &right_preds, true);
+        if !combined.is_empty() {
+            self.type_predicates.insert(phi_id, combined);
+        }
+
         phi_id
+    }
+
+    fn combine_predicates(
+        left_preds: &[TypePredicate],
+        right_preds: &[TypePredicate],
+        keep_true_side: bool,
+    ) -> Vec<TypePredicate> {
+        let mut combined = Vec::new();
+
+        for pred in left_preds.iter().chain(right_preds.iter()) {
+            let (on_true, on_false) = if keep_true_side {
+                (pred.on_true_type.clone(), None)
+            } else {
+                (None, pred.on_false_type.clone())
+            };
+
+            if on_true.is_some() || on_false.is_some() {
+                combined.push(TypePredicate {
+                    decl_id: pred.decl_id,
+                    on_true_type: on_true,
+                    on_false_type: on_false,
+                });
+            }
+        }
+
+        combined
     }
 }

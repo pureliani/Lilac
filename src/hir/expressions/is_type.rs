@@ -2,12 +2,13 @@ use crate::{
     ast::{
         expr::{Expr, ExprKind},
         type_annotation::TypeAnnotation,
-        Span,
+        DeclarationId, Span,
     },
+    compile::interner::StringId,
     hir::{
         builders::{Builder, InBlock, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::Type,
+        types::{checked_declaration::CheckedParam, checked_type::Type},
         utils::{
             adjustments::check_structural_compatibility,
             check_type::{check_type_annotation, TypeCheckerContext},
@@ -16,7 +17,7 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
-    fn emit_is_type_check(
+    fn emit_is_one_of_the_variants(
         &mut self,
         union: ValueId,
         matching_variants: &[Type],
@@ -44,6 +45,55 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         result_id
+    }
+
+    fn replace_field_type(struct_ty: &Type, field: StringId, new_field_ty: Type) -> Type {
+        if let Type::Struct(fields) = struct_ty {
+            let new_fields = fields
+                .iter()
+                .map(|f| {
+                    if f.identifier.name == field {
+                        CheckedParam {
+                            identifier: f.identifier.clone(),
+                            ty: new_field_ty.clone(),
+                        }
+                    } else {
+                        f.clone()
+                    }
+                })
+                .collect();
+            Type::Struct(new_fields)
+        } else {
+            struct_ty.clone()
+        }
+    }
+
+    /// Walk a narrowable expression up to the root variable, lifting the
+    /// narrowed leaf types into the root's struct type at each level.
+    fn resolve_narrow_target(
+        &mut self,
+        expr: &Expr,
+        on_true: Option<Type>,
+        on_false: Option<Type>,
+    ) -> Option<(DeclarationId, Option<Type>, Option<Type>)> {
+        match &expr.kind {
+            ExprKind::Identifier(ident) => {
+                let decl_id = self.current_scope.lookup(ident.name)?;
+                Some((decl_id, on_true, on_false))
+            }
+            ExprKind::Access { left, field } => {
+                let parent_val = self.build_expr(*left.clone());
+                let parent_ty = self.get_value_type(parent_val).clone();
+
+                let lifted_true =
+                    on_true.map(|t| Self::replace_field_type(&parent_ty, field.name, t));
+                let lifted_false =
+                    on_false.map(|t| Self::replace_field_type(&parent_ty, field.name, t));
+
+                self.resolve_narrow_target(left, lifted_true, lifted_false)
+            }
+            _ => None,
+        }
     }
 
     pub fn build_is_type_expr(&mut self, left: Expr, ty: TypeAnnotation) -> ValueId {
@@ -87,7 +137,7 @@ impl<'a> Builder<'a, InBlock> {
             }
         }
 
-        let result_id = self.emit_is_type_check(
+        let result_id = self.emit_is_one_of_the_variants(
             current_val,
             &matching_variants,
             variants.len(),
@@ -110,18 +160,19 @@ impl<'a> Builder<'a, InBlock> {
             None
         };
 
-        let is_narrowable =
-            matches!(left.kind, ExprKind::Identifier(_) | ExprKind::Access { .. });
-
-        if is_narrowable && (true_type.is_some() || false_type.is_some()) {
-            self.type_predicates.insert(
-                result_id,
-                TypePredicate {
-                    target: left,
-                    on_true_type: true_type,
-                    on_false_type: false_type,
-                },
-            );
+        if true_type.is_some() || false_type.is_some() {
+            if let Some((decl_id, lifted_true, lifted_false)) =
+                self.resolve_narrow_target(&left, true_type, false_type)
+            {
+                self.type_predicates.insert(
+                    result_id,
+                    vec![TypePredicate {
+                        decl_id,
+                        on_true_type: lifted_true,
+                        on_false_type: lifted_false,
+                    }],
+                );
+            }
         }
 
         result_id
