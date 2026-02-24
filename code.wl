@@ -1,11 +1,10 @@
-type Data = { val: i32 };
-type Node = { left: Data, right: Data };
 
-fn process(a: Node) {}
+fn foo(arg: { value: string | i32 }) {
+    arg.value = 15;
+}
 
 fn main() {
-    let shared_data: Data = { val: 99 };
-    let bad_node: Node = { left: shared_data, right: shared_data };
-
-    process(bad_node);
+    let initial = { value: "Hello world!" };
+    foo(initial);
+    let x: { value: string } = initial;
 }

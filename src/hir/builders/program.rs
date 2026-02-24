@@ -10,7 +10,7 @@ use crate::{
     compile::ParallelParseResult,
     hir::{
         builders::{BasicBlockId, Builder, Function, InGlobal, InModule, Module},
-        types::checked_declaration::CheckedDeclaration,
+        types::checked_declaration::{CheckedDeclaration, FunctionEffects},
         utils::{
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
             points_to::PointsToGraph,
@@ -110,6 +110,8 @@ impl<'a> Builder<'a, InModule> {
             blocks: HashMap::new(),
             value_definitions: HashMap::new(),
             ptg: PointsToGraph::new(),
+            param_decl_ids: Vec::new(),
+            effects: FunctionEffects::default(),
         };
 
         self.program

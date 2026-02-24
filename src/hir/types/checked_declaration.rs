@@ -74,3 +74,14 @@ pub enum CheckedDeclaration {
     Function(Function),
     Var(CheckedVarDecl),
 }
+
+#[derive(Debug, Clone)]
+pub struct ParamMutation {
+    pub param_index: usize,
+    pub exit_type: Type,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FunctionEffects {
+    pub mutations: Vec<ParamMutation>,
+}

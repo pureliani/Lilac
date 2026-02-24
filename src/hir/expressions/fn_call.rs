@@ -1,9 +1,16 @@
 use crate::{
-    ast::{expr::Expr, Span},
+    ast::{
+        expr::{Expr, ExprKind},
+        DeclarationId, Span,
+    },
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::{checked_declaration::CheckedParam, checked_type::Type},
+        instructions::{CastInstr, Instruction},
+        types::{
+            checked_declaration::{CheckedDeclaration, CheckedParam},
+            checked_type::Type,
+        },
     },
 };
 
@@ -14,6 +21,11 @@ impl<'a> Builder<'a, InBlock> {
         args: Vec<Expr>,
         span: Span,
     ) -> ValueId {
+        let callee_decl_id = match &left.kind {
+            ExprKind::Identifier(ident) => self.current_scope.lookup(ident.name),
+            _ => None,
+        };
+
         let func_id = self.build_expr(left);
         let func_type = self.get_value_type(func_id).clone();
 
@@ -38,7 +50,7 @@ impl<'a> Builder<'a, InBlock> {
             });
         }
 
-        let evaluated = self.evaluate_call_args(args);
+        let evaluated = self.evaluate_call_args(&args);
 
         if let Err(e) = self.check_argument_aliasing(&evaluated) {
             return self.report_error_and_get_poison(e);
@@ -49,15 +61,21 @@ impl<'a> Builder<'a, InBlock> {
             Err(e) => return self.report_error_and_get_poison(e),
         };
 
-        self.emit_call(func_id, final_args, return_type)
+        let result = self.emit_call(func_id, final_args, return_type);
+
+        if let Some(decl_id) = callee_decl_id {
+            self.apply_callee_effects(decl_id, &args, &evaluated);
+        }
+
+        result
     }
 
-    fn evaluate_call_args(&mut self, args: Vec<Expr>) -> Vec<(ValueId, Span)> {
+    fn evaluate_call_args(&mut self, args: &[Expr]) -> Vec<(ValueId, Span)> {
         let mut evaluated = Vec::with_capacity(args.len());
 
         for arg_expr in args {
             let span = arg_expr.span.clone();
-            let val_id = self.build_expr(arg_expr);
+            let val_id = self.build_expr(arg_expr.clone());
 
             evaluated.push((val_id, span));
         }
@@ -100,5 +118,52 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         Ok(final_args)
+    }
+
+    fn apply_callee_effects(
+        &mut self,
+        callee_decl_id: DeclarationId,
+        arg_exprs: &[Expr],
+        evaluated: &[(ValueId, Span)],
+    ) {
+        let effects = match self.program.declarations.get(&callee_decl_id) {
+            Some(CheckedDeclaration::Function(f)) => f.effects.clone(),
+            _ => return,
+        };
+
+        for mutation in &effects.mutations {
+            let arg_expr = &arg_exprs[mutation.param_index];
+            let arg_span = &evaluated[mutation.param_index].1;
+
+            if let Some((decl_id, Some(new_type), _)) = self.resolve_narrow_target(
+                arg_expr,
+                Some(mutation.exit_type.clone()),
+                None,
+            ) {
+                self.apply_effect_mutation(decl_id, new_type, arg_span.clone());
+            }
+        }
+    }
+
+    fn apply_effect_mutation(
+        &mut self,
+        decl_id: DeclarationId,
+        new_type: Type,
+        span: Span,
+    ) {
+        let current_val = self.read_variable(decl_id, self.context.block_id, span);
+        let current_ty = self.get_value_type(current_val).clone();
+
+        if current_ty == new_type {
+            return;
+        }
+
+        let new_val = self.new_value_id(new_type);
+        self.push_instruction(Instruction::Cast(CastInstr {
+            src: current_val,
+            dest: new_val,
+        }));
+
+        self.write_variable(decl_id, self.context.block_id, new_val);
     }
 }

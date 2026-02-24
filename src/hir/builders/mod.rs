@@ -6,7 +6,7 @@ use crate::{
         errors::SemanticError,
         instructions::{Instruction, Terminator},
         types::{
-            checked_declaration::{CheckedDeclaration, CheckedParam},
+            checked_declaration::{CheckedDeclaration, CheckedParam, FunctionEffects},
             checked_type::Type,
         },
         utils::{points_to::PointsToGraph, scope::Scope},
@@ -68,6 +68,8 @@ pub struct Function {
 
     pub value_definitions: HashMap<ValueId, BasicBlockId>,
     pub ptg: PointsToGraph,
+    pub param_decl_ids: Vec<DeclarationId>,
+    pub effects: FunctionEffects,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

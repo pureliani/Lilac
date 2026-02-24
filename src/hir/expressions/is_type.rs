@@ -70,7 +70,7 @@ impl<'a> Builder<'a, InBlock> {
 
     /// Walk a narrowable expression up to the root variable, lifting the
     /// narrowed leaf types into the root's struct type at each level.
-    fn resolve_narrow_target(
+    pub fn resolve_narrow_target(
         &mut self,
         expr: &Expr,
         on_true: Option<Type>,
