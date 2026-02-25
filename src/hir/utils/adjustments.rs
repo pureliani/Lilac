@@ -1,8 +1,10 @@
+use std::collections::HashSet;
+
 use crate::{
     ast::Span,
     hir::{
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::Type,
+        types::checked_type::{LiteralType, Type},
         utils::numeric::{get_numeric_type_rank, is_float, is_integer, is_signed},
     },
 };
@@ -12,16 +14,30 @@ use crate::{
 /// `is_explicit = false`: implicit conversions only (assignments, args, returns)
 ///   - Numeric widening (i32 → i64, f32 → f64, integer → float)
 ///   - Union coercion (i32 → i32 | string)
-///   - Struct field coercion ({ value: i32 } → { value: i32 | string })
 ///
 /// `is_explicit = true`: adds explicit conversions (typecast `as`)
 ///   - Numeric narrowing (i64 → i32, float → integer)
 ///   - Union unwrapping (i32 | string → i32)
 pub fn check_assignable(source: &Type, target: &Type, is_explicit: bool) -> bool {
-    check_assignable_recursive(source, target, is_explicit)
+    let mut seen = HashSet::new();
+    check_assignable_recursive(source, target, is_explicit, &mut seen)
 }
 
-fn check_assignable_recursive(source: &Type, target: &Type, is_explicit: bool) -> bool {
+fn check_invariant(
+    source: &Type,
+    target: &Type,
+    seen: &mut HashSet<(Type, Type)>,
+) -> bool {
+    check_assignable_recursive(source, target, false, seen)
+        && check_assignable_recursive(target, source, false, seen)
+}
+
+fn check_assignable_recursive(
+    source: &Type,
+    target: &Type,
+    is_explicit: bool,
+    seen: &mut HashSet<(Type, Type)>,
+) -> bool {
     if source == target {
         return true;
     }
@@ -34,74 +50,101 @@ fn check_assignable_recursive(source: &Type, target: &Type, is_explicit: bool) -
         return true;
     }
 
-    // Integer → Integer
-    if is_integer(source) && is_integer(target) {
-        let s_rank = get_numeric_type_rank(source).unwrap();
-        let t_rank = get_numeric_type_rank(target).unwrap();
-        if t_rank > s_rank || (t_rank < s_rank && is_explicit) {
-            return true;
-        }
-    }
-
-    // Float → Float
-    if is_float(source) && is_float(target) {
-        let s_rank = get_numeric_type_rank(source).unwrap();
-        let t_rank = get_numeric_type_rank(target).unwrap();
-        if t_rank > s_rank || (t_rank < s_rank && is_explicit) {
-            return true;
-        }
-    }
-
-    // Integer → Float
-    if is_integer(source) && is_float(target) {
+    if !seen.insert((source.clone(), target.clone())) {
         return true;
     }
 
-    // Float → Integer (explicit only)
-    if is_float(source) && is_integer(target) && is_explicit {
-        return true;
-    }
-
-    // Unions
-    match (source.as_union_variants(), target.as_union_variants()) {
-        (None, Some(_)) => todo!(),
-        (Some(_), None) => todo!(),
-        (Some(_), Some(_)) => todo!(),
-        (None, None) => todo!(),
-    }
-
-    // Struct → Struct (field-level assignability)
-    if let (Type::Struct(s_fields), Type::Struct(t_fields)) = (source, target) {
-        if s_fields.len() == t_fields.len() {
-            return s_fields.iter().zip(t_fields.iter()).all(|(sf, tf)| {
-                sf.identifier.name == tf.identifier.name
-                    && check_assignable_recursive(&sf.ty, &tf.ty, is_explicit)
-            });
+    let result = match (source, target) {
+        (Type::Literal(lit), _) => {
+            let base_type = match lit {
+                LiteralType::Number(n) => {
+                    use crate::tokenize::NumberKind::*;
+                    match n.0 {
+                        I64(_) => Type::I64,
+                        I32(_) => Type::I32,
+                        I16(_) => Type::I16,
+                        I8(_) => Type::I8,
+                        F32(_) => Type::F32,
+                        F64(_) => Type::F64,
+                        U64(_) => Type::U64,
+                        U32(_) => Type::U32,
+                        U16(_) => Type::U16,
+                        U8(_) => Type::U8,
+                        ISize(_) => Type::ISize,
+                        USize(_) => Type::USize,
+                    }
+                }
+                LiteralType::Bool(_) => Type::Bool,
+                LiteralType::String(_) => Type::String,
+            };
+            check_assignable_recursive(&base_type, target, is_explicit, seen)
         }
-    }
 
-    if let (Type::List(s_elem), Type::List(t_elem)) = (source, target) {
-        return check_assignable_recursive(s_elem, t_elem, is_explicit);
-    }
-
-    if let (Type::Fn(s_fn), Type::Fn(t_fn)) = (source, target) {
-        if s_fn.params.len() != t_fn.params.len() {
-            return false;
+        (Type::Union(s_variants), Type::Union(t_variants)) => {
+            s_variants.iter().all(|s| {
+                t_variants
+                    .iter()
+                    .any(|t| check_assignable_recursive(s, t, is_explicit, seen))
+            })
         }
-        let params_ok = s_fn
-            .params
+        (Type::Union(s_variants), _) => s_variants
             .iter()
-            .zip(t_fn.params.iter())
-            .all(|(sp, tp)| check_assignable_recursive(&sp.ty, &tp.ty, is_explicit));
-        return params_ok
-            && check_assignable_recursive(
-                &s_fn.return_type,
-                &t_fn.return_type,
-                is_explicit,
-            );
-    }
+            .all(|s| check_assignable_recursive(s, target, is_explicit, seen)),
+        (_, Type::Union(t_variants)) => t_variants
+            .iter()
+            .any(|t| check_assignable_recursive(source, t, is_explicit, seen)),
+        (s, t) if is_integer(s) && is_integer(t) => {
+            let s_rank = get_numeric_type_rank(s).unwrap();
+            let t_rank = get_numeric_type_rank(t).unwrap();
+            is_explicit || t_rank > s_rank
+        }
+        (s, t) if is_float(s) && is_float(t) => {
+            let s_rank = get_numeric_type_rank(s).unwrap();
+            let t_rank = get_numeric_type_rank(t).unwrap();
+            is_explicit || t_rank > s_rank
+        }
+        (s, t) if is_integer(s) && is_float(t) => true,
+        (s, t) if is_float(s) && is_integer(t) => is_explicit,
 
-    false
+        // Struct -> Struct (Invariant)
+        // Because structs are passed by reference and are mutable,
+        // their fields must be strictly invariant to prevent memory corruption
+        (Type::Struct(s_fields), Type::Struct(t_fields)) => {
+            if s_fields.len() == t_fields.len() {
+                s_fields.iter().zip(t_fields.iter()).all(|(sf, tf)| {
+                    sf.identifier.name == tf.identifier.name
+                        && check_invariant(&sf.ty, &tf.ty, seen)
+                })
+            } else {
+                false
+            }
+        }
+
+        // List -> List (Invariant)
+        // Strictly Invariant to prevent the Array Covariance Problem
+        (Type::List(s_elem), Type::List(t_elem)) => check_invariant(s_elem, t_elem, seen),
+
+        // Fn -> Fn (Invariant)
+        (Type::Fn(s_fn), Type::Fn(t_fn)) => {
+            if s_fn.params.len() == t_fn.params.len() {
+                let params_ok = s_fn
+                    .params
+                    .iter()
+                    .zip(t_fn.params.iter())
+                    .all(|(sp, tp)| check_invariant(&sp.ty, &tp.ty, seen));
+                let return_ok =
+                    check_invariant(&s_fn.return_type, &t_fn.return_type, seen);
+                params_ok && return_ok
+            } else {
+                false
+            }
+        }
+
+        _ => false,
+    };
+
+    seen.remove(&(source.clone(), target.clone()));
+    result
 }
 
 pub fn type_mismatch_error(source: &Type, target: &Type) -> SemanticErrorKind {
