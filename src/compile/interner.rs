@@ -3,19 +3,13 @@ use std::{collections::HashMap, sync::RwLock};
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StringId(pub usize);
 
+#[derive(Default)]
 struct StringInterner {
     forward: HashMap<String, usize>,
     backward: Vec<String>,
 }
 
 impl StringInterner {
-    pub fn new() -> Self {
-        Self {
-            forward: HashMap::new(),
-            backward: Vec::new(),
-        }
-    }
-
     fn intern(&mut self, key: &str) -> StringId {
         if let Some(&index) = self.forward.get(key) {
             return StringId(index);
@@ -43,17 +37,12 @@ impl StringInterner {
     }
 }
 
+#[derive(Default)]
 pub struct SharedStringInterner {
     interner: RwLock<StringInterner>,
 }
 
 impl SharedStringInterner {
-    pub fn new() -> Self {
-        Self {
-            interner: RwLock::new(StringInterner::new()),
-        }
-    }
-
     pub fn intern(&self, key: &str) -> StringId {
         let reader = self.interner.read().unwrap();
         if let Some(&index) = reader.forward.get(key) {

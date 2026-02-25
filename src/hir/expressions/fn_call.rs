@@ -145,14 +145,12 @@ impl<'a> Builder<'a, InBlock> {
             let arg_expr = &arg_exprs[mutation.param_index];
             let arg_span = &evaluated[mutation.param_index].1;
 
-            if let Some((decl_id, lifted_exit_type, _)) = self.resolve_narrow_target(
+            if let Some((decl_id, Some(new_type), _)) = self.resolve_narrow_target(
                 arg_expr,
                 Some(mutation.exit_type.clone()),
                 None,
             ) {
-                if let Some(new_type) = lifted_exit_type {
-                    self.apply_effect_mutation(decl_id, new_type, arg_span.clone());
-                }
+                self.apply_effect_mutation(decl_id, new_type, arg_span.clone());
             }
         }
     }
