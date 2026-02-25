@@ -11,6 +11,7 @@ use crate::{
             checked_declaration::{CheckedDeclaration, CheckedParam},
             checked_type::Type,
         },
+        utils::adjustments::check_assignable,
     },
 };
 
@@ -56,7 +57,7 @@ impl<'a> Builder<'a, InBlock> {
             return self.report_error_and_get_poison(e);
         }
 
-        let final_args = match self.coerce_call_args(&evaluated, &params) {
+        let final_args = match self.validate_call_args(&evaluated, &params) {
             Ok(args) => args,
             Err(e) => return self.report_error_and_get_poison(e),
         };
@@ -76,7 +77,6 @@ impl<'a> Builder<'a, InBlock> {
         for arg_expr in args {
             let span = arg_expr.span.clone();
             let val_id = self.build_expr(arg_expr.clone());
-
             evaluated.push((val_id, span));
         }
 
@@ -104,17 +104,27 @@ impl<'a> Builder<'a, InBlock> {
         Ok(())
     }
 
-    fn coerce_call_args(
-        &mut self,
+    fn validate_call_args(
+        &self,
         args: &[(ValueId, Span)],
         params: &[CheckedParam],
     ) -> Result<Vec<ValueId>, SemanticError> {
         let mut final_args = Vec::with_capacity(args.len());
 
         for (i, (val_id, span)) in args.iter().enumerate() {
-            let coerced =
-                self.adjust_value(*val_id, span.clone(), params[i].ty.clone(), false)?;
-            final_args.push(coerced);
+            let val_type = self.get_value_type(*val_id);
+
+            if !check_assignable(val_type, &params[i].ty, false) {
+                return Err(SemanticError {
+                    kind: SemanticErrorKind::TypeMismatch {
+                        expected: params[i].ty.clone(),
+                        received: val_type.clone(),
+                    },
+                    span: span.clone(),
+                });
+            }
+
+            final_args.push(*val_id);
         }
 
         Ok(final_args)
@@ -135,12 +145,14 @@ impl<'a> Builder<'a, InBlock> {
             let arg_expr = &arg_exprs[mutation.param_index];
             let arg_span = &evaluated[mutation.param_index].1;
 
-            if let Some((decl_id, Some(new_type), _)) = self.resolve_narrow_target(
+            if let Some((decl_id, lifted_exit_type, _)) = self.resolve_narrow_target(
                 arg_expr,
                 Some(mutation.exit_type.clone()),
                 None,
             ) {
-                self.apply_effect_mutation(decl_id, new_type, arg_span.clone());
+                if let Some(new_type) = lifted_exit_type {
+                    self.apply_effect_mutation(decl_id, new_type, arg_span.clone());
+                }
             }
         }
     }

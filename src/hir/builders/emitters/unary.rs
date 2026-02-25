@@ -5,7 +5,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, UnaryInstr},
         types::checked_type::Type,
-        utils::{adjustments::check_structural_compatibility, numeric::is_signed},
+        utils::{adjustments::check_assignable, numeric::is_signed},
     },
 };
 
@@ -28,7 +28,7 @@ impl<'a> Builder<'a, InBlock> {
     pub fn emit_not(&mut self, src: ValueId, span: Span) -> ValueId {
         let ty = self.get_value_type(src);
 
-        if !check_structural_compatibility(ty, &Type::Bool) {
+        if !check_assignable(ty, &Type::Bool, false) {
             return self.report_error_and_get_poison(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,

@@ -8,8 +8,9 @@ use crate::{
     hir::{
         builders::{BasicBlockId, Builder, InBlock, PhiSource, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
+        instructions::{CastInstr, Instruction},
         types::checked_type::Type,
-        utils::adjustments::check_structural_compatibility,
+        utils::adjustments::check_assignable,
     },
 };
 
@@ -48,7 +49,7 @@ impl<'a> Builder<'a, InBlock> {
             let cond_id = self.build_expr(*condition);
             let cond_ty = self.get_value_type(cond_id);
 
-            if !check_structural_compatibility(cond_ty, &Type::Bool) {
+            if !check_assignable(cond_ty, &Type::Bool, false) {
                 return self.report_error_and_get_poison(SemanticError {
                     span: condition_span,
                     kind: SemanticErrorKind::TypeMismatch {
@@ -116,33 +117,13 @@ impl<'a> Builder<'a, InBlock> {
 
             let result_type = Type::make_union(type_entries);
 
-            if result_type.as_union_variants().is_some() {
-                let mut coerced_sources = HashSet::new();
-
-                for (from_block, val, span) in branch_results {
-                    let (coercion_block, coerced) =
-                        self.insert_on_edge(from_block, merge_block_id, |b| {
-                            b.coerce_to_union(val, &result_type, span)
-                        });
-
-                    coerced_sources.insert(PhiSource {
-                        from: coercion_block,
-                        value: coerced,
-                    });
-                }
-
-                let phi_id = self.new_value_id(result_type);
-                self.insert_phi(merge_block_id, phi_id, coerced_sources);
-                phi_id
-            } else {
-                let phi_id = self.new_value_id(result_type);
-                let phi_sources: HashSet<PhiSource> = branch_results
-                    .into_iter()
-                    .map(|(block, value, _)| PhiSource { from: block, value })
-                    .collect();
-                self.insert_phi(merge_block_id, phi_id, phi_sources);
-                phi_id
-            }
+            let phi_id = self.new_value_id(result_type);
+            let phi_sources: HashSet<PhiSource> = branch_results
+                .into_iter()
+                .map(|(block, value, _)| PhiSource { from: block, value })
+                .collect();
+            self.insert_phi(merge_block_id, phi_id, phi_sources);
+            phi_id
         } else {
             self.emit_const_void()
         }
@@ -154,17 +135,20 @@ impl<'a> Builder<'a, InBlock> {
         new_type: Type,
         span: Span,
     ) {
-        let current_val =
-            self.read_variable(pred.decl_id, self.context.block_id, span.clone());
+        let current_val = self.read_variable(pred.decl_id, self.context.block_id, span);
         let current_ty = self.get_value_type(current_val).clone();
 
-        if check_structural_compatibility(&current_ty, &new_type) {
+        if current_ty == new_type {
             return;
         }
 
-        if let Ok(adjusted) = self.adjust_value(current_val, span, new_type, true) {
-            self.write_variable(pred.decl_id, self.context.block_id, adjusted);
-        }
+        let narrowed = self.new_value_id(new_type);
+        self.push_instruction(Instruction::Cast(CastInstr {
+            src: current_val,
+            dest: narrowed,
+        }));
+
+        self.write_variable(pred.decl_id, self.context.block_id, narrowed);
     }
 
     pub fn apply_predicate_list(

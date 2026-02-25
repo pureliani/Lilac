@@ -10,7 +10,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::{checked_declaration::CheckedParam, checked_type::Type},
         utils::{
-            adjustments::check_structural_compatibility,
+            adjustments::check_assignable,
             check_type::{check_type_annotation, TypeCheckerContext},
         },
     },
@@ -47,7 +47,11 @@ impl<'a> Builder<'a, InBlock> {
         result_id
     }
 
-    fn replace_field_type(struct_ty: &Type, field: StringId, new_field_ty: Type) -> Type {
+    pub fn replace_field_type(
+        struct_ty: &Type,
+        field: StringId,
+        new_field_ty: Type,
+    ) -> Type {
         if let Type::Struct(fields) = struct_ty {
             let new_fields = fields
                 .iter()
@@ -130,7 +134,7 @@ impl<'a> Builder<'a, InBlock> {
         let mut non_matching_variants = Vec::new();
 
         for variant in variants {
-            if check_structural_compatibility(variant, &target_type) {
+            if check_assignable(variant, &target_type, false) {
                 matching_variants.push(variant.clone());
             } else {
                 non_matching_variants.push(variant.clone());

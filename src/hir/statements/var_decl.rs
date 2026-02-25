@@ -4,7 +4,10 @@ use crate::{
         builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
-        utils::check_type::{check_type_annotation, TypeCheckerContext},
+        utils::{
+            adjustments::check_assignable,
+            check_type::{check_type_annotation, TypeCheckerContext},
+        },
     },
 };
 
@@ -35,13 +38,17 @@ impl<'a> Builder<'a, InBlock> {
             val_type.clone()
         };
 
-        let final_val_id =
-            match self.adjust_value(val_id, value_span, constraint.clone(), false) {
-                Ok(id) => id,
-                Err(e) => self.report_error_and_get_poison(e),
-            };
+        if !check_assignable(&val_type, &constraint, false) {
+            self.errors.push(SemanticError {
+                kind: SemanticErrorKind::TypeMismatch {
+                    expected: constraint.clone(),
+                    received: val_type,
+                },
+                span: value_span,
+            });
+        }
 
-        self.write_variable(var_decl.id, self.context.block_id, final_val_id);
+        self.write_variable(var_decl.id, self.context.block_id, val_id);
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,

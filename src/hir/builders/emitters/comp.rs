@@ -4,7 +4,7 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         instructions::{CompInstr, Instruction, SelectInstr},
         types::checked_type::Type,
-        utils::adjustments::check_structural_compatibility,
+        utils::adjustments::check_assignable,
     },
 };
 
@@ -108,7 +108,7 @@ impl<'a> Builder<'a, InBlock> {
     ) -> ValueId {
         let condition_type = self.get_value_type(condition);
 
-        if !check_structural_compatibility(condition_type, &Type::Bool) {
+        if !check_assignable(condition_type, &Type::Bool, false) {
             panic!(
                 "INTERNAL COMPILER ERROR: Select instruction expected the condition to \
                  be a boolean value"
@@ -118,7 +118,7 @@ impl<'a> Builder<'a, InBlock> {
         let true_value_type = self.get_value_type(true_value);
         let false_value_type = self.get_value_type(false_value);
 
-        if !check_structural_compatibility(true_value_type, false_value_type) {
+        if !check_assignable(true_value_type, false_value_type, false) {
             panic!(
                 "INTERNAL COMPILER ERROR: Select instruction expected both operands to \
                  have the same type"

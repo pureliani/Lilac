@@ -1,11 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::{
-    compile::interner::StringId,
-    hir::{
-        types::checked_type::Type, utils::adjustments::check_structural_compatibility,
-    },
-};
+use crate::{compile::interner::StringId, hir::types::checked_type::Type};
 
 fn get_type_at_path(mut ty: &Type, path: &[StringId]) -> Option<Type> {
     for field_name in path {
@@ -31,7 +26,7 @@ pub fn get_matching_variant_indices(
         let index = index as u16;
 
         if let Some(field_type) = get_type_at_path(variant, path) {
-            if check_structural_compatibility(&field_type, target_type) {
+            if &field_type == target_type {
                 matching_indices.push(index);
             }
         }

@@ -15,7 +15,7 @@ use crate::{
             checked_type::Type,
         },
         utils::{
-            adjustments::check_structural_compatibility,
+            adjustments::check_assignable,
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
             points_to::PointsToGraph,
             scope::ScopeKind,
@@ -129,7 +129,7 @@ impl<'a> Builder<'a, InModule> {
         let (final_value, final_value_span) = fn_builder.build_codeblock_expr(body);
         let final_value_type = fn_builder.get_value_type(final_value).clone();
 
-        if !check_structural_compatibility(&final_value_type, &checked_return_type) {
+        if !check_assignable(&final_value_type, &checked_return_type, false) {
             return Err(SemanticError {
                 span: final_value_span,
                 kind: SemanticErrorKind::ReturnTypeMismatch {
@@ -199,7 +199,7 @@ impl<'a> Builder<'a, InBlock> {
                 let val = self.read_variable(param_decl_id, block_id, fn_span.clone());
                 let ty = self.get_value_type(val).clone();
 
-                if !check_structural_compatibility(&ty, declared_type) {
+                if ty != *declared_type {
                     any_changed = true;
                 }
 

@@ -8,10 +8,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, StructInstr},
         types::{checked_declaration::CheckedParam, checked_type::Type},
-        utils::{
-            adjustments::check_structural_compatibility, layout::pack_struct,
-            points_to::PathSegment,
-        },
+        utils::{layout::pack_struct, points_to::PathSegment},
     },
 };
 
@@ -107,6 +104,9 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
+    /// Updates a struct field and returns a new struct value with the field's
+    /// precise type. Type compatibility is NOT checked here, that's the
+    /// caller's responsibility
     pub fn emit_update_struct_field(
         &mut self,
         base: ValueId,
@@ -117,48 +117,38 @@ impl<'a> Builder<'a, InBlock> {
 
         match base_type {
             Type::Struct(_) => {
-                if let Some((_, expected_type)) =
-                    base_type.get_field(&field_identifier.name)
-                {
-                    let value_type = self.get_value_type(value);
-
-                    if !check_structural_compatibility(value_type, &expected_type) {
-                        return self.report_error_and_get_poison(SemanticError {
-                            kind: SemanticErrorKind::TypeMismatch {
-                                expected: expected_type,
-                                received: value_type.clone(),
-                            },
-                            span: field_identifier.span.clone(),
-                        });
-                    }
-
-                    // TODO: Should the union narrowing case be handled here? in that case base_type is not correct
-                    let updated_base = self.new_value_id(base_type);
-                    self.push_instruction(Instruction::Struct(
-                        StructInstr::UpdateField {
-                            dest: updated_base,
-                            base,
-                            field: field_identifier.name,
-                            value,
-                        },
-                    ));
-
-                    if let Some(allocs) = self.ptg.value_locations.get(&base).cloned() {
-                        self.ptg.value_locations.insert(updated_base, allocs);
-                    }
-                    self.ptg.update_path(
-                        base,
-                        PathSegment::Field(field_identifier.name),
-                        value,
-                    );
-
-                    updated_base
-                } else {
-                    self.report_error_and_get_poison(SemanticError {
+                if base_type.get_field(&field_identifier.name).is_none() {
+                    return self.report_error_and_get_poison(SemanticError {
                         span: field_identifier.span.clone(),
                         kind: SemanticErrorKind::AccessToUndefinedField(field_identifier),
-                    })
+                    });
                 }
+
+                let value_type = self.get_value_type(value).clone();
+                let updated_type = Self::replace_field_type(
+                    &base_type,
+                    field_identifier.name,
+                    value_type,
+                );
+
+                let updated_base = self.new_value_id(updated_type);
+                self.push_instruction(Instruction::Struct(StructInstr::UpdateField {
+                    dest: updated_base,
+                    base,
+                    field: field_identifier.name,
+                    value,
+                }));
+
+                if let Some(allocs) = self.ptg.value_locations.get(&base).cloned() {
+                    self.ptg.value_locations.insert(updated_base, allocs);
+                }
+                self.ptg.update_path(
+                    base,
+                    PathSegment::Field(field_identifier.name),
+                    value,
+                );
+
+                updated_base
             }
             Type::Unknown => self.new_value_id(Type::Unknown),
             _ => panic!(

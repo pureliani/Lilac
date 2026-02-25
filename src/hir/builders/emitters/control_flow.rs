@@ -7,7 +7,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{CallInstr, Instruction, Terminator},
         types::checked_type::Type,
-        utils::adjustments::check_structural_compatibility,
+        utils::adjustments::check_assignable,
     },
 };
 
@@ -87,7 +87,7 @@ impl<'a> Builder<'a, InBlock> {
         F: FnOnce(&mut Self) -> ValueId,
     {
         let left_type = self.get_value_type(left);
-        if !check_structural_compatibility(left_type, &Type::Bool) {
+        if !check_assignable(left_type, &Type::Bool, false) {
             self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,
@@ -116,7 +116,7 @@ impl<'a> Builder<'a, InBlock> {
         let right_block = self.context.block_id;
 
         let right_type = self.get_value_type(right);
-        if !check_structural_compatibility(right_type, &Type::Bool) {
+        if !check_assignable(right_type, &Type::Bool, false) {
             self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,
@@ -169,7 +169,7 @@ impl<'a> Builder<'a, InBlock> {
         F: FnOnce(&mut Self) -> ValueId,
     {
         let left_type = self.get_value_type(left);
-        if !check_structural_compatibility(left_type, &Type::Bool) {
+        if !check_assignable(left_type, &Type::Bool, false) {
             self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,
@@ -198,7 +198,7 @@ impl<'a> Builder<'a, InBlock> {
         let right_block = self.context.block_id;
 
         let right_type = self.get_value_type(right);
-        if !check_structural_compatibility(right_type, &Type::Bool) {
+        if !check_assignable(right_type, &Type::Bool, false) {
             self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: Type::Bool,
