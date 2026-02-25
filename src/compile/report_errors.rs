@@ -1,3 +1,5 @@
+use std::io::ErrorKind;
+
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::Files;
 use codespan_reporting::term::termcolor::{ColorChoice, NoColor, StandardStream};
@@ -746,6 +748,10 @@ impl Compiler {
         if !buffer.is_empty() {
             if let Err(e) = std::fs::write("diagnostics.log", &buffer) {
                 eprintln!("Failed to write diagnostics to file: {}", e);
+            }
+        } else if let Err(e) = std::fs::remove_file("diagnostics.log") {
+            if !matches!(e.kind(), ErrorKind::NotFound) {
+                eprintln!("Failed to remove the stale diagnostics to file: {}", e);
             }
         }
     }

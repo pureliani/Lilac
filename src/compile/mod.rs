@@ -100,8 +100,8 @@ impl Compiler {
             };
         }
 
+        self.report_errors();
         if !self.errors.is_empty() {
-            self.report_errors();
             return;
         }
 
@@ -140,8 +140,8 @@ impl Compiler {
         self.errors
             .extend(builder_errors.into_iter().map(CompilerErrorKind::Semantic));
 
+        self.report_errors();
         if !self.errors.is_empty() {
-            self.report_errors();
             return;
         }
 
