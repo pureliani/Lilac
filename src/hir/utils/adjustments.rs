@@ -14,6 +14,7 @@ use crate::{
 /// `is_explicit = false`: implicit conversions only (assignments, args, returns)
 ///   - Numeric widening (i32 → i64, f32 → f64, integer → float)
 ///   - Union coercion (i32 → i32 | string)
+///   - Struct/List covariance
 ///
 /// `is_explicit = true`: adds explicit conversions (typecast `as`)
 ///   - Numeric narrowing (i64 → i32, float → integer)
@@ -21,15 +22,6 @@ use crate::{
 pub fn check_assignable(source: &Type, target: &Type, is_explicit: bool) -> bool {
     let mut seen = HashSet::new();
     check_assignable_recursive(source, target, is_explicit, &mut seen)
-}
-
-fn check_invariant(
-    source: &Type,
-    target: &Type,
-    seen: &mut HashSet<(Type, Type)>,
-) -> bool {
-    check_assignable_recursive(source, target, false, seen)
-        && check_assignable_recursive(target, source, false, seen)
 }
 
 fn check_assignable_recursive(
@@ -106,34 +98,32 @@ fn check_assignable_recursive(
         (s, t) if is_integer(s) && is_float(t) => true,
         (s, t) if is_float(s) && is_integer(t) => is_explicit,
 
-        // Struct -> Struct (Invariant)
-        // Because structs are passed by reference and are mutable,
-        // their fields must be strictly invariant to prevent memory corruption
         (Type::Struct(s_fields), Type::Struct(t_fields)) => {
             if s_fields.len() == t_fields.len() {
                 s_fields.iter().zip(t_fields.iter()).all(|(sf, tf)| {
                     sf.identifier.name == tf.identifier.name
-                        && check_invariant(&sf.ty, &tf.ty, seen)
+                        && check_assignable_recursive(&sf.ty, &tf.ty, is_explicit, seen)
                 })
             } else {
                 false
             }
         }
 
-        // List -> List (Invariant)
-        // Strictly Invariant to prevent the Array Covariance Problem
-        (Type::List(s_elem), Type::List(t_elem)) => check_invariant(s_elem, t_elem, seen),
-
-        // Fn -> Fn (Invariant)
+        (Type::List(s_elem), Type::List(t_elem)) => {
+            check_assignable_recursive(s_elem, t_elem, is_explicit, seen)
+        }
         (Type::Fn(s_fn), Type::Fn(t_fn)) => {
             if s_fn.params.len() == t_fn.params.len() {
-                let params_ok = s_fn
-                    .params
-                    .iter()
-                    .zip(t_fn.params.iter())
-                    .all(|(sp, tp)| check_invariant(&sp.ty, &tp.ty, seen));
-                let return_ok =
-                    check_invariant(&s_fn.return_type, &t_fn.return_type, seen);
+                let params_ok =
+                    s_fn.params.iter().zip(t_fn.params.iter()).all(|(sp, tp)| {
+                        check_assignable_recursive(&tp.ty, &sp.ty, is_explicit, seen)
+                    });
+                let return_ok = check_assignable_recursive(
+                    &s_fn.return_type,
+                    &t_fn.return_type,
+                    is_explicit,
+                    seen,
+                );
                 params_ok && return_ok
             } else {
                 false

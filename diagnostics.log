@@ -1,38 +1,15 @@
-error[S28]: Invalid type cast
-  ┌─ /home/gabriel/Desktop/Lilac/code.wl:9:19
+error[S10]: Type mismatch
+  ┌─ /home/gabriel/Desktop/Lilac/code.wl:5:24
   │
 1 │ 
 2 │ type Arg = { value: string | i32 };
 3 │ 
-4 │ fn foo(arg: Arg) {
-5 │     arg.value = 15;
-6 │ }
-7 │ 
-8 │ fn main() {
-9 │     let initial = { value: "Hello world!" }::as(Arg);
-  │                   ^^^^^^^^^^^^^^^^^^^^^^^^^
-  │                   │
-  │                   Cannot cast type `{ value: string }` to `{ value: i32 | string }`
-10 │     foo(initial);
-11 │     let x: { value: string } = initial;
-12 │ }
-13 │ 
-
-error[S10]: Type mismatch
-   ┌─ /home/gabriel/Desktop/Lilac/code.wl:11:32
-   │
- 3 │ 
- 4 │ fn foo(arg: Arg) {
- 5 │     arg.value = 15;
- 6 │ }
- 7 │ 
- 8 │ fn main() {
- 9 │     let initial = { value: "Hello world!" }::as(Arg);
-10 │     foo(initial);
-11 │     let x: { value: string } = initial;
-   │                                ^^^^^^^
-   │                                │
-   │                                Expected `{ value: string }`, found `{ value: i32 }`
-12 │ }
-13 │ 
+4 │ fn main() {
+5 │     let initial: Arg = { value: "Hello world!" };
+  │                        ^^^^^^^^^^^^^^^^^^^^^^^^^
+  │                        │
+  │                        Expected `{ value: i32 | string }`, found `{ value: string }`
+6 │     let x: { value: string } = initial;
+7 │ }
+8 │ 
 

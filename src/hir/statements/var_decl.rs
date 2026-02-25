@@ -3,7 +3,10 @@ use crate::{
     hir::{
         builders::{Builder, InBlock},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
+        types::{
+            checked_declaration::{CheckedDeclaration, CheckedVarDecl},
+            checked_type::Type,
+        },
         utils::{
             adjustments::check_assignable,
             check_type::{check_type_annotation, TypeCheckerContext},
@@ -46,9 +49,12 @@ impl<'a> Builder<'a, InBlock> {
                 },
                 span: value_span,
             });
-        }
 
-        self.write_variable(var_decl.id, self.context.block_id, val_id);
+            let poison_id = self.new_value_id(Type::Unknown);
+            self.write_variable(var_decl.id, self.context.block_id, poison_id);
+        } else {
+            self.write_variable(var_decl.id, self.context.block_id, val_id);
+        }
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
