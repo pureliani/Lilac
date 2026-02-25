@@ -141,7 +141,7 @@ impl Compiler {
                             .with_message("Expected an expression")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message(format!(
-                                    "Found token `{}`",
+                                    "Expected an expression, found token `{}`",
                                     token_kind_to_string(&token.kind)
                                 ))]),
 
@@ -149,7 +149,7 @@ impl Compiler {
                             .with_message("Expected a type")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message(format!(
-                                    "Found token `{}`",
+                                    "Expected a type, found token `{}`",
                                     token_kind_to_string(&token.kind)
                                 ))]),
 

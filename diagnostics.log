@@ -1,17 +1,38 @@
-error[S49]: Argument aliasing detected
-   ┌─ /home/gabriel/Desktop/Lilac/code.wl:23:13
+error[S28]: Invalid type cast
+  ┌─ /home/gabriel/Desktop/Lilac/code.wl:9:19
+  │
+1 │ 
+2 │ type Arg = { value: string | i32 };
+3 │ 
+4 │ fn foo(arg: Arg) {
+5 │     arg.value = 15;
+6 │ }
+7 │ 
+8 │ fn main() {
+9 │     let initial = { value: "Hello world!" }::as(Arg);
+  │                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+  │                   │
+  │                   Cannot cast type `{ value: string }` to `{ value: i32 | string }`
+10 │     foo(initial);
+11 │     let x: { value: string } = initial;
+12 │ }
+13 │ 
+
+error[S10]: Type mismatch
+   ┌─ /home/gabriel/Desktop/Lilac/code.wl:11:32
    │
-15 │     process(safe_node.left, safe_node.right);
-16 │ 
-17 │     // --- SCENARIO 2: Deep Aliasing ---
-18 │     let shared_data: Data = { val: 99 };
-19 │     let bad_node: Node = { left: shared_data, right: shared_data };
-20 │ 
-21 │     // The compiler should catch this and throw an error, 
-22 │     // because both fields reach `shared_data`!
-23 │     process(bad_node.left, bad_node.right);
-   │             ^^^^^^^^^^^^^
-   │             │
-   │             Cannot pass argument `bad_node.left` which is an alias of another argument `bad_node.right`
-24 │ }
+ 3 │ 
+ 4 │ fn foo(arg: Arg) {
+ 5 │     arg.value = 15;
+ 6 │ }
+ 7 │ 
+ 8 │ fn main() {
+ 9 │     let initial = { value: "Hello world!" }::as(Arg);
+10 │     foo(initial);
+11 │     let x: { value: string } = initial;
+   │                                ^^^^^^^
+   │                                │
+   │                                Expected `{ value: string }`, found `{ value: i32 }`
+12 │ }
+13 │ 
 
