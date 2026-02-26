@@ -7,7 +7,7 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
-        utils::adjustments::check_assignable,
+        utils::check_assignable::check_assignable,
     },
 };
 

@@ -5,7 +5,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{CastInstr, Instruction},
         utils::{
-            adjustments::check_assignable,
+            check_assignable::check_assignable,
             check_type::{check_type_annotation, TypeCheckerContext},
         },
     },

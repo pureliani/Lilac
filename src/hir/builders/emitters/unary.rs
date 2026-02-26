@@ -5,7 +5,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, UnaryInstr},
         types::checked_type::Type,
-        utils::{adjustments::check_assignable, numeric::is_signed},
+        utils::{check_assignable::check_assignable, numeric::is_signed},
     },
 };
 

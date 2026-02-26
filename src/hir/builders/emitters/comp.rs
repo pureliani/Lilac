@@ -4,7 +4,7 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         instructions::{CompInstr, Instruction, SelectInstr},
         types::checked_type::Type,
-        utils::adjustments::check_assignable,
+        utils::check_assignable::check_assignable,
     },
 };
 

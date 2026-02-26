@@ -11,7 +11,7 @@ use crate::{
             checked_declaration::{CheckedDeclaration, CheckedParam},
             checked_type::Type,
         },
-        utils::adjustments::check_assignable,
+        utils::check_assignable::check_assignable,
     },
 };
 

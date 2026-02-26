@@ -6,7 +6,8 @@ use crate::{
         instructions::{Instruction, ListInstr},
         types::checked_type::Type,
         utils::{
-            adjustments::check_assignable, numeric::is_integer, points_to::PathSegment,
+            check_assignable::check_assignable, numeric::is_integer,
+            points_to::PathSegment,
         },
     },
 };

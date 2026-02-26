@@ -3,7 +3,7 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         instructions::{BinaryInstr, Instruction},
-        utils::adjustments::arithmetic_supertype,
+        utils::check_assignable::arithmetic_supertype,
     },
 };
 

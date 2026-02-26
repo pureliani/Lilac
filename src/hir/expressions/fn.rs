@@ -15,7 +15,7 @@ use crate::{
             checked_type::Type,
         },
         utils::{
-            adjustments::check_assignable,
+            check_assignable::check_assignable,
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
             points_to::PointsToGraph,
             scope::ScopeKind,

@@ -34,11 +34,10 @@ fn check_assignable_recursive(
         return true;
     }
 
-    if matches!(source, Type::Never) {
-        return true;
-    }
-
-    if matches!(target, Type::Unknown) || matches!(source, Type::Unknown) {
+    if matches!(source, Type::Never)
+        || matches!(target, Type::Unknown)
+        || matches!(source, Type::Unknown)
+    {
         return true;
     }
 
@@ -47,6 +46,7 @@ fn check_assignable_recursive(
     }
 
     let result = match (source, target) {
+        // Literal Types
         (Type::Literal(lit), _) => {
             let base_type = match lit {
                 LiteralType::Number(n) => {
@@ -102,7 +102,8 @@ fn check_assignable_recursive(
             if s_fields.len() == t_fields.len() {
                 s_fields.iter().zip(t_fields.iter()).all(|(sf, tf)| {
                     sf.identifier.name == tf.identifier.name
-                        && check_assignable_recursive(&sf.ty, &tf.ty, is_explicit, seen)
+                        && check_assignable_recursive(&sf.ty, &tf.ty, false, seen)
+                        && check_assignable_recursive(&tf.ty, &sf.ty, false, seen)
                 })
             } else {
                 false
@@ -110,18 +111,25 @@ fn check_assignable_recursive(
         }
 
         (Type::List(s_elem), Type::List(t_elem)) => {
-            check_assignable_recursive(s_elem, t_elem, is_explicit, seen)
+            check_assignable_recursive(s_elem, t_elem, false, seen)
+                && check_assignable_recursive(t_elem, s_elem, false, seen)
         }
         (Type::Fn(s_fn), Type::Fn(t_fn)) => {
             if s_fn.params.len() == t_fn.params.len() {
                 let params_ok =
                     s_fn.params.iter().zip(t_fn.params.iter()).all(|(sp, tp)| {
-                        check_assignable_recursive(&tp.ty, &sp.ty, is_explicit, seen)
+                        check_assignable_recursive(&sp.ty, &tp.ty, false, seen)
+                            && check_assignable_recursive(&tp.ty, &sp.ty, false, seen)
                     });
                 let return_ok = check_assignable_recursive(
                     &s_fn.return_type,
                     &t_fn.return_type,
-                    is_explicit,
+                    false,
+                    seen,
+                ) && check_assignable_recursive(
+                    &t_fn.return_type,
+                    &s_fn.return_type,
+                    false,
                     seen,
                 );
                 params_ok && return_ok
