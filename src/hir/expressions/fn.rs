@@ -40,7 +40,10 @@ impl<'a> Builder<'a, InModule> {
         {
             func.entry_block = entry_block_id;
         } else {
-            panic!("INTERNAL COMPILER ERROR: Function declaration not found for body compilation");
+            panic!(
+                "INTERNAL COMPILER ERROR: Function declaration not found for body \
+                 compilation"
+            );
         }
 
         let mut fn_builder = Builder {
@@ -163,7 +166,10 @@ impl<'a> Builder<'a, InBlock> {
         for (i, param) in params.iter().enumerate() {
             let declared_type = &param.ty;
 
-            let param_decl_id = param.decl_id.expect("INTERNAL COMPILER ERROR: Param decl_id not set during effect computation");
+            let param_decl_id = param.decl_id.expect(
+                "INTERNAL COMPILER ERROR: Param decl_id not set during effect \
+                 computation",
+            );
 
             let mut exit_types: Vec<Type> = Vec::new();
             let mut any_changed = false;
