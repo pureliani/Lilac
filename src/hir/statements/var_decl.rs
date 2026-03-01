@@ -8,7 +8,7 @@ use crate::{
             checked_type::Type,
         },
         utils::{
-            check_assignable::check_assignable,
+            check_assignable::check_structural_assignability,
             check_type::{check_type_annotation, TypeCheckerContext},
         },
     },
@@ -25,6 +25,7 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         let value_span = var_decl.value.span.clone();
+        let value_expr = var_decl.value.clone();
 
         let val_id = self.build_expr(var_decl.value);
         let val_type = self.get_value_type(val_id).clone();
@@ -41,7 +42,7 @@ impl<'a> Builder<'a, InBlock> {
             val_type.clone()
         };
 
-        if !check_assignable(&val_type, &constraint, false) {
+        if !check_structural_assignability(&value_expr, &val_type, &constraint) {
             self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: constraint.clone(),

@@ -1,13 +1,76 @@
 use std::collections::HashSet;
 
 use crate::{
-    ast::Span,
+    ast::{
+        expr::{Expr, ExprKind},
+        Span,
+    },
     hir::{
         errors::{SemanticError, SemanticErrorKind},
         types::checked_type::{LiteralType, Type},
         utils::numeric::{get_numeric_type_rank, is_float, is_integer, is_signed},
     },
 };
+
+/// Checks if `expr` (with type `source`) can be assigned to `target`.
+///
+/// Unlike `check_assignable`, this function inspects the `Expr` structure.
+/// If the expression is a literal (Struct or List), it allows covariance (widening)
+/// for its fields/items recursively
+/// If the expression is not a literal (e.g, a variable), it falls back to
+/// `check_assignable` which enforces invariance for mutable types to prevent aliasing
+pub fn check_structural_assignability(expr: &Expr, source: &Type, target: &Type) -> bool {
+    if source == target {
+        return true;
+    }
+
+    if matches!(source, Type::Unknown | Type::Never) || matches!(target, Type::Unknown) {
+        return true;
+    }
+
+    match (&expr.kind, source, target) {
+        (
+            ExprKind::Struct(expr_fields),
+            Type::Struct(s_fields),
+            Type::Struct(t_fields),
+        ) => {
+            if s_fields.len() != t_fields.len() {
+                return false;
+            }
+
+            for tf in t_fields {
+                // Find corresponding field in source type and expression
+                let sf = s_fields
+                    .iter()
+                    .find(|p| p.identifier.name == tf.identifier.name);
+                let ef = expr_fields
+                    .iter()
+                    .find(|(id, _)| id.name == tf.identifier.name);
+
+                match (sf, ef) {
+                    (Some(sf), Some((_, sub_expr))) => {
+                        // Recursively check with the sub-expression
+                        if !check_structural_assignability(sub_expr, &sf.ty, &tf.ty) {
+                            return false;
+                        }
+                    }
+                    _ => return false, // Field missing or mismatch
+                }
+            }
+            true
+        }
+        (ExprKind::List(items), Type::List(s_elem), Type::List(t_elem)) => {
+            for item in items {
+                if !check_structural_assignability(item, s_elem, t_elem) {
+                    return false;
+                }
+            }
+            true
+        }
+        // For non-literals (identifiers, calls, etc.), use strict invariance check
+        _ => check_assignable(source, target, false),
+    }
+}
 
 /// Checks if `source` can be assigned/cast to `target`
 ///

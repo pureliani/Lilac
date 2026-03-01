@@ -7,7 +7,7 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
-        utils::check_assignable::check_assignable,
+        utils::check_assignable::check_structural_assignability,
     },
 };
 
@@ -47,6 +47,8 @@ impl<'a> Builder<'a, InBlock> {
         let value_span = value.span.clone();
         let target_span = target.span.clone();
 
+        let value_expr = value.clone();
+
         let value_id = self.build_expr(value);
         let value_type = self.get_value_type(value_id).clone();
 
@@ -61,7 +63,7 @@ impl<'a> Builder<'a, InBlock> {
             }
         };
 
-        if !check_assignable(&value_type, &constraint, false) {
+        if !check_structural_assignability(&value_expr, &value_type, &constraint) {
             self.errors.push(SemanticError {
                 kind: SemanticErrorKind::TypeMismatch {
                     expected: constraint,
