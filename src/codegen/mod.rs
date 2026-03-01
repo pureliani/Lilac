@@ -273,6 +273,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         match instr {
             Instruction::Const(c) => self.emit_const(c),
             Instruction::Binary(b) => self.emit_binary(b),
+            Instruction::Unary(u) => self.emit_unary(u),
             _ => unimplemented!("Instruction {:?} not implemented", instr),
         }
     }
