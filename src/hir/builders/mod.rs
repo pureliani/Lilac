@@ -6,7 +6,7 @@ use crate::{
         errors::SemanticError,
         instructions::{Instruction, Terminator},
         types::{
-            checked_declaration::{CheckedDeclaration, CheckedParam, FunctionEffects},
+            checked_declaration::{CheckedDeclaration, FunctionEffects},
             checked_type::Type,
         },
         utils::{points_to::PointsToGraph, scope::Scope},
