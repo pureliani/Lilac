@@ -274,6 +274,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Instruction::Const(c) => self.emit_const(c),
             Instruction::Binary(b) => self.emit_binary(b),
             Instruction::Unary(u) => self.emit_unary(u),
+            Instruction::Comp(c) => self.emit_comp(c),
             _ => unimplemented!("Instruction {:?} not implemented", instr),
         }
     }
