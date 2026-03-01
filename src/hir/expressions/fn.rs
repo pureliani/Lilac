@@ -1,25 +1,19 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{decl::FnDecl, DeclarationId, Span},
+    ast::{decl::FnDecl, Span},
     globals::{next_block_id, next_declaration_id},
     hir::{
-        builders::{BasicBlock, Builder, Function, InBlock, InModule, ValueId},
+        builders::{BasicBlock, Builder, InBlock, InModule, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::Terminator,
         types::{
             checked_declaration::{
-                CheckedDeclaration, CheckedParam, CheckedVarDecl, FunctionEffects,
-                ParamMutation,
+                CheckedDeclaration, CheckedVarDecl, FunctionEffects, ParamMutation,
             },
             checked_type::Type,
         },
-        utils::{
-            check_assignable::check_assignable,
-            check_type::{check_params, check_type_annotation, TypeCheckerContext},
-            points_to::PointsToGraph,
-            scope::ScopeKind,
-        },
+        utils::{check_assignable::check_assignable, scope::ScopeKind},
     },
 };
 
@@ -35,40 +29,19 @@ impl<'a> Builder<'a, InModule> {
         let FnDecl {
             id: decl_id,
             identifier,
-            params,
-            return_type,
             body,
-            is_exported,
             ..
         } = fn_decl;
 
-        let mut type_ctx = TypeCheckerContext {
-            scope: self.current_scope.clone(),
-            declarations: &self.program.declarations,
-            errors: self.errors,
-        };
-
-        let checked_params = check_params(&mut type_ctx, &params);
-        let checked_return_type = check_type_annotation(&mut type_ctx, &return_type);
-
         let entry_block_id = next_block_id();
-        let function = Function {
-            id: decl_id,
-            identifier: identifier.clone(),
-            params: checked_params.clone(),
-            return_type: checked_return_type.clone(),
-            is_exported,
-            entry_block: entry_block_id,
-            blocks: HashMap::new(),
-            value_definitions: HashMap::new(),
-            ptg: PointsToGraph::new(),
-            param_decl_ids: Vec::new(),
-            effects: FunctionEffects::default(),
-        };
 
-        self.program
-            .declarations
-            .insert(decl_id, CheckedDeclaration::Function(function));
+        if let Some(CheckedDeclaration::Function(func)) =
+            self.program.declarations.get_mut(&decl_id)
+        {
+            func.entry_block = entry_block_id;
+        } else {
+            panic!("INTERNAL COMPILER ERROR: Function declaration not found for body compilation");
+        }
 
         let mut fn_builder = Builder {
             context: InBlock {
@@ -97,43 +70,50 @@ impl<'a> Builder<'a, InModule> {
         };
         fn_builder.get_fn().blocks.insert(entry_block_id, entry_bb);
 
-        let mut param_decl_ids = Vec::with_capacity(checked_params.len());
+        let param_count = fn_builder.get_fn().params.len();
 
-        for param in &checked_params {
-            let identity_id = fn_builder.new_value_id(param.ty.clone());
-
-            let param_decl_id = next_declaration_id();
-            let decl = CheckedVarDecl {
-                id: param_decl_id,
-                identifier: param.identifier.clone(),
-                documentation: None,
-                constraint: param.ty.clone(),
+        for i in 0..param_count {
+            let (param_ty, param_ident) = {
+                let p = &fn_builder.get_fn().params[i];
+                (p.ty.clone(), p.identifier.clone())
             };
 
-            fn_builder.write_variable(param_decl_id, entry_block_id, identity_id);
+            let val_id = fn_builder.new_value_id(param_ty.clone());
+            let var_decl_id = next_declaration_id();
+
+            let decl = CheckedVarDecl {
+                id: var_decl_id,
+                identifier: param_ident.clone(),
+                documentation: None,
+                constraint: param_ty,
+            };
+
+            fn_builder.write_variable(var_decl_id, entry_block_id, val_id);
 
             fn_builder
                 .program
                 .declarations
-                .insert(param_decl_id, CheckedDeclaration::Var(decl));
+                .insert(var_decl_id, CheckedDeclaration::Var(decl));
 
             fn_builder
                 .current_scope
-                .map_name_to_decl(param.identifier.name, param_decl_id);
+                .map_name_to_decl(param_ident.name, var_decl_id);
 
-            param_decl_ids.push(param_decl_id);
+            let param = &mut fn_builder.get_fn().params[i];
+            param.decl_id = Some(var_decl_id);
+            param.value_id = Some(val_id);
         }
 
-        fn_builder.get_fn().param_decl_ids = param_decl_ids.clone();
-
         let (final_value, final_value_span) = fn_builder.build_codeblock_expr(body);
+
+        let return_type = fn_builder.get_fn().return_type.clone();
         let final_value_type = fn_builder.get_value_type(final_value).clone();
 
-        if !check_assignable(&final_value_type, &checked_return_type, false) {
+        if !check_assignable(&final_value_type, &return_type, false) {
             return Err(SemanticError {
                 span: final_value_span,
                 kind: SemanticErrorKind::ReturnTypeMismatch {
-                    expected: checked_return_type.clone(),
+                    expected: return_type,
                     received: final_value_type,
                 },
             });
@@ -141,11 +121,7 @@ impl<'a> Builder<'a, InModule> {
 
         fn_builder.emit_return(final_value);
 
-        let effects = fn_builder.compute_effects(
-            &checked_params,
-            &param_decl_ids,
-            &identifier.span,
-        );
+        let effects = fn_builder.compute_effects(&identifier.span);
         fn_builder.get_fn().effects = effects;
 
         Ok(())
@@ -156,19 +132,15 @@ impl<'a> Builder<'a, InBlock> {
     pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> ValueId {
         let id = fn_decl.id;
         match self.as_module().build_fn_body(fn_decl) {
-            Ok(v) => v,
+            Ok(_) => {}
             Err(e) => self.errors.push(e),
         };
         self.emit_const_fn(id)
     }
 
-    fn compute_effects(
-        &mut self,
-        checked_params: &[CheckedParam],
-        param_decl_ids: &[DeclarationId],
-        fn_span: &Span,
-    ) -> FunctionEffects {
+    fn compute_effects(&mut self, fn_span: &Span) -> FunctionEffects {
         let func = self.get_fn();
+
         let return_block_ids: Vec<_> = func
             .blocks
             .iter()
@@ -185,12 +157,13 @@ impl<'a> Builder<'a, InBlock> {
             return FunctionEffects::default();
         }
 
+        let params: Vec<_> = func.params.clone();
         let mut mutations = Vec::new();
 
-        for (param_index, (param, &param_decl_id)) in
-            checked_params.iter().zip(param_decl_ids.iter()).enumerate()
-        {
+        for (i, param) in params.iter().enumerate() {
             let declared_type = &param.ty;
+
+            let param_decl_id = param.decl_id.expect("INTERNAL COMPILER ERROR: Param decl_id not set during effect computation");
 
             let mut exit_types: Vec<Type> = Vec::new();
             let mut any_changed = false;
@@ -209,7 +182,7 @@ impl<'a> Builder<'a, InBlock> {
             if any_changed {
                 let exit_type = Type::make_union(exit_types);
                 mutations.push(ParamMutation {
-                    param_index,
+                    param_index: i,
                     exit_type,
                 });
             }

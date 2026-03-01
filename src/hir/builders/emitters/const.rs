@@ -4,7 +4,7 @@ use crate::{
         builders::{Builder, ConstantId, InBlock, ValueId},
         instructions::{ConstInstr, Instruction},
         types::{
-            checked_declaration::{CheckedDeclaration, FnType},
+            checked_declaration::{CheckedDeclaration, CheckedParam, FnType},
             checked_type::Type,
         },
     },
@@ -63,7 +63,15 @@ impl<'a> Builder<'a, InBlock> {
 
         let (params, return_type) = match decl {
             CheckedDeclaration::Function(f) => {
-                (f.params.clone(), Box::new(f.return_type.clone()))
+                let checked_params = f
+                    .params
+                    .iter()
+                    .map(|p| CheckedParam {
+                        identifier: p.identifier.clone(),
+                        ty: p.ty.clone(),
+                    })
+                    .collect();
+                (checked_params, Box::new(f.return_type.clone()))
             }
             _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
         };

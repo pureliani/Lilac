@@ -9,7 +9,9 @@ use crate::{
     },
     compile::ParallelParseResult,
     hir::{
-        builders::{BasicBlockId, Builder, Function, InGlobal, InModule, Module},
+        builders::{
+            BasicBlockId, Builder, Function, FunctionParam, InGlobal, InModule, Module,
+        },
         types::checked_declaration::{CheckedDeclaration, FunctionEffects},
         utils::{
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
@@ -100,17 +102,26 @@ impl<'a> Builder<'a, InModule> {
         let checked_params = check_params(&mut type_ctx, &f.params);
         let checked_return_type = check_type_annotation(&mut type_ctx, &f.return_type);
 
+        let function_params = checked_params
+            .into_iter()
+            .map(|p| FunctionParam {
+                identifier: p.identifier,
+                ty: p.ty,
+                decl_id: None,
+                value_id: None,
+            })
+            .collect();
+
         let function = Function {
             id: f.id,
             identifier: f.identifier.clone(),
-            params: checked_params,
+            params: function_params,
             return_type: checked_return_type,
             is_exported: f.is_exported,
             entry_block: BasicBlockId(0),
             blocks: HashMap::new(),
             value_definitions: HashMap::new(),
             ptg: PointsToGraph::new(),
-            param_decl_ids: Vec::new(),
             effects: FunctionEffects::default(),
         };
 

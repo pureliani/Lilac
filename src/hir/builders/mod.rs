@@ -54,11 +54,19 @@ pub struct Module {
 }
 
 #[derive(Debug, Clone)]
+pub struct FunctionParam {
+    pub identifier: IdentifierNode,
+    pub ty: Type,
+    pub decl_id: Option<DeclarationId>,
+    pub value_id: Option<ValueId>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Function {
     // Signature
     pub id: DeclarationId,
     pub identifier: IdentifierNode,
-    pub params: Vec<CheckedParam>,
+    pub params: Vec<FunctionParam>,
     pub return_type: Type,
     pub is_exported: bool,
 
@@ -68,7 +76,6 @@ pub struct Function {
 
     pub value_definitions: HashMap<ValueId, BasicBlockId>,
     pub ptg: PointsToGraph,
-    pub param_decl_ids: Vec<DeclarationId>,
     pub effects: FunctionEffects,
 }
 
