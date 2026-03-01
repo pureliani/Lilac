@@ -1,7 +1,6 @@
 pub mod parse_assignment_stmt;
 pub mod parse_break_stmt;
 pub mod parse_continue_stmt;
-pub mod parse_expr_stmt;
 pub mod parse_from_stmt;
 pub mod parse_return_stmt;
 pub mod parse_type_alias_decl;
