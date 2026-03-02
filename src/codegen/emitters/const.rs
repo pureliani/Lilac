@@ -1,7 +1,10 @@
 use inkwell::values::BasicValueEnum;
 
 use crate::{
-    codegen::CodeGenerator, hir::instructions::ConstInstr, tokenize::NumberKind,
+    codegen::CodeGenerator,
+    globals::STRING_INTERNER,
+    hir::{instructions::ConstInstr, types::checked_declaration::CheckedDeclaration},
+    tokenize::NumberKind,
 };
 
 impl<'ctx> CodeGenerator<'ctx> {
@@ -60,7 +63,30 @@ impl<'ctx> CodeGenerator<'ctx> {
             ConstInstr::ConstString { .. } => {
                 unimplemented!("ConstString not implemented")
             }
-            ConstInstr::ConstFn { .. } => unimplemented!("ConstFn not implemented"),
+            ConstInstr::ConstFn { dest, decl_id } => {
+                let decl = self
+                    .program
+                    .declarations
+                    .get(decl_id)
+                    .expect("INTERNAL COMPILER ERROR: Function decl missing");
+
+                let fn_name = match decl {
+                    CheckedDeclaration::Function(f) => {
+                        STRING_INTERNER.resolve(f.identifier.name)
+                    }
+                    _ => panic!("INTERNAL COMPILER ERROR: ConstFn points to non-function declaration"),
+                };
+
+                let fn_val = self.module.get_function(&fn_name).unwrap_or_else(|| {
+                    panic!(
+                        "INTERNAL COMPILER ERROR: LLVM function '{}' not found",
+                        fn_name
+                    )
+                });
+
+                self.fn_values
+                    .insert(*dest, fn_val.as_global_value().as_pointer_value().into());
+            }
         }
     }
 }

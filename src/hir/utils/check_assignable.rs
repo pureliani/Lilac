@@ -7,7 +7,7 @@ use crate::{
     },
     hir::{
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::{LiteralType, Type},
+        types::checked_type::Type,
         utils::numeric::{get_numeric_type_rank, is_float, is_integer, is_signed},
     },
 };
@@ -111,28 +111,7 @@ fn check_assignable_recursive(
     let result = match (source, target) {
         // Literal Types
         (Type::Literal(lit), _) => {
-            let base_type = match lit {
-                LiteralType::Number(n) => {
-                    use crate::tokenize::NumberKind::*;
-                    match n.0 {
-                        I64(_) => Type::I64,
-                        I32(_) => Type::I32,
-                        I16(_) => Type::I16,
-                        I8(_) => Type::I8,
-                        F32(_) => Type::F32,
-                        F64(_) => Type::F64,
-                        U64(_) => Type::U64,
-                        U32(_) => Type::U32,
-                        U16(_) => Type::U16,
-                        U8(_) => Type::U8,
-                        ISize(_) => Type::ISize,
-                        USize(_) => Type::USize,
-                    }
-                }
-                LiteralType::Bool(_) => Type::Bool,
-                LiteralType::String(_) => Type::String,
-            };
-            check_assignable_recursive(&base_type, target, is_explicit, seen)
+            check_assignable_recursive(&lit.widen(), target, is_explicit, seen)
         }
 
         (Type::Union(s_variants), Type::Union(t_variants)) => {

@@ -4,6 +4,7 @@ use crate::{
         checked_declaration::{CheckedParam, FnType},
         ordered_number_kind::OrderedNumberKind,
     },
+    tokenize::NumberKind,
 };
 use std::{collections::BTreeSet, hash::Hash};
 
@@ -12,6 +13,29 @@ pub enum LiteralType {
     Number(OrderedNumberKind),
     Bool(bool),
     String(StringId),
+}
+
+impl LiteralType {
+    pub fn widen(&self) -> Type {
+        match self {
+            LiteralType::Bool(_) => Type::Bool,
+            LiteralType::String(_) => Type::String,
+            LiteralType::Number(n) => match n.0 {
+                NumberKind::I64(_) => Type::I64,
+                NumberKind::I32(_) => Type::I32,
+                NumberKind::I16(_) => Type::I16,
+                NumberKind::I8(_) => Type::I8,
+                NumberKind::U64(_) => Type::U64,
+                NumberKind::U32(_) => Type::U32,
+                NumberKind::U16(_) => Type::U16,
+                NumberKind::U8(_) => Type::U8,
+                NumberKind::F64(_) => Type::F64,
+                NumberKind::F32(_) => Type::F32,
+                NumberKind::ISize(_) => Type::ISize,
+                NumberKind::USize(_) => Type::USize,
+            },
+        }
+    }
 }
 
 // TODO: make cheaper to clone

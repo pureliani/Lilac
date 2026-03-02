@@ -3,12 +3,11 @@ use std::collections::HashMap;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType};
 use inkwell::values::BasicValueEnum;
 
 use crate::globals::STRING_INTERNER;
-use crate::hir::types::checked_declaration::CheckedDeclaration;
-use crate::hir::types::checked_type::LiteralType;
+use crate::hir::types::checked_declaration::{CheckedDeclaration, CheckedParam, FnType};
 use crate::hir::utils::numeric::is_signed;
 use crate::hir::{
     builders::{BasicBlockId, Function, Program, ValueId},
@@ -31,6 +30,8 @@ pub struct CodeGenerator<'ctx> {
     // Maps HIR BasicBlockId to LLVM BasicBlocks,
     // this is cleared at the start of every function.
     fn_blocks: HashMap<BasicBlockId, inkwell::basic_block::BasicBlock<'ctx>>,
+
+    current_fn: Option<&'ctx Function>,
 }
 
 impl<'ctx> CodeGenerator<'ctx> {
@@ -42,6 +43,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             program,
             fn_values: HashMap::new(),
             fn_blocks: HashMap::new(),
+            current_fn: None,
         }
     }
 
@@ -75,32 +77,23 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             Type::F32 => Some(self.context.f32_type().into()),
             Type::F64 => Some(self.context.f64_type().into()),
+            Type::Literal(lit) => self.lower_type(&lit.widen()),
+
             Type::String => unimplemented!("Codegen for String not yet implemented"),
             Type::List(_) => unimplemented!("Codegen for List not yet implemented"),
             Type::Struct(_) => unimplemented!("Codegen for Struct not yet implemented"),
             Type::Union(_) => unimplemented!("Codegen for Union not yet implemented"),
-
             Type::Null => unimplemented!("Codegen for Type::Null not yet implemented"),
-            Type::Literal(lit) => match lit {
-                LiteralType::Number(_) => unimplemented!(
-                    "Codegen for Type::Literal(LiteralType::Number) not yet implemented"
-                ),
-                LiteralType::Bool(_) => Some(self.context.bool_type().into()),
-                LiteralType::String(_) => unimplemented!(
-                    "Codegen for Type::Literal(LiteralType::String) not yet implemented"
-                ),
-            },
 
-            Type::Fn(_) => unimplemented!("Codegen for Fn not yet implemented"),
+            Type::Fn(_) => Some(
+                self.context
+                    .ptr_type(inkwell::AddressSpace::default())
+                    .into(),
+            ),
 
-            Type::Unknown => panic!(
-                "INTERNAL COMPILER ERROR: Encountered Type::Unknown while lowering the \
-                 HIR to LLVM"
-            ),
-            Type::Never => panic!(
-                "INTERNAL COMPILER ERROR: Encountered Type::Never while lowering the \
-                 HIR to LLVM"
-            ),
+            Type::Unknown | Type::Never => {
+                panic!("INTERNAL COMPILER ERROR: Invalid type in codegen")
+            }
         }
     }
 
@@ -108,24 +101,25 @@ impl<'ctx> CodeGenerator<'ctx> {
     fn gen_function_prototype(&self, func: &Function) {
         let name = STRING_INTERNER.resolve(func.identifier.name);
 
-        let ret_type = self.lower_type(&func.return_type);
-
-        let param_types: Vec<BasicMetadataTypeEnum> = func
-            .params
-            .iter()
-            .filter_map(|p| self.lower_type(&p.ty))
-            .map(|ty| ty.into())
-            .collect();
-
-        let fn_type = match ret_type {
-            Some(rt) => rt.fn_type(&param_types, false),
-            None => self.context.void_type().fn_type(&param_types, false),
+        let fn_ty = FnType {
+            params: func
+                .params
+                .iter()
+                .map(|p| CheckedParam {
+                    identifier: p.identifier.clone(),
+                    ty: p.ty.clone(),
+                })
+                .collect(),
+            return_type: Box::new(func.return_type.clone()),
         };
 
-        self.module.add_function(&name, fn_type, None);
+        let llvm_fn_type = self.lower_fn_type(&fn_ty);
+        self.module.add_function(&name, llvm_fn_type, None);
     }
 
-    fn gen_function_body(&mut self, func: &Function) {
+    fn gen_function_body(&mut self, func: &'ctx Function) {
+        self.current_fn = Some(func);
+
         let name = STRING_INTERNER.resolve(func.identifier.name);
         let function = self.module.get_function(&name).unwrap();
 
@@ -171,6 +165,24 @@ impl<'ctx> CodeGenerator<'ctx> {
             if let Some(term) = &block.terminator {
                 self.gen_terminator(term);
             }
+        }
+
+        self.current_fn = None;
+    }
+
+    pub fn lower_fn_type(&self, fn_ty: &FnType) -> FunctionType<'ctx> {
+        let ret_type = self.lower_type(&fn_ty.return_type);
+
+        let param_types: Vec<BasicMetadataTypeEnum> = fn_ty
+            .params
+            .iter()
+            .filter_map(|p| self.lower_type(&p.ty))
+            .map(|ty| ty.into())
+            .collect();
+
+        match ret_type {
+            Some(rt) => rt.fn_type(&param_types, false),
+            None => self.context.void_type().fn_type(&param_types, false),
         }
     }
 
@@ -275,7 +287,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             Instruction::Binary(b) => self.emit_binary(b),
             Instruction::Unary(u) => self.emit_unary(u),
             Instruction::Comp(c) => self.emit_comp(c),
-            _ => unimplemented!("Instruction {:?} not implemented", instr),
+            Instruction::Cast(c) => self.emit_cast_instr(c),
+            Instruction::Call(c) => self.emit_call(c),
+            Instruction::Select(s) => self.emit_select(s),
+            Instruction::Struct(_) => {
+                unimplemented!("Struct instruction not implemented")
+            }
+            Instruction::Union(_) => unimplemented!("Union instruction not implemented"),
+            Instruction::List(_) => unimplemented!("List instruction not implemented"),
         }
     }
 
