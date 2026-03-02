@@ -415,7 +415,18 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 ListInstr::Get { dest, list, index } => {
                     writeln!(
                         out,
-                        "v{}: {} = v{}[{}];",
+                        "v{}: {} = v{}::get({});",
+                        dest.0,
+                        get_vt(p, dest),
+                        list.0,
+                        index.0
+                    )
+                    .unwrap();
+                }
+                ListInstr::GetUnsafe { dest, list, index } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = v{}::getUnsafe({});",
                         dest.0,
                         get_vt(p, dest),
                         list.0,
