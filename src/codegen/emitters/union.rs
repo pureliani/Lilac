@@ -3,6 +3,7 @@ use inkwell::IntPredicate;
 
 use crate::{
     codegen::CodeGenerator,
+    globals::STRING_INTERNER,
     hir::{instructions::UnionInstr, types::checked_type::Type},
 };
 
@@ -102,10 +103,120 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.fn_values.insert(*dest, res.unwrap().into());
             }
 
-            UnionInstr::WidenUnion { .. } | UnionInstr::NarrowUnion { .. } => {
-                unimplemented!("Union widening/narrowing codegen not implemented yet")
+            UnionInstr::WidenUnion { dest, src }
+            | UnionInstr::NarrowUnion { dest, src } => {
+                let src_val = self.get_val_strict(*src).into_struct_value();
+                let src_ty = self.program.value_types.get(src).unwrap();
+                let dest_ty = self.program.value_types.get(dest).unwrap();
+
+                let src_variants = src_ty
+                    .as_union_variants()
+                    .expect("INTERNAL COMPILER ERROR: Widen/Narrow src is not a union");
+                let dest_variants = dest_ty
+                    .as_union_variants()
+                    .expect("INTERNAL COMPILER ERROR: Widen/Narrow dest is not a union");
+
+                let old_tag = self
+                    .builder
+                    .build_extract_value(src_val, 0, "old_tag")
+                    .unwrap()
+                    .into_int_value();
+                let payload = self
+                    .builder
+                    .build_extract_value(src_val, 1, "payload")
+                    .unwrap();
+
+                let mut mapping = Vec::new();
+                for (old_idx, variant) in src_variants.iter().enumerate() {
+                    if let Some(new_idx) = dest_variants.iter().position(|v| v == variant)
+                    {
+                        mapping.push((old_idx as u64, new_idx as u64));
+                    }
+                }
+
+                let is_identity = mapping.iter().all(|(o, n)| o == n);
+
+                let new_tag = if is_identity {
+                    old_tag
+                } else {
+                    self.emit_tag_switch(old_tag, &mapping)
+                };
+
+                let union_ty = self.context.struct_type(
+                    &[
+                        self.context.i16_type().into(),
+                        self.context.i64_type().into(),
+                    ],
+                    false,
+                );
+
+                let mut res = union_ty.get_undef();
+                res = self
+                    .builder
+                    .build_insert_value(res, new_tag, 0, "new_tag")
+                    .unwrap()
+                    .into_struct_value();
+                res = self
+                    .builder
+                    .build_insert_value(res, payload, 1, "new_payload")
+                    .unwrap()
+                    .into_struct_value();
+
+                self.fn_values.insert(*dest, res.into());
             }
         }
+    }
+
+    fn emit_tag_switch(
+        &mut self,
+        old_tag: IntValue<'ctx>,
+        mapping: &[(u64, u64)],
+    ) -> IntValue<'ctx> {
+        let fn_name = STRING_INTERNER.resolve(self.current_fn.unwrap().identifier.name);
+        let current_fn = self.module.get_function(&fn_name).unwrap();
+
+        let switch_bb = self.builder.get_insert_block().unwrap();
+        let merge_bb = self.context.append_basic_block(current_fn, "tag_map_merge");
+        let default_bb = self
+            .context
+            .append_basic_block(current_fn, "tag_map_default");
+
+        self.builder.position_at_end(default_bb);
+        self.builder.build_unreachable().unwrap();
+
+        let mut cases = Vec::with_capacity(mapping.len());
+        let mut incoming_phis = Vec::with_capacity(mapping.len());
+
+        for (old_idx, new_idx) in mapping {
+            let case_bb = self.context.append_basic_block(
+                current_fn,
+                &format!("map_{}_to_{}", old_idx, new_idx),
+            );
+            self.builder.position_at_end(case_bb);
+
+            let new_tag_val = self.context.i16_type().const_int(*new_idx, false);
+            self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+            cases.push((self.context.i16_type().const_int(*old_idx, false), case_bb));
+            incoming_phis.push((new_tag_val, case_bb));
+        }
+
+        self.builder.position_at_end(switch_bb);
+        self.builder
+            .build_switch(old_tag, default_bb, &cases)
+            .unwrap();
+
+        self.builder.position_at_end(merge_bb);
+        let phi = self
+            .builder
+            .build_phi(self.context.i16_type(), "remapped_tag")
+            .unwrap();
+
+        for (val, bb) in incoming_phis {
+            phi.add_incoming(&[(&val, bb)]);
+        }
+
+        phi.as_basic_value().into_int_value()
     }
 
     fn cast_to_u64_payload(&self, val: BasicValueEnum<'ctx>) -> IntValue<'ctx> {
