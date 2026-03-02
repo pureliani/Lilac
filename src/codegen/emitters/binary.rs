@@ -164,35 +164,11 @@ impl<'ctx> CodeGenerator<'ctx> {
                 "INTERNAL COMPILER ERROR: LLVM arithmetic op - Dest type missing",
             );
 
-        let lhs_casted = self.emit_cast(lhs_val, lhs_ty, dest_ty);
-        let rhs_casted = self.emit_cast(rhs_val, rhs_ty, dest_ty);
-
-        let expected_dest_llvm_ty = self.lower_type(dest_ty).unwrap();
-        if lhs_casted.get_type() != expected_dest_llvm_ty
-            || rhs_casted.get_type() != expected_dest_llvm_ty
-        {
-            panic!(
-                "INTERNAL COMPILER ERROR: Arithmetic operands failed to cast to \
-                 destination type.\nDest HIR: {:?}\nDest LLVM: {:?}\nLHS Casted: \
-                 {:?}\nRHS Casted: {:?}",
-                dest_ty,
-                expected_dest_llvm_ty,
-                lhs_casted.get_type(),
-                rhs_casted.get_type()
-            );
+        if lhs_ty != dest_ty || rhs_ty != dest_ty {
+            panic!("INTERNAL COMPILER ERROR: Type mismatch in binary arithmetic op. HIR must insert explicit casts.\nLHS: {:?}\nRHS: {:?}\nDest: {:?}", lhs_ty, rhs_ty, dest_ty);
         }
 
-        let res = op(&self.builder, lhs_casted, rhs_casted);
-
-        if res.get_type() != expected_dest_llvm_ty {
-            panic!(
-                "INTERNAL COMPILER ERROR: Arithmetic operation produced wrong LLVM \
-                 type.\nExpected: {:?}\nGot: {:?}",
-                expected_dest_llvm_ty,
-                res.get_type()
-            );
-        }
-
+        let res = op(&self.builder, lhs_val, rhs_val);
         self.fn_values.insert(dest, res);
     }
 }

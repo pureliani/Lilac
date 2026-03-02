@@ -80,10 +80,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Type::F32 => Some(self.context.f32_type().into()),
             Type::F64 => Some(self.context.f64_type().into()),
             Type::Literal(lit) => self.lower_type(&lit.widen()),
-
-            Type::String => unimplemented!("Codegen for String not yet implemented"),
-            Type::List(_) => unimplemented!("Codegen for List not yet implemented"),
-            Type::Struct(_) => Some(
+            Type::Struct(_) | Type::List(_) | Type::String => Some(
                 self.context
                     .ptr_type(inkwell::AddressSpace::default())
                     .into(),
@@ -266,7 +263,6 @@ impl<'ctx> CodeGenerator<'ctx> {
             .expect("Invalid destination type for cast");
 
         match (val, llvm_dest_type) {
-            // Integer -> Integer (Widening/Narrowing)
             (BasicValueEnum::IntValue(int_val), BasicTypeEnum::IntType(int_dest_ty)) => {
                 let src_width = int_val.get_type().get_bit_width();
                 let dest_width = int_dest_ty.get_bit_width();
@@ -290,8 +286,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .into()
                 }
             }
-
-            // Float -> Float (Widening/Narrowing)
             (
                 BasicValueEnum::FloatValue(float_val),
                 BasicTypeEnum::FloatType(float_dest_ty),

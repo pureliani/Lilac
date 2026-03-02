@@ -160,6 +160,11 @@ pub enum ListInstr {
         list: ValueId,
         index: ValueId,
     },
+    GetUnsafe {
+        dest: ValueId,
+        list: ValueId,
+        index: ValueId,
+    },
     Set {
         dest: ValueId,
         list: ValueId,
