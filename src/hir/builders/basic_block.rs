@@ -8,6 +8,7 @@ use crate::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
             InModule, PhiSource, ValueId,
         },
+        instructions::{CastInstr, Instruction, Terminator},
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::type_to_string::type_to_string,
     },
@@ -219,27 +220,43 @@ impl<'a> Builder<'a, InBlock> {
         let predecessors: Vec<BasicBlockId> =
             self.get_bb(block_id).predecessors.iter().cloned().collect();
 
-        let mut phi_sources = Vec::new();
+        let mut incoming_values = Vec::new();
         let mut incoming_types = Vec::new();
 
         for pred in &predecessors {
             let val = self.read_variable(variable_id, *pred, span.clone());
-            phi_sources.push((*pred, val));
+            incoming_values.push((*pred, val));
             incoming_types.push(self.get_value_type(val).clone());
         }
 
         let unified_type = Type::make_union(incoming_types);
 
-        let final_sources: HashSet<PhiSource> = phi_sources
-            .into_iter()
-            .map(|(pred, val)| PhiSource {
-                from: pred,
-                value: val,
-            })
-            .collect();
+        let phi_ty = self.program.value_types.get_mut(&phi_id).expect(
+            "INTERNAL COMPILER ERROR: Expected the type for phi_id to be defined",
+        );
+        *phi_ty = unified_type.clone();
 
-        if let Some(ty) = self.program.value_types.get_mut(&phi_id) {
-            *ty = unified_type;
+        let mut final_sources = HashSet::new();
+
+        for (pred_block, val) in incoming_values {
+            let val_type = self.get_value_type(val);
+
+            if val_type == &unified_type {
+                final_sources.insert(PhiSource {
+                    from: pred_block,
+                    value: val,
+                });
+            } else {
+                let insertion_block = self.split_critical_edge(pred_block, block_id);
+
+                let casted_val =
+                    self.emit_cast_internal(insertion_block, val, unified_type.clone());
+
+                final_sources.insert(PhiSource {
+                    from: insertion_block,
+                    value: casted_val,
+                });
+            }
         }
 
         self.insert_phi(block_id, phi_id, final_sources.clone());
@@ -247,6 +264,80 @@ impl<'a> Builder<'a, InBlock> {
         let source_values: Vec<ValueId> =
             final_sources.into_iter().map(|s| s.value).collect();
         self.ptg.merge_values(phi_id, &source_values);
+    }
+
+    fn emit_cast_internal(
+        &mut self,
+        block_id: BasicBlockId,
+        src: ValueId,
+        target_type: Type,
+    ) -> ValueId {
+        let old_block = self.context.block_id;
+        self.use_basic_block(block_id);
+
+        let terminator = self.bb_mut().terminator.take();
+
+        let dest = self.new_value_id(target_type);
+        self.push_instruction(Instruction::Cast(CastInstr { src, dest }));
+
+        self.bb_mut().terminator = terminator;
+
+        self.use_basic_block(old_block);
+        dest
+    }
+
+    fn split_critical_edge(
+        &mut self,
+        pred_id: BasicBlockId,
+        succ_id: BasicBlockId,
+    ) -> BasicBlockId {
+        let needs_split = {
+            let pred_bb = self.get_bb(pred_id);
+            match &pred_bb.terminator {
+                Some(Terminator::CondJump { .. }) => true,
+                Some(Terminator::Jump { .. }) => false, // only one successor
+                _ => panic!("INTERNAL COMPILER ERROR: Predecessor of Phi ends with Return or None"),
+            }
+        };
+
+        if !needs_split {
+            return pred_id;
+        }
+
+        let split_block_id = self.as_fn().new_bb();
+
+        let old_block = self.context.block_id;
+        self.use_basic_block(split_block_id);
+        self.emit_jmp(succ_id);
+        self.seal();
+
+        self.use_basic_block(old_block);
+
+        let pred_bb = self.get_bb_mut(pred_id);
+
+        match &mut pred_bb.terminator {
+            Some(Terminator::CondJump {
+                true_target,
+                false_target,
+                ..
+            }) => {
+                if *true_target == succ_id {
+                    *true_target = split_block_id;
+                }
+                if *false_target == succ_id {
+                    *false_target = split_block_id;
+                }
+            }
+            _ => unreachable!("We checked needs_split above"),
+        }
+
+        let succ_bb = self.get_bb_mut(succ_id);
+        succ_bb.predecessors.remove(&pred_id);
+
+        let split_bb = self.get_bb_mut(split_block_id);
+        split_bb.predecessors.insert(pred_id);
+
+        split_block_id
     }
 
     pub fn new_value_id(&mut self, ty: Type) -> ValueId {
