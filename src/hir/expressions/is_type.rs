@@ -8,11 +8,11 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::{checked_declaration::CheckedParam, checked_type::Type},
-        utils::{
-            check_assignable::check_assignable,
-            check_type::{check_type_annotation, TypeCheckerContext},
+        types::{
+            checked_declaration::CheckedParam,
+            checked_type::{SpannedType, Type},
         },
+        utils::check_type::{check_type_annotation, TypeCheckerContext},
     },
 };
 
@@ -59,7 +59,10 @@ impl<'a> Builder<'a, InBlock> {
                     if f.identifier.name == field {
                         CheckedParam {
                             identifier: f.identifier.clone(),
-                            ty: new_field_ty.clone(),
+                            ty: SpannedType {
+                                kind: new_field_ty.clone(),
+                                span: Span::default(), // TODO: fix this later
+                            },
                         }
                     } else {
                         f.clone()
@@ -86,7 +89,7 @@ impl<'a> Builder<'a, InBlock> {
                 Some((decl_id, on_true, on_false))
             }
             ExprKind::Access { left, field } => {
-                let parent_val = self.build_expr(*left.clone());
+                let parent_val = self.build_expr(*left.clone(), None);
                 let parent_ty = self.get_value_type(parent_val).clone();
 
                 let lifted_true =
@@ -100,10 +103,15 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn build_is_type_expr(&mut self, left: Expr, ty: TypeAnnotation) -> ValueId {
+    pub fn build_is_type_expr(
+        &mut self,
+        left: Expr,
+        ty: TypeAnnotation,
+        expected_type: Option<&SpannedType>,
+    ) -> ValueId {
         let span = left.span.clone();
 
-        let current_val = self.build_expr(left.clone());
+        let current_val = self.build_expr(left.clone(), None);
         let current_ty = self.get_value_type(current_val).clone();
 
         let variants = match current_ty.get_union_variants() {
@@ -123,7 +131,7 @@ impl<'a> Builder<'a, InBlock> {
         };
         let target_type = check_type_annotation(&mut type_ctx, &ty);
 
-        if target_type.get_union_variants().is_some() {
+        if target_type.kind.get_union_variants().is_some() {
             return self.report_error_and_get_poison(SemanticError {
                 kind: SemanticErrorKind::UnsupportedUnionNarrowing,
                 span: ty.span.clone(),
@@ -134,7 +142,7 @@ impl<'a> Builder<'a, InBlock> {
         let mut non_matching_variants = Vec::new();
 
         for variant in variants {
-            if check_assignable(variant, &target_type, false) {
+            if variant == &target_type.kind {
                 matching_variants.push(variant.clone());
             } else {
                 non_matching_variants.push(variant.clone());
@@ -179,6 +187,6 @@ impl<'a> Builder<'a, InBlock> {
             }
         }
 
-        result_id
+        self.check_expected(result_id, span, expected_type)
     }
 }

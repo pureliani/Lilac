@@ -1,18 +1,21 @@
 use std::collections::HashSet;
 
 use crate::{
-    ast::{expr::Expr, IdentifierNode},
+    ast::{expr::Expr, IdentifierNode, Span},
     compile::interner::StringId,
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
+        types::checked_type::SpannedType,
     },
 };
 
 impl<'a> Builder<'a, InBlock> {
     pub fn build_struct_init_expr(
         &mut self,
+        span: Span,
         fields: Vec<(IdentifierNode, Expr)>,
+        expected_type: Option<&SpannedType>,
     ) -> ValueId {
         let mut field_values: Vec<(IdentifierNode, ValueId)> =
             Vec::with_capacity(fields.len());
@@ -28,10 +31,11 @@ impl<'a> Builder<'a, InBlock> {
                 });
             }
 
-            let val_id = self.build_expr(field_expr);
+            let val_id = self.build_expr(field_expr, None);
             field_values.push((field_name, val_id));
         }
 
-        self.emit_struct_init(field_values)
+        let result = self.emit_struct_init(field_values);
+        self.check_expected(result, span, expected_type)
     }
 }

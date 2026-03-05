@@ -7,7 +7,7 @@ fn get_type_at_path(mut ty: &Type, path: &[StringId]) -> Option<Type> {
         match ty {
             Type::Struct(fields) => {
                 let field = fields.iter().find(|f| f.identifier.name == *field_name)?;
-                ty = &field.ty;
+                ty = &field.ty.kind;
             }
             _ => return None,
         }

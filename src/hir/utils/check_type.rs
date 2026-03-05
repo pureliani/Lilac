@@ -10,7 +10,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::{CheckedDeclaration, CheckedParam, FnType},
-            checked_type::Type,
+            checked_type::{SpannedType, Type},
         },
         utils::scope::Scope,
     },
@@ -46,7 +46,7 @@ pub fn check_type_identifier_annotation(
                     entry.0
                 )
             }) {
-                CheckedDeclaration::TypeAlias(decl) => (*decl.value).clone(),
+                CheckedDeclaration::TypeAlias(decl) => decl.value.kind.clone(),
                 CheckedDeclaration::Function(_) => {
                     ctx.errors.push(SemanticError {
                         kind: SemanticErrorKind::CannotUseFunctionDeclarationAsType,
@@ -78,8 +78,8 @@ pub fn check_type_identifier_annotation(
 pub fn check_type_annotation(
     ctx: &mut TypeCheckerContext,
     annotation: &TypeAnnotation,
-) -> Type {
-    match &annotation.kind {
+) -> SpannedType {
+    let kind = match &annotation.kind {
         TypeAnnotationKind::Void => Type::Void,
         TypeAnnotationKind::Bool => Type::Bool,
         TypeAnnotationKind::U8 => Type::U8,
@@ -112,7 +112,7 @@ pub fn check_type_annotation(
             let mut checked_variants = Vec::new();
 
             for v in variants {
-                checked_variants.push(check_type_annotation(ctx, v));
+                checked_variants.push(check_type_annotation(ctx, v).kind);
             }
 
             Type::make_union(checked_variants)
@@ -127,5 +127,10 @@ pub fn check_type_annotation(
             Type::Struct(checked_field_types)
         }
         TypeAnnotationKind::Null => Type::Null,
+    };
+
+    SpannedType {
+        kind,
+        span: annotation.span.clone(),
     }
 }

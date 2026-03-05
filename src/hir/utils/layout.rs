@@ -38,7 +38,7 @@ pub fn get_layout_of(ty: &Type) -> Layout {
         Type::Fn(_) => Layout::new(PTR_SIZE, PTR_ALIGN),      // function pointer
 
         Type::Struct(fields) => {
-            let field_types: Vec<&Type> = fields.iter().map(|p| &p.ty).collect();
+            let field_types: Vec<&Type> = fields.iter().map(|p| &p.ty.kind).collect();
             calculate_fields_layout(&field_types)
         }
 
@@ -100,8 +100,8 @@ fn calculate_fields_layout(field_types: &[&Type]) -> Layout {
 
 pub fn pack_struct(mut fields: Vec<CheckedParam>) -> Vec<CheckedParam> {
     fields.sort_by(|field_a, field_b| {
-        let align_a = get_alignment_of(&field_a.ty);
-        let align_b = get_alignment_of(&field_b.ty);
+        let align_a = get_alignment_of(&field_a.ty.kind);
+        let align_b = get_alignment_of(&field_b.ty.kind);
 
         align_b.cmp(&align_a).then_with(|| {
             let name_a = STRING_INTERNER.resolve(field_a.identifier.name);

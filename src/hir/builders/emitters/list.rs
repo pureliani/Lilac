@@ -4,13 +4,17 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, ListInstr},
-        types::checked_type::Type,
+        types::checked_type::{SpannedType, Type},
         utils::{numeric::is_integer, points_to::PathSegment},
     },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn emit_list_init(&mut self, element_type: Type, items: Vec<ValueId>) -> ValueId {
+    pub fn emit_list_init(
+        &mut self,
+        element_type: SpannedType,
+        items: Vec<ValueId>,
+    ) -> ValueId {
         let dest = self.new_value_id(Type::List(Box::new(element_type.clone())));
 
         let alloc_id = self.ptg.new_alloc();
@@ -27,7 +31,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.push_instruction(Instruction::List(ListInstr::Init {
             dest,
-            element_type,
+            element_type: element_type.kind,
             items,
         }));
 
@@ -52,7 +56,7 @@ impl<'a> Builder<'a, InBlock> {
 
         match list_type {
             Type::List(inner) => {
-                let result_type = Type::make_union([*inner, Type::Null]);
+                let result_type = Type::make_union([inner.kind, Type::Null]);
 
                 let dest = self.new_value_id(result_type);
                 self.push_instruction(Instruction::List(ListInstr::Get {
@@ -93,10 +97,10 @@ impl<'a> Builder<'a, InBlock> {
 
         match list_type {
             Type::List(inner) => {
-                if value_type != *inner {
+                if &value_type != &inner.kind {
                     return self.report_error_and_get_poison(SemanticError {
                         kind: SemanticErrorKind::TypeMismatch {
-                            expected: *inner,
+                            expected: inner.kind,
                             received: value_type,
                         },
                         span,

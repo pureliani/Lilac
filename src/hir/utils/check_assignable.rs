@@ -6,6 +6,11 @@ use crate::hir::utils::numeric::{
     get_numeric_type_rank, is_float, is_integer, is_signed,
 };
 
+pub enum AdjustmentError {
+    Incompatible,
+    TryExplicitCast,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Adjustment {
     Identity,
@@ -21,6 +26,9 @@ pub enum Adjustment {
     FToUI,  // Float To Unsigned Int
 
     WrapInUnion(usize),
+    UnwrapUnion,
+
+    /// Maps old variant indices to new variant indices, Vec<(old_idx, new_idx)>
     ReTagUnion(Vec<(u64, u64)>),
 
     CoerceStruct {
@@ -33,7 +41,7 @@ pub fn compute_type_adjustment(
     source_type: &Type,
     target: &Type,
     is_explicit: bool,
-) -> Result<Adjustment, SemanticErrorKind> {
+) -> Result<Adjustment, AdjustmentError> {
     let source = if let Type::Literal(lit) = source_type {
         lit.widen()
     } else {
@@ -113,13 +121,6 @@ pub fn compute_type_adjustment(
     }
 
     if let (Type::Struct(s_fields), Type::Struct(t_fields)) = (&source, target) {
-        if !is_explicit {
-            return Err(SemanticErrorKind::TypeMismatch {
-                expected: target.clone(),
-                received: source.clone(),
-            });
-        }
-
         if s_fields.len() == t_fields.len() {
             let mut field_adjustments = Vec::new();
             let mut possible = true;
@@ -134,7 +135,7 @@ pub fn compute_type_adjustment(
                     continue;
                 }
 
-                match compute_type_adjustment(&sf.ty, &tf.ty, is_explicit) {
+                match compute_type_adjustment(&sf.ty.kind, &tf.ty.kind, is_explicit) {
                     Ok(adj) => {
                         if adj != Adjustment::Identity {
                             field_adjustments.push((sf.identifier.name, adj));
@@ -151,15 +152,16 @@ pub fn compute_type_adjustment(
                 if field_adjustments.is_empty() {
                     return Ok(Adjustment::Identity);
                 }
-                return Ok(Adjustment::CoerceStruct { field_adjustments });
+                if is_explicit {
+                    return Ok(Adjustment::CoerceStruct { field_adjustments });
+                } else {
+                    return Err(AdjustmentError::TryExplicitCast);
+                }
             }
         }
     }
 
-    Err(SemanticErrorKind::TypeMismatch {
-        expected: target.clone(),
-        received: source.clone(),
-    })
+    Err(AdjustmentError::Incompatible)
 }
 
 pub fn arithmetic_supertype(

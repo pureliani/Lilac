@@ -3,6 +3,7 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
+        types::checked_type::SpannedType,
     },
 };
 
@@ -11,15 +12,18 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         left: Expr,
         field: IdentifierNode,
+        expected_type: Option<&SpannedType>,
     ) -> ValueId {
         let span = field.span.clone();
 
-        let left_id = self.build_expr(left);
+        let left_id = self.build_expr(left, None);
         let left_type = self.get_value_type(left_id).clone();
 
-        self.report_error_and_get_poison(SemanticError {
+        let result = self.report_error_and_get_poison(SemanticError {
             kind: SemanticErrorKind::CannotStaticAccess(left_type),
-            span,
-        })
+            span: span.clone(),
+        });
+
+        self.check_expected(result, span, expected_type)
     }
 }

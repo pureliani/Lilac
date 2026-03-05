@@ -4,7 +4,6 @@ use crate::{
     ast::Span,
     hir::{
         builders::{BasicBlockId, Builder, InBlock, PhiSource, TypePredicate, ValueId},
-        errors::{SemanticError, SemanticErrorKind},
         instructions::{CallInstr, Instruction, Terminator},
         types::checked_type::Type,
     },
@@ -80,23 +79,11 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         left: ValueId,
         left_span: Span,
-        right_span: Span,
         produce_right: F,
     ) -> ValueId
     where
         F: FnOnce(&mut Self) -> ValueId,
     {
-        let left_type = self.get_value_type(left);
-        if left_type != &Type::Bool {
-            self.errors.push(SemanticError {
-                kind: SemanticErrorKind::TypeMismatch {
-                    expected: Type::Bool,
-                    received: left_type.clone(),
-                },
-                span: left_span.clone(),
-            });
-        }
-
         let left_preds = self.type_predicates.get(&left).cloned().unwrap_or_default();
 
         let left_block = self.context.block_id;
@@ -114,17 +101,6 @@ impl<'a> Builder<'a, InBlock> {
 
         let right = produce_right(self);
         let right_block = self.context.block_id;
-
-        let right_type = self.get_value_type(right);
-        if right_type != &Type::Bool {
-            self.errors.push(SemanticError {
-                kind: SemanticErrorKind::TypeMismatch {
-                    expected: Type::Bool,
-                    received: right_type.clone(),
-                },
-                span: right_span,
-            });
-        }
 
         let right_preds = self
             .type_predicates
@@ -163,23 +139,11 @@ impl<'a> Builder<'a, InBlock> {
         &mut self,
         left: ValueId,
         left_span: Span,
-        right_span: Span,
         produce_right: F,
     ) -> ValueId
     where
         F: FnOnce(&mut Self) -> ValueId,
     {
-        let left_type = self.get_value_type(left);
-        if left_type != &Type::Bool {
-            self.errors.push(SemanticError {
-                kind: SemanticErrorKind::TypeMismatch {
-                    expected: Type::Bool,
-                    received: left_type.clone(),
-                },
-                span: left_span.clone(),
-            });
-        }
-
         let left_preds = self.type_predicates.get(&left).cloned().unwrap_or_default();
 
         let left_block = self.context.block_id;
@@ -197,17 +161,6 @@ impl<'a> Builder<'a, InBlock> {
 
         let right = produce_right(self);
         let right_block = self.context.block_id;
-
-        let right_type = self.get_value_type(right);
-        if right_type != &Type::Bool {
-            self.errors.push(SemanticError {
-                kind: SemanticErrorKind::TypeMismatch {
-                    expected: Type::Bool,
-                    received: right_type.clone(),
-                },
-                span: right_span,
-            });
-        }
 
         let right_preds = self
             .type_predicates

@@ -66,7 +66,7 @@ pub fn dump_program(program: &Program) {
 
 fn dump_function(f: &Function, p: &Program, out: &mut String) {
     let fn_name = STRING_INTERNER.resolve(f.identifier.name);
-    let return_type = type_to_string(&f.return_type);
+    let return_type = type_to_string(&f.return_type.kind);
     writeln!(out, "fn {fn_name} -> {return_type}:").unwrap();
     let block_ids = find_blocks(f);
 
@@ -333,35 +333,6 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 }
             },
             Instruction::Union(union_instr) => match union_instr {
-                UnionInstr::WrapInUnion {
-                    dest,
-                    src,
-                    target_variants: _,
-                } => {
-                    writeln!(
-                        out,
-                        "v{}: {} = wrap_union v{};",
-                        dest.0,
-                        get_vt(p, dest),
-                        src.0
-                    )
-                    .unwrap();
-                }
-                UnionInstr::UnwrapUnion {
-                    dest,
-                    src,
-                    variant_type,
-                } => {
-                    writeln!(
-                        out,
-                        "v{}: {} = unwrap_union v{} as {};",
-                        dest.0,
-                        get_vt(p, dest),
-                        src.0,
-                        type_to_string(variant_type)
-                    )
-                    .unwrap();
-                }
                 UnionInstr::TestVariant {
                     dest,
                     src,
@@ -374,26 +345,6 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                         get_vt(p, dest),
                         src.0,
                         type_to_string(variant_type)
-                    )
-                    .unwrap();
-                }
-                UnionInstr::WidenUnion { dest, src } => {
-                    writeln!(
-                        out,
-                        "v{}: {} = widen_union v{};",
-                        dest.0,
-                        get_vt(p, dest),
-                        src.0
-                    )
-                    .unwrap();
-                }
-                UnionInstr::NarrowUnion { dest, src } => {
-                    writeln!(
-                        out,
-                        "v{}: {} = narrow_union v{};",
-                        dest.0,
-                        get_vt(p, dest),
-                        src.0
                     )
                     .unwrap();
                 }
@@ -462,6 +413,15 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     out,
                     "v{}: {} = v{}::as({})",
                     cast_instr.dest.0, dest_type_str, cast_instr.src.0, dest_type_str,
+                )
+                .unwrap();
+            }
+            Instruction::BitCast(bitcast_instr) => {
+                let dest_type_str = get_vt(p, &bitcast_instr.dest);
+                writeln!(
+                    out,
+                    "v{}: {} = bitcast v{};",
+                    bitcast_instr.dest.0, dest_type_str, bitcast_instr.src.0,
                 )
                 .unwrap();
             }

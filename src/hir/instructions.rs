@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use crate::{
     ast::DeclarationId,
     compile::interner::StringId,
@@ -124,28 +122,10 @@ pub enum StructInstr {
 
 #[derive(Clone, Debug)]
 pub enum UnionInstr {
-    WrapInUnion {
-        dest: ValueId,
-        src: ValueId,
-        target_variants: BTreeSet<Type>,
-    },
-    UnwrapUnion {
-        dest: ValueId,
-        src: ValueId,
-        variant_type: Type,
-    },
     TestVariant {
         dest: ValueId,
         src: ValueId,
         variant_type: Type,
-    },
-    WidenUnion {
-        dest: ValueId,
-        src: ValueId,
-    },
-    NarrowUnion {
-        dest: ValueId,
-        src: ValueId,
     },
 }
 
@@ -201,6 +181,12 @@ pub struct SelectInstr {
 }
 
 #[derive(Clone, Debug)]
+pub struct BitCastInstr {
+    pub src: ValueId,
+    pub dest: ValueId,
+}
+
+#[derive(Clone, Debug)]
 pub enum Instruction {
     Binary(BinaryInstr),
     Unary(UnaryInstr),
@@ -212,6 +198,7 @@ pub enum Instruction {
     Cast(CastInstr),
     Call(CallInstr),
     Select(SelectInstr),
+    BitCast(BitCastInstr),
 }
 
 #[derive(Clone, Debug)]

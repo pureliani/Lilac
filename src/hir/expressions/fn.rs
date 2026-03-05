@@ -11,9 +11,9 @@ use crate::{
             checked_declaration::{
                 CheckedDeclaration, CheckedVarDecl, FunctionEffects, ParamMutation,
             },
-            checked_type::Type,
+            checked_type::{SpannedType, Type},
         },
-        utils::{check_assignable::check_assignable, scope::ScopeKind},
+        utils::scope::ScopeKind,
     },
 };
 
@@ -81,7 +81,7 @@ impl<'a> Builder<'a, InModule> {
                 (p.ty.clone(), p.identifier.clone())
             };
 
-            let val_id = fn_builder.new_value_id(param_ty.clone());
+            let val_id = fn_builder.new_value_id(param_ty.kind.clone());
             let var_decl_id = next_declaration_id();
 
             let decl = CheckedVarDecl {
@@ -107,20 +107,9 @@ impl<'a> Builder<'a, InModule> {
             param.value_id = Some(val_id);
         }
 
-        let (final_value, final_value_span) = fn_builder.build_codeblock_expr(body);
-
         let return_type = fn_builder.get_fn().return_type.clone();
-        let final_value_type = fn_builder.get_value_type(final_value).clone();
 
-        if !check_assignable(&final_value_type, &return_type, false) {
-            return Err(SemanticError {
-                span: final_value_span,
-                kind: SemanticErrorKind::ReturnTypeMismatch {
-                    expected: return_type,
-                    received: final_value_type,
-                },
-            });
-        }
+        let (final_value, _) = fn_builder.build_codeblock_expr(body, Some(&return_type));
 
         fn_builder.emit_return(final_value);
 
@@ -132,13 +121,21 @@ impl<'a> Builder<'a, InModule> {
 }
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_fn_expr(&mut self, fn_decl: FnDecl) -> ValueId {
+    pub fn build_fn_expr(
+        &mut self,
+        fn_decl: FnDecl,
+        expected_type: Option<&SpannedType>,
+    ) -> ValueId {
         let id = fn_decl.id;
+        let span = fn_decl.identifier.span.clone();
+
         match self.as_module().build_fn_body(fn_decl) {
             Ok(_) => {}
             Err(e) => self.errors.push(e),
         };
-        self.emit_const_fn(id)
+
+        let result = self.emit_const_fn(id);
+        self.check_expected(result, span, expected_type)
     }
 
     fn compute_effects(&mut self, fn_span: &Span) -> FunctionEffects {
@@ -178,7 +175,7 @@ impl<'a> Builder<'a, InBlock> {
                 let val = self.read_variable(param_decl_id, block_id, fn_span.clone());
                 let ty = self.get_value_type(val).clone();
 
-                if ty != *declared_type {
+                if ty != declared_type.kind {
                     any_changed = true;
                 }
 

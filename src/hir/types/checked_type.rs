@@ -1,4 +1,5 @@
 use crate::{
+    ast::Span,
     compile::interner::StringId,
     hir::types::{
         checked_declaration::{CheckedParam, FnType},
@@ -6,7 +7,7 @@ use crate::{
     },
     tokenize::NumberKind,
 };
-use std::{collections::BTreeSet, hash::Hash};
+use std::{cmp::Ordering, collections::BTreeSet, hash::Hash};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LiteralType {
@@ -59,7 +60,7 @@ pub enum Type {
     Literal(LiteralType),
     Struct(Vec<CheckedParam>),
     Union(BTreeSet<Type>),
-    List(Box<Type>),
+    List(Box<SpannedType>),
     String,
     Fn(FnType),
     Unknown,
@@ -133,14 +134,45 @@ impl Type {
     }
 
     /// Maps a struct field name -> (Index, Type)
-    pub fn get_field(&self, name: &StringId) -> Option<(usize, Type)> {
+    pub fn get_field(&self, name: &StringId) -> Option<(usize, &SpannedType)> {
         match self {
             Type::Struct(fields) => fields
                 .iter()
                 .enumerate()
                 .find(|(_, param)| &param.identifier.name == name)
-                .map(|(index, param)| (index, param.ty.clone())),
+                .map(|(index, param)| (index, &param.ty)),
             _ => None,
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SpannedType {
+    pub kind: Type,
+    pub span: Span,
+}
+
+impl Hash for SpannedType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+    }
+}
+
+impl Eq for SpannedType {}
+impl PartialEq for SpannedType {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
+impl Ord for SpannedType {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.kind.cmp(&other.kind)
+    }
+}
+
+impl PartialOrd for SpannedType {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }

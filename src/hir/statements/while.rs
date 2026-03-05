@@ -2,8 +2,7 @@ use crate::{
     ast::expr::{BlockContents, Expr},
     hir::{
         builders::{Builder, InBlock},
-        errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::Type,
+        types::checked_type::{SpannedType, Type},
         utils::scope::ScopeKind,
     },
 };
@@ -18,18 +17,13 @@ impl<'a> Builder<'a, InBlock> {
         self.use_basic_block(header_block_id);
 
         let condition_span = condition.span.clone();
-        let cond_id = self.build_expr(condition);
-        let cond_ty = self.get_value_type(cond_id);
-
-        if cond_ty != &Type::Bool {
-            self.errors.push(SemanticError {
+        let cond_id = self.build_expr(
+            condition,
+            Some(&SpannedType {
+                kind: Type::Bool,
                 span: condition_span,
-                kind: SemanticErrorKind::TypeMismatch {
-                    expected: Type::Bool,
-                    received: cond_ty.clone(),
-                },
-            });
-        }
+            }),
+        );
 
         self.emit_cond_jmp(cond_id, body_block_id, exit_block_id);
 
@@ -46,7 +40,7 @@ impl<'a> Builder<'a, InBlock> {
 
         self.build_statements(body.statements);
         if let Some(final_expr) = body.final_expr {
-            self.build_expr(*final_expr);
+            self.build_expr(*final_expr, None);
         }
 
         self.current_scope = self

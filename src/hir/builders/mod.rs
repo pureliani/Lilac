@@ -7,7 +7,7 @@ use crate::{
         instructions::{Instruction, Terminator},
         types::{
             checked_declaration::{CheckedDeclaration, FunctionEffects},
-            checked_type::Type,
+            checked_type::{SpannedType, Type},
         },
         utils::{points_to::PointsToGraph, scope::Scope},
     },
@@ -56,7 +56,7 @@ pub struct Module {
 #[derive(Debug, Clone)]
 pub struct FunctionParam {
     pub identifier: IdentifierNode,
-    pub ty: Type,
+    pub ty: SpannedType,
     pub decl_id: Option<DeclarationId>,
     pub value_id: Option<ValueId>,
 }
@@ -67,7 +67,7 @@ pub struct Function {
     pub id: DeclarationId,
     pub identifier: IdentifierNode,
     pub params: Vec<FunctionParam>,
-    pub return_type: Type,
+    pub return_type: SpannedType,
     pub is_exported: bool,
 
     // CFG

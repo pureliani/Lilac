@@ -53,7 +53,7 @@ pub fn type_to_string_recursive(ty: &Type, visited_set: &mut HashSet<Type>) -> S
         Type::Struct(s) => struct_to_string(s, visited_set),
         Type::Union(variants) => union_variants_to_string(variants, visited_set),
         Type::Fn(fn_type) => fn_signature_to_string(fn_type, visited_set),
-        Type::List(item_type) => list_to_string(item_type, visited_set),
+        Type::List(item_type) => list_to_string(&item_type.kind, visited_set),
     };
 
     visited_set.remove(ty);
@@ -76,7 +76,7 @@ fn struct_to_string(fields: &[CheckedParam], visited_set: &mut HashSet<Type>) ->
             format!(
                 "{}: {}",
                 STRING_INTERNER.resolve(f.identifier.name),
-                type_to_string_recursive(&f.ty, visited_set)
+                type_to_string_recursive(&f.ty.kind, visited_set)
             )
         })
         .collect::<Vec<String>>()
@@ -109,13 +109,14 @@ fn fn_signature_to_string(fn_type: &FnType, visited_set: &mut HashSet<Type>) -> 
             format!(
                 "{}: {}",
                 STRING_INTERNER.resolve(p.identifier.name),
-                type_to_string_recursive(&p.ty, visited_set)
+                type_to_string_recursive(&p.ty.kind, visited_set)
             )
         })
         .collect::<Vec<String>>()
         .join(", ");
 
-    let return_type_str = type_to_string_recursive(&fn_type.return_type, visited_set);
+    let return_type_str =
+        type_to_string_recursive(&fn_type.return_type.kind, visited_set);
 
     format!("fn({}): {}", params_str, return_type_str)
 }

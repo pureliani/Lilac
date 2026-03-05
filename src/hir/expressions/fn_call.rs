@@ -6,12 +6,11 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        instructions::{CastInstr, Instruction},
+        instructions::{BitCastInstr, Instruction},
         types::{
-            checked_declaration::{CheckedDeclaration, CheckedParam},
-            checked_type::Type,
+            checked_declaration::CheckedDeclaration,
+            checked_type::{SpannedType, Type},
         },
-        utils::check_assignable::check_assignable,
     },
 };
 
@@ -21,13 +20,14 @@ impl<'a> Builder<'a, InBlock> {
         left: Expr,
         args: Vec<Expr>,
         span: Span,
+        expected_type: Option<&SpannedType>,
     ) -> ValueId {
         let callee_decl_id = match &left.kind {
             ExprKind::Identifier(ident) => self.current_scope.lookup(ident.name),
             _ => None,
         };
 
-        let func_id = self.build_expr(left);
+        let func_id = self.build_expr(left, None);
         let func_type = self.get_value_type(func_id).clone();
 
         let (params, return_type) = match func_type {
@@ -36,7 +36,7 @@ impl<'a> Builder<'a, InBlock> {
             _ => {
                 return self.report_error_and_get_poison(SemanticError {
                     kind: SemanticErrorKind::CannotCall(func_type),
-                    span,
+                    span: span.clone(),
                 });
             }
         };
@@ -47,40 +47,40 @@ impl<'a> Builder<'a, InBlock> {
                     expected: params.len(),
                     received: args.len(),
                 },
-                span,
+                span: span.clone(),
             });
         }
 
-        let evaluated = self.evaluate_call_args(&args);
+        let mut evaluated_args = Vec::with_capacity(args.len());
 
-        if let Err(e) = self.check_argument_aliasing(&evaluated) {
+        for (arg_expr, checked_param) in args.iter().zip(params) {
+            let arg_span = arg_expr.span.clone();
+
+            let val_id = self.build_expr(arg_expr.clone(), Some(&checked_param.ty));
+            let val_ty = self.get_value_type(val_id);
+
+            if val_ty == &Type::Unknown {
+                return self.new_value_id(Type::Unknown);
+            }
+
+            evaluated_args.push((val_id, arg_span));
+        }
+
+        if let Err(e) = self.check_argument_aliasing(&evaluated_args) {
             return self.report_error_and_get_poison(e);
         }
 
-        let final_args = match self.validate_call_args(&evaluated, &params) {
-            Ok(args) => args,
-            Err(e) => return self.report_error_and_get_poison(e),
-        };
-
-        let result = self.emit_call(func_id, final_args, return_type);
+        let result = self.emit_call(
+            func_id,
+            evaluated_args.iter().map(|a| a.0).collect(),
+            return_type.kind,
+        );
 
         if let Some(decl_id) = callee_decl_id {
-            self.apply_callee_effects(decl_id, &args, &evaluated);
+            self.apply_callee_effects(decl_id, &args, &evaluated_args);
         }
 
-        result
-    }
-
-    fn evaluate_call_args(&mut self, args: &[Expr]) -> Vec<(ValueId, Span)> {
-        let mut evaluated = Vec::with_capacity(args.len());
-
-        for arg_expr in args {
-            let span = arg_expr.span.clone();
-            let val_id = self.build_expr(arg_expr.clone());
-            evaluated.push((val_id, span));
-        }
-
-        evaluated
+        self.check_expected(result, span, expected_type)
     }
 
     fn check_argument_aliasing(
@@ -102,32 +102,6 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         Ok(())
-    }
-
-    fn validate_call_args(
-        &self,
-        args: &[(ValueId, Span)],
-        params: &[CheckedParam],
-    ) -> Result<Vec<ValueId>, SemanticError> {
-        let mut final_args = Vec::with_capacity(args.len());
-
-        for (i, (val_id, span)) in args.iter().enumerate() {
-            let val_type = self.get_value_type(*val_id);
-
-            if !check_assignable(val_type, &params[i].ty, false) {
-                return Err(SemanticError {
-                    kind: SemanticErrorKind::TypeMismatch {
-                        expected: params[i].ty.clone(),
-                        received: val_type.clone(),
-                    },
-                    span: span.clone(),
-                });
-            }
-
-            final_args.push(*val_id);
-        }
-
-        Ok(final_args)
     }
 
     fn apply_callee_effects(
@@ -161,7 +135,8 @@ impl<'a> Builder<'a, InBlock> {
         new_type: Type,
         span: Span,
     ) {
-        let current_val = self.read_variable(decl_id, self.context.block_id, span);
+        let current_val =
+            self.read_variable(decl_id, self.context.block_id, span.clone());
         let current_ty = self.get_value_type(current_val).clone();
 
         if current_ty == new_type {
@@ -169,7 +144,7 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         let new_val = self.new_value_id(new_type);
-        self.push_instruction(Instruction::Cast(CastInstr {
+        self.push_instruction(Instruction::BitCast(BitCastInstr {
             src: current_val,
             dest: new_val,
         }));

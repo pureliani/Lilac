@@ -8,9 +8,7 @@ use crate::{
     hir::{
         builders::{BasicBlockId, Builder, InBlock, PhiSource, TypePredicate, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        instructions::{CastInstr, Instruction},
-        types::checked_type::Type,
-        utils::check_assignable::check_assignable,
+        types::checked_type::{SpannedType, Type},
     },
 };
 
@@ -28,6 +26,7 @@ impl<'a> Builder<'a, InBlock> {
         branches: Vec<(Box<Expr>, BlockContents)>,
         else_branch: Option<BlockContents>,
         context: IfContext,
+        expected_type: Option<&SpannedType>,
     ) -> ValueId {
         let expr_span = branches.first().unwrap().0.span.clone();
 
@@ -46,17 +45,16 @@ impl<'a> Builder<'a, InBlock> {
             self.use_basic_block(current_cond_block_id);
 
             let condition_span = condition.span.clone();
-            let cond_id = self.build_expr(*condition);
+            let expected_condition_type = Some(SpannedType {
+                span: condition_span.clone(),
+                kind: Type::Bool,
+            });
+
+            let cond_id = self.build_expr(*condition, expected_condition_type.as_ref());
             let cond_ty = self.get_value_type(cond_id);
 
-            if !check_assignable(cond_ty, &Type::Bool, false) {
-                return self.report_error_and_get_poison(SemanticError {
-                    span: condition_span,
-                    kind: SemanticErrorKind::TypeMismatch {
-                        expected: Type::Bool,
-                        received: cond_ty.clone(),
-                    },
-                });
+            if cond_ty == &Type::Unknown {
+                return self.new_value_id(Type::Unknown);
             }
 
             let then_block_id = self.as_fn().new_bb();
@@ -71,7 +69,8 @@ impl<'a> Builder<'a, InBlock> {
                 self.apply_predicate_list(&preds, true, &condition_span);
             }
 
-            let (then_val, then_val_span) = self.build_codeblock_expr(body);
+            let (then_val, then_val_span) =
+                self.build_codeblock_expr(body, expected_type);
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, then_val, then_val_span));
@@ -90,7 +89,8 @@ impl<'a> Builder<'a, InBlock> {
         self.use_basic_block(current_cond_block_id);
 
         if let Some(else_body) = else_branch {
-            let (else_val, else_val_span) = self.build_codeblock_expr(else_body);
+            let (else_val, else_val_span) =
+                self.build_codeblock_expr(else_body, expected_type);
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, else_val, else_val_span));
@@ -105,7 +105,7 @@ impl<'a> Builder<'a, InBlock> {
         self.seal_block(merge_block_id);
         self.use_basic_block(merge_block_id);
 
-        if context == IfContext::Expression {
+        let result = if context == IfContext::Expression {
             if branch_results.is_empty() {
                 return self.new_value_id(Type::Never);
             }
@@ -126,7 +126,9 @@ impl<'a> Builder<'a, InBlock> {
             phi_id
         } else {
             self.emit_const_void()
-        }
+        };
+
+        self.check_expected(result, expr_span, expected_type)
     }
 
     pub fn apply_type_predicate(
@@ -142,13 +144,18 @@ impl<'a> Builder<'a, InBlock> {
             return;
         }
 
-        let narrowed = self.new_value_id(new_type);
-        self.push_instruction(Instruction::Cast(CastInstr {
-            src: current_val,
-            dest: narrowed,
-        }));
+        let narrowed_val = if current_ty.get_union_variants().is_some() {
+            if let Some(target_variants) = new_type.get_union_variants() {
+                self.emit_narrow_union(current_val, target_variants)
+            } else {
+                self.emit_unwrap_from_union(current_val, &new_type)
+            }
+        } else {
+            // Type predicates cannot be applied to non union types
+            return;
+        };
 
-        self.write_variable(pred.decl_id, self.context.block_id, narrowed);
+        self.write_variable(pred.decl_id, self.context.block_id, narrowed_val);
     }
 
     pub fn apply_predicate_list(

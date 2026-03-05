@@ -6,8 +6,7 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::{checked_declaration::CheckedDeclaration, checked_type::Type},
-        utils::check_assignable::check_structural_assignability,
+        types::{checked_declaration::CheckedDeclaration, checked_type::SpannedType},
     },
 };
 
@@ -31,7 +30,7 @@ impl<'a> Builder<'a, InBlock> {
                 Ok(())
             }
             ExprKind::Access { left, field } => {
-                let base_val = self.build_expr(*left.clone());
+                let base_val = self.build_expr(*left.clone(), None);
                 let new_base_val =
                     self.emit_update_struct_field(base_val, field.clone(), value);
                 self.write_expr(left, new_base_val, span)
@@ -44,16 +43,10 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn build_assignment_stmt(&mut self, target: Expr, value: Expr) {
-        let value_span = value.span.clone();
         let target_span = target.span.clone();
 
-        let value_expr = value.clone();
-
-        let value_id = self.build_expr(value);
-        let value_type = self.get_value_type(value_id).clone();
-
         let constraint = match self.get_constraint_type(&target) {
-            Some(c) => c,
+            Some(c) => c.clone(),
             None => {
                 self.errors.push(SemanticError {
                     kind: SemanticErrorKind::InvalidLValue,
@@ -63,34 +56,28 @@ impl<'a> Builder<'a, InBlock> {
             }
         };
 
-        if !check_structural_assignability(&value_expr, &value_type, &constraint) {
-            self.errors.push(SemanticError {
-                kind: SemanticErrorKind::TypeMismatch {
-                    expected: constraint,
-                    received: value_type,
-                },
-                span: value_span,
-            });
-            return;
-        }
+        let value_id = self.build_expr(value, Some(&constraint));
 
         if let Err(e) = self.write_expr(&target, value_id, target_span) {
             self.errors.push(e);
         }
     }
 
-    pub fn get_constraint_type(&self, expr: &Expr) -> Option<Type> {
+    pub fn get_constraint_type(&self, expr: &Expr) -> Option<&SpannedType> {
         match &expr.kind {
             ExprKind::Identifier(ident) => {
                 let decl_id = self.current_scope.lookup(ident.name)?;
                 match self.program.declarations.get(&decl_id)? {
-                    CheckedDeclaration::Var(v) => Some(v.constraint.clone()),
+                    CheckedDeclaration::Var(v) => Some(&v.constraint),
                     _ => None,
                 }
             }
             ExprKind::Access { left, field } => {
                 let parent_constraint = self.get_constraint_type(left)?;
-                parent_constraint.get_field(&field.name).map(|(_, ty)| ty)
+                parent_constraint
+                    .kind
+                    .get_field(&field.name)
+                    .map(|(_, ty)| ty)
             }
             _ => None,
         }

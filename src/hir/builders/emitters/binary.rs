@@ -2,8 +2,11 @@ use crate::{
     ast::Span,
     hir::{
         builders::{Builder, InBlock, ValueId},
+        errors::{SemanticError, SemanticErrorKind},
         instructions::{BinaryInstr, Instruction},
-        utils::check_assignable::arithmetic_supertype,
+        utils::check_assignable::{
+            arithmetic_supertype, compute_type_adjustment, Adjustment,
+        },
     },
 };
 
@@ -27,6 +30,21 @@ impl<'a> Builder<'a, InBlock> {
         ) {
             Ok(t) => t,
             Err(e) => return self.report_error_and_get_poison(e),
+        };
+
+        let left_adjustment = compute_type_adjustment(lhs_type, &result_type, false);
+        let right_adjustment = compute_type_adjustment(rhs_type, &result_type, false);
+
+        let adjusted_left = match left_adjustment {
+            Ok(adj) => self.apply_adjustment(lhs, adj, result_type),
+            Err(_) => {
+                return self.report_error_and_get_poison(SemanticError {
+                    kind: SemanticErrorKind::TypeMismatch {
+                        expected: result_type,
+                        received: (),
+                    },
+                })
+            }
         };
 
         let dest = self.new_value_id(result_type);

@@ -8,9 +8,13 @@ use crate::{
             BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
             InModule, PhiSource, ValueId,
         },
+        errors::{SemanticError, SemanticErrorKind},
         instructions::{CastInstr, Instruction, Terminator},
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
-        utils::{check_assignable::Adjustment, type_to_string::type_to_string},
+        utils::{
+            check_assignable::{compute_type_adjustment, Adjustment, AdjustmentError},
+            type_to_string::type_to_string,
+        },
     },
 };
 
@@ -269,8 +273,12 @@ impl<'a> Builder<'a, InBlock> {
             } else {
                 let insertion_block = self.split_critical_edge(pred_block, block_id);
 
-                let casted_val =
-                    self.emit_cast_internal(insertion_block, val, unified_type.clone());
+                let casted_val = self.adjust_phi_source_value(
+                    insertion_block,
+                    val,
+                    unified_type.clone(),
+                    span.clone(),
+                );
 
                 final_sources.insert(PhiSource {
                     from: insertion_block,
@@ -286,24 +294,40 @@ impl<'a> Builder<'a, InBlock> {
         self.ptg.merge_values(phi_id, &source_values);
     }
 
-    fn emit_cast_internal(
+    fn adjust_phi_source_value(
         &mut self,
         block_id: BasicBlockId,
         src: ValueId,
         target_type: Type,
+        error_span: Span,
     ) -> ValueId {
         let old_block = self.context.block_id;
         self.use_basic_block(block_id);
 
         let terminator = self.bb_mut().terminator.take();
 
-        let dest = self.new_value_id(target_type);
-        self.push_instruction(Instruction::Cast(CastInstr { src, dest }));
+        let src_type = self.get_value_type(src);
+        let adjusted_value = match compute_type_adjustment(src_type, &target_type, false)
+        {
+            Ok(adj) => self.apply_adjustment(src, adj, target_type),
+            Err(e) => self.report_error_and_get_poison(SemanticError {
+                kind: match e {
+                    AdjustmentError::Incompatible => SemanticErrorKind::TypeMismatch {
+                        expected: target_type.clone(),
+                        received: src_type.clone(),
+                    },
+                    AdjustmentError::TryExplicitCast => {
+                        SemanticErrorKind::TryExplicitCast
+                    }
+                },
+                span: error_span,
+            }),
+        };
 
         self.bb_mut().terminator = terminator;
 
         self.use_basic_block(old_block);
-        dest
+        adjusted_value
     }
 
     fn split_critical_edge(

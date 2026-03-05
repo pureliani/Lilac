@@ -3,12 +3,17 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_declaration::CheckedDeclaration,
+        types::{checked_declaration::CheckedDeclaration, checked_type::SpannedType},
     },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_identifier_expr(&mut self, identifier: IdentifierNode) -> ValueId {
+    pub fn build_identifier_expr(
+        &mut self,
+        identifier: IdentifierNode,
+        expected_type: Option<&SpannedType>,
+    ) -> ValueId {
+        let span = identifier.span.clone();
         let decl_id = match self.current_scope.lookup(identifier.name) {
             Some(id) => id,
             None => {
@@ -21,7 +26,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let decl = self.program.declarations.get(&decl_id).unwrap();
 
-        match decl {
+        let result = match decl {
             CheckedDeclaration::Function(_) => self.emit_const_fn(decl_id),
             CheckedDeclaration::Var(_) => {
                 self.read_variable(decl_id, self.context.block_id, identifier.span)
@@ -32,6 +37,8 @@ impl<'a> Builder<'a, InBlock> {
                     kind: SemanticErrorKind::CannotUseTypeDeclarationAsValue,
                 })
             }
-        }
+        };
+
+        self.check_expected(result, span, expected_type)
     }
 }

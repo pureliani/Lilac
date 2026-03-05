@@ -8,12 +8,6 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum SemanticErrorKind {
-    ExpectedTagWithoutValue {
-        received: Type,
-    },
-    ExpectedTagWithValue {
-        expected: Type,
-    },
     ArgumentAliasing {
         passed_arg_span: Span,
         passed_path: Vec<PathSegment>,
@@ -25,7 +19,6 @@ pub enum SemanticErrorKind {
     ValuedTagInIsExpression,
     UnreachableCode,
     DuplicateIdentifier(IdentifierNode),
-    DuplicateUnionVariant(IdentifierNode),
     CannotIndex(Type),
     FromStatementMustBeDeclaredAtTopLevel,
     ModuleNotFound(ModulePath),
@@ -36,10 +29,6 @@ pub enum SemanticErrorKind {
     CannotCall(Type),
     ExpectedANumericOperand,
     ExpectedASignedNumericOperand,
-    IncompatibleBranchTypes {
-        first: Type,
-        second: Type,
-    },
     MixedSignedAndUnsigned,
     MixedFloatAndInteger,
     CannotCompareType {
@@ -57,11 +46,6 @@ pub enum SemanticErrorKind {
         expected: Type,
         received: Type,
     },
-    TypeMismatchExpectedOneOf {
-        expected: HashSet<Type>,
-        received: Type,
-    },
-    ReturnNotLastStatement,
     ReturnTypeMismatch {
         expected: Type,
         received: Type,
@@ -83,6 +67,7 @@ pub enum SemanticErrorKind {
         source_type: Type,
         target_type: Type,
     },
+    TryExplicitCast,
     SymbolNotExported {
         module_path: ModulePath,
         symbol: IdentifierNode,
@@ -96,7 +81,91 @@ pub struct SemanticError {
     pub span: Span,
 }
 
+#[derive(Debug, Clone)]
+pub enum SemanticErrorSeverity {
+    Error,
+    Warn,
+    Info,
+}
+
 impl SemanticErrorKind {
+    pub fn severity(&self) -> SemanticErrorSeverity {
+        match self {
+            SemanticErrorKind::ExpectedANumericOperand => SemanticErrorSeverity::Error,
+            SemanticErrorKind::MixedSignedAndUnsigned => SemanticErrorSeverity::Error,
+            SemanticErrorKind::MixedFloatAndInteger => SemanticErrorSeverity::Error,
+            SemanticErrorKind::CannotCompareType { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::UndeclaredIdentifier { .. } => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::ReturnKeywordOutsideFunction => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::BreakKeywordOutsideLoop => SemanticErrorSeverity::Error,
+            SemanticErrorKind::ContinueKeywordOutsideLoop => SemanticErrorSeverity::Error,
+            SemanticErrorKind::InvalidLValue => SemanticErrorSeverity::Error,
+            SemanticErrorKind::TypeMismatch { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::ReturnTypeMismatch { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::UndeclaredType { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::CannotAccess { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::CannotCall { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::CannotUseVariableDeclarationAsType => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::AccessToUndefinedField { .. } => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::FnArgumentCountMismatch { .. } => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::TypeAliasMustBeDeclaredAtTopLevel => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::DuplicateStructFieldInitializer { .. } => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::UnknownStructFieldInitializer { .. } => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::MissingStructFieldInitializers { .. } => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::DuplicateIdentifier { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::IfExpressionMissingElse => SemanticErrorSeverity::Error,
+            SemanticErrorKind::CannotCastType { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::CannotIndex { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::CannotStaticAccess { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::AccessToUndefinedStaticField { .. } => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::CannotUseTypeDeclarationAsValue => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::CannotDeclareGlobalVariable => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::UnreachableCode => SemanticErrorSeverity::Error,
+            SemanticErrorKind::FromStatementMustBeDeclaredAtTopLevel => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::ModuleNotFound { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::CannotUseFunctionDeclarationAsType => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::SymbolNotExported { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::ClosuresNotSupportedYet => SemanticErrorSeverity::Error,
+            SemanticErrorKind::ValuedTagInIsExpression => SemanticErrorSeverity::Error,
+            SemanticErrorKind::CannotNarrowNonUnion(_) => SemanticErrorSeverity::Error,
+            SemanticErrorKind::UnsupportedUnionNarrowing => SemanticErrorSeverity::Error,
+            SemanticErrorKind::ExpectedASignedNumericOperand => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::CannotGetLen { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::ArgumentAliasing { .. } => SemanticErrorSeverity::Error,
+            SemanticErrorKind::TryExplicitCast => SemanticErrorSeverity::Error,
+        }
+    }
+
     pub fn code(&self) -> usize {
         match self {
             SemanticErrorKind::ExpectedANumericOperand => 1,
@@ -109,43 +178,38 @@ impl SemanticErrorKind {
             SemanticErrorKind::ContinueKeywordOutsideLoop => 8,
             SemanticErrorKind::InvalidLValue => 9,
             SemanticErrorKind::TypeMismatch { .. } => 10,
-            SemanticErrorKind::ReturnNotLastStatement => 11,
-            SemanticErrorKind::ReturnTypeMismatch { .. } => 12,
-            SemanticErrorKind::UndeclaredType { .. } => 13,
-            SemanticErrorKind::CannotAccess { .. } => 14,
-            SemanticErrorKind::CannotCall { .. } => 15,
-            SemanticErrorKind::CannotUseVariableDeclarationAsType => 16,
-            SemanticErrorKind::AccessToUndefinedField { .. } => 18,
-            SemanticErrorKind::FnArgumentCountMismatch { .. } => 19,
-            SemanticErrorKind::TypeAliasMustBeDeclaredAtTopLevel => 20,
-            SemanticErrorKind::DuplicateStructFieldInitializer { .. } => 21,
-            SemanticErrorKind::UnknownStructFieldInitializer { .. } => 22,
-            SemanticErrorKind::MissingStructFieldInitializers { .. } => 23,
-            SemanticErrorKind::DuplicateIdentifier { .. } => 24,
-            SemanticErrorKind::IncompatibleBranchTypes { .. } => 25,
-            SemanticErrorKind::IfExpressionMissingElse => 26,
-            SemanticErrorKind::TypeMismatchExpectedOneOf { .. } => 27,
-            SemanticErrorKind::CannotCastType { .. } => 28,
-            SemanticErrorKind::CannotIndex { .. } => 29,
-            SemanticErrorKind::CannotStaticAccess { .. } => 30,
-            SemanticErrorKind::AccessToUndefinedStaticField { .. } => 31,
-            SemanticErrorKind::CannotUseTypeDeclarationAsValue => 32,
-            SemanticErrorKind::CannotDeclareGlobalVariable => 33,
-            SemanticErrorKind::UnreachableCode => 34,
-            SemanticErrorKind::FromStatementMustBeDeclaredAtTopLevel => 35,
-            SemanticErrorKind::ModuleNotFound { .. } => 36,
-            SemanticErrorKind::CannotUseFunctionDeclarationAsType => 37,
-            SemanticErrorKind::DuplicateUnionVariant(_) => 39,
-            SemanticErrorKind::SymbolNotExported { .. } => 40,
-            SemanticErrorKind::ClosuresNotSupportedYet => 41,
-            SemanticErrorKind::ValuedTagInIsExpression => 42,
-            SemanticErrorKind::CannotNarrowNonUnion(_) => 43,
-            SemanticErrorKind::ExpectedTagWithoutValue { .. } => 44,
-            SemanticErrorKind::ExpectedTagWithValue { .. } => 45,
-            SemanticErrorKind::UnsupportedUnionNarrowing => 46,
-            SemanticErrorKind::ExpectedASignedNumericOperand => 47,
-            SemanticErrorKind::CannotGetLen { .. } => 48,
-            SemanticErrorKind::ArgumentAliasing { .. } => 49,
+            SemanticErrorKind::ReturnTypeMismatch { .. } => 11,
+            SemanticErrorKind::UndeclaredType { .. } => 12,
+            SemanticErrorKind::CannotAccess { .. } => 13,
+            SemanticErrorKind::CannotCall { .. } => 14,
+            SemanticErrorKind::CannotUseVariableDeclarationAsType => 15,
+            SemanticErrorKind::AccessToUndefinedField { .. } => 16,
+            SemanticErrorKind::FnArgumentCountMismatch { .. } => 17,
+            SemanticErrorKind::TypeAliasMustBeDeclaredAtTopLevel => 18,
+            SemanticErrorKind::DuplicateStructFieldInitializer { .. } => 19,
+            SemanticErrorKind::UnknownStructFieldInitializer { .. } => 20,
+            SemanticErrorKind::MissingStructFieldInitializers { .. } => 21,
+            SemanticErrorKind::DuplicateIdentifier { .. } => 22,
+            SemanticErrorKind::IfExpressionMissingElse => 23,
+            SemanticErrorKind::CannotCastType { .. } => 24,
+            SemanticErrorKind::CannotIndex { .. } => 25,
+            SemanticErrorKind::CannotStaticAccess { .. } => 26,
+            SemanticErrorKind::AccessToUndefinedStaticField { .. } => 27,
+            SemanticErrorKind::CannotUseTypeDeclarationAsValue => 28,
+            SemanticErrorKind::CannotDeclareGlobalVariable => 29,
+            SemanticErrorKind::UnreachableCode => 30,
+            SemanticErrorKind::FromStatementMustBeDeclaredAtTopLevel => 31,
+            SemanticErrorKind::ModuleNotFound { .. } => 32,
+            SemanticErrorKind::CannotUseFunctionDeclarationAsType => 33,
+            SemanticErrorKind::SymbolNotExported { .. } => 34,
+            SemanticErrorKind::ClosuresNotSupportedYet => 35,
+            SemanticErrorKind::ValuedTagInIsExpression => 36,
+            SemanticErrorKind::CannotNarrowNonUnion(_) => 37,
+            SemanticErrorKind::UnsupportedUnionNarrowing => 38,
+            SemanticErrorKind::ExpectedASignedNumericOperand => 39,
+            SemanticErrorKind::CannotGetLen { .. } => 40,
+            SemanticErrorKind::ArgumentAliasing { .. } => 41,
+            SemanticErrorKind::TryExplicitCast => 42,
         }
     }
 }

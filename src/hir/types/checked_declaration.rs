@@ -5,14 +5,17 @@ use std::{
 
 use crate::{
     ast::{DeclarationId, IdentifierNode, Span},
-    hir::{builders::Function, types::checked_type::Type},
+    hir::{
+        builders::Function,
+        types::checked_type::{SpannedType, Type},
+    },
     parse::DocAnnotation,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CheckedParam {
     pub identifier: IdentifierNode,
-    pub ty: Type,
+    pub ty: SpannedType,
 }
 
 impl Ord for CheckedParam {
@@ -33,7 +36,7 @@ impl PartialOrd for CheckedParam {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FnType {
     pub params: Vec<CheckedParam>,
-    pub return_type: Box<Type>,
+    pub return_type: Box<SpannedType>,
 }
 
 #[derive(Clone, Debug)]
@@ -41,7 +44,7 @@ pub struct CheckedTypeAliasDecl {
     pub id: DeclarationId,
     pub identifier: IdentifierNode,
     pub documentation: Option<DocAnnotation>,
-    pub value: Box<Type>,
+    pub value: Box<SpannedType>,
     pub is_exported: bool,
     pub span: Span,
 }
@@ -65,7 +68,7 @@ pub struct CheckedVarDecl {
     pub id: DeclarationId,
     pub identifier: IdentifierNode,
     pub documentation: Option<DocAnnotation>,
-    pub constraint: Type,
+    pub constraint: SpannedType,
 }
 
 #[derive(Clone, Debug)]

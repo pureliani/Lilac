@@ -74,7 +74,7 @@ impl<'a> Builder<'a, InBlock> {
         match source_type {
             Type::Struct(_) => {
                 if let Some((_, ty)) = source_type.get_field(&field_identifier.name) {
-                    let dest = self.new_value_id(ty);
+                    let dest = self.new_value_id(ty.kind.clone());
                     self.push_instruction(Instruction::Struct(StructInstr::ReadField {
                         dest,
                         base,

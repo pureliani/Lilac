@@ -5,12 +5,9 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::{CheckedDeclaration, CheckedVarDecl},
-            checked_type::Type,
+            checked_type::SpannedType,
         },
-        utils::{
-            check_assignable::check_structural_assignability,
-            check_type::{check_type_annotation, TypeCheckerContext},
-        },
+        utils::check_type::{check_type_annotation, TypeCheckerContext},
     },
 };
 
@@ -25,43 +22,30 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         let value_span = var_decl.value.span.clone();
-        let value_expr = var_decl.value.clone();
 
-        let val_id = self.build_expr(var_decl.value);
-        let val_type = self.get_value_type(val_id).clone();
-
-        let constraint = if let Some(annotation) = &var_decl.constraint {
+        let constraint = var_decl.constraint.as_ref().map(|c| {
             let mut type_ctx = TypeCheckerContext {
                 scope: self.current_scope.clone(),
                 declarations: &self.program.declarations,
                 errors: self.errors,
             };
 
-            check_type_annotation(&mut type_ctx, annotation)
-        } else {
-            val_type.clone()
-        };
+            check_type_annotation(&mut type_ctx, c)
+        });
 
-        if !check_structural_assignability(&value_expr, &val_type, &constraint) {
-            self.errors.push(SemanticError {
-                kind: SemanticErrorKind::TypeMismatch {
-                    expected: constraint.clone(),
-                    received: val_type,
-                },
-                span: value_span,
-            });
+        let val_id = self.build_expr(var_decl.value, constraint.as_ref());
+        let val_type = self.get_value_type(val_id).clone();
 
-            let poison_id = self.new_value_id(Type::Unknown);
-            self.write_variable(var_decl.id, self.context.block_id, poison_id);
-        } else {
-            self.write_variable(var_decl.id, self.context.block_id, val_id);
-        }
+        self.write_variable(var_decl.id, self.context.block_id, val_id);
 
         let checked_var_decl = CheckedVarDecl {
             id: var_decl.id,
             identifier: var_decl.identifier.clone(),
             documentation: var_decl.documentation,
-            constraint,
+            constraint: constraint.unwrap_or(SpannedType {
+                kind: val_type.clone(),
+                span: value_span,
+            }),
         };
 
         self.program

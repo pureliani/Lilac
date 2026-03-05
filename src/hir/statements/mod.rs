@@ -35,9 +35,9 @@ impl<'a> Builder<'a, InBlock> {
                         else_branch,
                     } = expr.kind
                     {
-                        self.build_if(branches, else_branch, IfContext::Statement);
+                        self.build_if(branches, else_branch, IfContext::Statement, None);
                     } else {
-                        self.build_expr(expr);
+                        self.build_expr(expr, None);
                     }
                 }
                 StmtKind::TypeAliasDecl(decl) => {
