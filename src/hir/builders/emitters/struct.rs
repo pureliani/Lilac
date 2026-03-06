@@ -21,7 +21,7 @@ impl<'a> Builder<'a, InBlock> {
             .iter()
             .map(|(ident, val_id)| CheckedParam {
                 identifier: ident.clone(),
-                ty: self.get_value_type(*val_id).clone(),
+                ty: todo!(),
             })
             .collect();
 

@@ -203,6 +203,9 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                     )
                     .unwrap();
                 }
+                ConstInstr::ConstNull { dest } => {
+                    writeln!(out, "v{}: {} = null;", dest.0, get_vt(p, dest)).unwrap();
+                }
             },
             Instruction::Unary(kind) => match kind {
                 UnaryInstr::Neg { dest, src } => {

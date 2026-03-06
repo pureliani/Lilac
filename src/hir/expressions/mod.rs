@@ -100,20 +100,17 @@ impl<'a> Builder<'a, InBlock> {
             ExprKind::Or { left, right } => {
                 self.build_or_expr(*left, *right, expected_type)
             }
-
             ExprKind::BoolLiteral(value) => self.emit_const_bool(value),
             ExprKind::Number(number_kind) => self.emit_const_number(number_kind),
             ExprKind::String(string_node) => {
                 self.build_string_literal(string_node, expected_type)
             }
-
             ExprKind::Struct(fields) => {
                 self.build_struct_init_expr(span.clone(), fields, expected_type)
             }
             ExprKind::List(items) => {
                 self.build_list_literal_expr(span.clone(), items, expected_type)
             }
-
             ExprKind::Access { left, field } => {
                 self.build_access_expr(*left, field, expected_type)
             }
@@ -126,16 +123,13 @@ impl<'a> Builder<'a, InBlock> {
             } => {
                 self.build_if(branches, else_branch, IfContext::Expression, expected_type)
             }
-
             ExprKind::CodeBlock(block_contents) => {
                 self.build_codeblock_expr(block_contents, expected_type).0
             }
-
             ExprKind::Fn(fn_decl) => self.build_fn_expr(*fn_decl, expected_type),
             ExprKind::FnCall { left, args } => {
                 self.build_fn_call_expr(*left, args, span.clone(), expected_type)
             }
-
             ExprKind::Identifier(identifier_node) => {
                 self.build_identifier_expr(identifier_node, expected_type)
             }
@@ -145,6 +139,7 @@ impl<'a> Builder<'a, InBlock> {
             ExprKind::IsType { left, ty } => {
                 self.build_is_type_expr(*left, ty, expected_type)
             }
+            ExprKind::Null => self.emit_const_null(),
         };
 
         self.check_expected(result, expr.span, expected_type)

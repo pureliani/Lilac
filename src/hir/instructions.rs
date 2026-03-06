@@ -30,6 +30,9 @@ pub enum ConstInstr {
     ConstVoid {
         dest: ValueId,
     },
+    ConstNull {
+        dest: ValueId,
+    },
 }
 
 #[derive(Clone, Debug)]

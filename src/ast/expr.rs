@@ -14,6 +14,7 @@ pub struct BlockContents {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExprKind {
+    Null,
     Not {
         right: Box<Expr>,
     },

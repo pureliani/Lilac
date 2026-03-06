@@ -54,6 +54,12 @@ impl<'a> Builder<'a, InBlock> {
         dest
     }
 
+    pub fn emit_const_null(&mut self) -> ValueId {
+        let dest = self.new_value_id(Type::Null);
+        self.push_instruction(Instruction::Const(ConstInstr::ConstNull { dest }));
+        dest
+    }
+
     pub fn emit_const_fn(&mut self, decl_id: DeclarationId) -> ValueId {
         let decl = self
             .program

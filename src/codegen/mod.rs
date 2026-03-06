@@ -153,7 +153,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         let mut llvm_param_index = 0;
         for param in &func.params {
-            if self.lower_type(&param.ty).is_some() {
+            if self.lower_type(&param.ty.kind).is_some() {
                 let llvm_val = function.get_nth_param(llvm_param_index).unwrap();
                 if let Some(val_id) = param.value_id {
                     // Set name for debugging IR
@@ -189,19 +189,19 @@ impl<'ctx> CodeGenerator<'ctx> {
     pub fn get_struct_layout(&self, fields: &[CheckedParam]) -> StructType<'ctx> {
         let field_types: Vec<BasicTypeEnum> = fields
             .iter()
-            .filter_map(|field| self.lower_type(&field.ty))
+            .filter_map(|field| self.lower_type(&field.ty.kind))
             .collect();
 
         self.context.struct_type(&field_types, false)
     }
 
     pub fn lower_fn_type(&self, fn_ty: &FnType) -> FunctionType<'ctx> {
-        let ret_type = self.lower_type(&fn_ty.return_type);
+        let ret_type = self.lower_type(&fn_ty.return_type.kind);
 
         let param_types: Vec<BasicMetadataTypeEnum> = fn_ty
             .params
             .iter()
-            .filter_map(|p| self.lower_type(&p.ty))
+            .filter_map(|p| self.lower_type(&p.ty.kind))
             .map(|ty| ty.into())
             .collect();
 

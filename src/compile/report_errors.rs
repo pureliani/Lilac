@@ -428,18 +428,6 @@ impl Compiler {
                                 )),
                             ])
                         }
-                        SemanticErrorKind::DuplicateUnionVariant(id) => {
-                            let name = STRING_INTERNER.resolve(id.name);
-                            diag.with_message("Duplicate union variant").with_labels(
-                                vec![Label::primary(file_id, range).with_message(
-                                    format!(
-                                        "Variant `{}` is defined multiple times in this \
-                                         union",
-                                        name
-                                    ),
-                                )],
-                            )
-                        }
                         SemanticErrorKind::CannotIndex(ty) => diag
                             .with_message("Cannot index type")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -509,18 +497,6 @@ impl Compiler {
                                     "Cannot use the function-call operator on type `{}`",
                                     type_to_string(target)
                                 ))]),
-                        SemanticErrorKind::IncompatibleBranchTypes { first, second } => {
-                            diag.with_message("Incompatible branch types").with_labels(
-                                vec![Label::primary(file_id, range).with_message(
-                                    format!(
-                                        "This branch returns `{}`, but the previous \
-                                         branch returned `{}`",
-                                        type_to_string(second),
-                                        type_to_string(first)
-                                    ),
-                                )],
-                            )
-                        }
                         SemanticErrorKind::ReturnKeywordOutsideFunction => diag
                             .with_message(
                                 "Keyword `return` used outside of a function scope",
@@ -550,34 +526,6 @@ impl Compiler {
                             .with_message("Invalid assignment target")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message("Invalid assignment target")]),
-                        SemanticErrorKind::TypeMismatchExpectedOneOf {
-                            expected,
-                            received,
-                        } => {
-                            let mut expected_strings: Vec<String> = expected
-                                .iter()
-                                .map(|t| format!("`{}`", type_to_string(t)))
-                                .collect();
-                            expected_strings.sort();
-                            let expected_str = expected_strings.join(", ");
-                            diag.with_message("Type mismatch").with_labels(vec![
-                                Label::primary(file_id, range).with_message(format!(
-                                    "Expected one of {}, but found `{}`",
-                                    expected_str,
-                                    type_to_string(received)
-                                )),
-                            ])
-                        }
-                        SemanticErrorKind::ReturnNotLastStatement => diag
-                            .with_message(
-                                "Expected the return statement to be the last statement \
-                                 in the function",
-                            )
-                            .with_labels(vec![Label::primary(file_id, range)
-                                .with_message(
-                                    "Expected the return statement to be the last \
-                                     statement in the function",
-                                )]),
                         SemanticErrorKind::CannotAccess(target) => diag
                             .with_message("Cannot access field")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -670,33 +618,6 @@ impl Compiler {
                                     "Capturing variables from outer scopes (closures) \
                                      is not supported yet",
                                 )]),
-                        SemanticErrorKind::ExpectedTagWithoutValue { received } => {
-                            let received_str = type_to_string(received);
-                            diag.with_message("Unexpected value for tag")
-                                .with_labels(vec![Label::primary(file_id, range)
-                                    .with_message(format!(
-                                        "This tag is defined without a value, but found \
-                                         a value of type `{}`",
-                                        received_str
-                                    ))])
-                                .with_notes(vec!["Remove the parentheses and the value \
-                                                  following the tag identifier"
-                                    .to_string()])
-                        }
-                        SemanticErrorKind::ExpectedTagWithValue { expected } => {
-                            let expected_str = type_to_string(expected);
-                            diag.with_message("Missing value for tag")
-                                .with_labels(vec![Label::primary(file_id, range)
-                                    .with_message(format!(
-                                        "This tag requires a value of type `{}`",
-                                        expected_str
-                                    ))])
-                                .with_notes(vec![format!(
-                                    "Provide a value of type `{}` in parentheses, e.g., \
-                                     #Tag(value)",
-                                    expected_str
-                                )])
-                        }
                         SemanticErrorKind::UnsupportedUnionNarrowing => diag
                             .with_message("Union-to-union narrowing not supported")
                             .with_labels(vec![Label::primary(file_id, range)
@@ -705,6 +626,12 @@ impl Compiler {
                                      supported; try narrowing to a specific variant \
                                      instead",
                                 )]),
+                        SemanticErrorKind::TryExplicitCast => diag
+                            .with_message("Try explicit casting to the target type")
+                            .with_labels(vec![Label::primary(file_id, range)
+                                .with_message(
+                                    "Try to explicitly cast this value into the target type using the ::as(T) method",
+                                )]).with_note("::as(T) method has runtime overhead"),
                     }
                 }
 

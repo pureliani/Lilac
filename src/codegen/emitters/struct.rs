@@ -40,7 +40,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                                 "INTERNAL COMPILER ERROR: Field value type missing",
                             );
 
-                        if val_ty != &field_def.ty {
+                        if val_ty != &field_def.ty.kind {
                             panic!(
                                 "INTERNAL COMPILER ERROR: Struct field type mismatch.\n\
                                  Field: {:?}\n\
@@ -83,7 +83,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                     let res = self
                         .builder
                         .build_load(
-                            self.lower_type(&field_def.ty).unwrap(),
+                            self.lower_type(&field_def.ty.kind).unwrap(),
                             field_ptr,
                             "field_val",
                         )
@@ -116,7 +116,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .find(|(_, f)| f.identifier.name == *field)
                         .expect("INTERNAL COMPILER ERROR: Field not found");
 
-                    if new_val_ty != &field_def.ty {
+                    if new_val_ty != &field_def.ty.kind {
                         panic!(
                             "INTERNAL COMPILER ERROR: UpdateField type mismatch.\n\
                              Field: {:?}\n\
