@@ -17,7 +17,7 @@ pub enum LiteralType {
 }
 
 impl LiteralType {
-    pub fn widen<'a>(&'a self) -> &'a Type {
+    pub fn widen(&self) -> &Type {
         match self {
             LiteralType::Bool(_) => &Type::Bool,
             LiteralType::String(_) => &Type::String,
@@ -68,6 +68,23 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn from_number_kind(val: &NumberKind) -> Type {
+        match val {
+            NumberKind::I64(_) => Type::I64,
+            NumberKind::I32(_) => Type::I32,
+            NumberKind::I16(_) => Type::I16,
+            NumberKind::I8(_) => Type::I8,
+            NumberKind::F32(_) => Type::F32,
+            NumberKind::F64(_) => Type::F64,
+            NumberKind::U64(_) => Type::U64,
+            NumberKind::U32(_) => Type::U32,
+            NumberKind::U16(_) => Type::U16,
+            NumberKind::U8(_) => Type::U8,
+            NumberKind::ISize(_) => Type::ISize,
+            NumberKind::USize(_) => Type::USize,
+        }
+    }
+
     pub fn make_union(types: impl IntoIterator<Item = Type>) -> Type {
         let mut flat_set = BTreeSet::new();
 

@@ -25,9 +25,6 @@ pub struct BasicBlockId(pub usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ValueId(pub usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ConstantId(pub usize);
-
 #[derive(Debug, Clone)]
 pub struct TypePredicate {
     pub decl_id: DeclarationId,
@@ -45,7 +42,6 @@ pub struct Program {
     pub modules: HashMap<ModulePath, Module>,
     pub value_types: HashMap<ValueId, Type>,
     pub declarations: HashMap<DeclarationId, CheckedDeclaration>,
-    pub constant_data: HashMap<ConstantId, Vec<u8>>,
 }
 
 pub struct Module {

@@ -2,7 +2,7 @@ use crate::{
     ast::DeclarationId,
     compile::interner::StringId,
     hir::{
-        builders::{BasicBlockId, ConstantId, ValueId},
+        builders::{BasicBlockId, ValueId},
         types::checked_type::Type,
         utils::check_assignable::Adjustment,
     },
@@ -21,17 +21,11 @@ pub enum ConstInstr {
     },
     ConstString {
         dest: ValueId,
-        constant_id: ConstantId,
+        val: StringId,
     },
     ConstFn {
         dest: ValueId,
         decl_id: DeclarationId,
-    },
-    ConstVoid {
-        dest: ValueId,
-    },
-    ConstNull {
-        dest: ValueId,
     },
 }
 

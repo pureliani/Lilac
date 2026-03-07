@@ -39,41 +39,44 @@ impl<'ctx> CodeGenerator<'ctx> {
         phi_nodes: &HashMap<ValueId, PhiValue<'ctx>>,
     ) {
         for (phi_val_id, sources) in &block.phis {
-            if let Some(phi) = phi_nodes.get(phi_val_id) {
-                let phi_ty = self
+            let Some(phi) = phi_nodes.get(phi_val_id) else {
+                // ZST phi - no LLVM node, nothing to resolve
+                continue;
+            };
+
+            let phi_ty = self
+                .program
+                .value_types
+                .get(phi_val_id)
+                .expect("Phi type missing");
+
+            for source in sources {
+                let incoming_val = self.get_val_strict(source.value);
+                let incoming_bb = self
+                    .fn_blocks
+                    .get(&source.from)
+                    .expect("Phi source block not found");
+
+                let src_ty = self
                     .program
                     .value_types
-                    .get(phi_val_id)
-                    .expect("Phi type missing");
+                    .get(&source.value)
+                    .expect("Source type missing");
 
-                for source in sources {
-                    let incoming_val = self.get_val_strict(source.value);
-                    let incoming_bb = self
-                        .fn_blocks
-                        .get(&source.from)
-                        .expect("Phi source block not found");
-
-                    let src_ty = self
-                        .program
-                        .value_types
-                        .get(&source.value)
-                        .expect("Source type missing");
-
-                    if src_ty != phi_ty {
-                        panic!(
-                            "INTERNAL COMPILER ERROR: Phi node type mismatch in Codegen.\n\
+                if src_ty != phi_ty {
+                    panic!(
+                        "INTERNAL COMPILER ERROR: Phi node type mismatch in Codegen.\n\
                              Phi ID: {:?}\n\
                              Phi Type: {:?}\n\
                              Source Value: {:?}\n\
                              Source Type: {:?}\n\
                              Source Block: {:?}\n\
                              HIR should have inserted explicit casts or split edges.",
-                            phi_val_id, phi_ty, source.value, src_ty, source.from
-                        );
-                    }
-
-                    phi.add_incoming(&[(&incoming_val, *incoming_bb)]);
+                        phi_val_id, phi_ty, source.value, src_ty, source.from
+                    );
                 }
+
+                phi.add_incoming(&[(&incoming_val, *incoming_bb)]);
             }
         }
     }

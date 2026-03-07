@@ -1,6 +1,5 @@
 use crate::{
-    ast::StringNode,
-    globals::STRING_INTERNER,
+    ast::Span,
     hir::{
         builders::{Builder, InBlock, ValueId},
         types::checked_type::SpannedType,
@@ -8,14 +7,13 @@ use crate::{
 };
 
 impl<'a> Builder<'a, InBlock> {
-    pub fn build_string_literal(
+    pub fn build_bool_expr(
         &mut self,
-        node: StringNode,
+        span: Span,
+        value: bool,
         expected_type: Option<&SpannedType>,
     ) -> ValueId {
-        let span = node.span.clone();
-        let id = STRING_INTERNER.intern(&node.value);
-        let result = self.emit_string_literal(id);
+        let result = self.emit_bool_literal(value);
         self.check_expected(result, span, expected_type)
     }
 }

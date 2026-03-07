@@ -25,11 +25,11 @@ impl<'a> Builder<'a, InBlock> {
         span: Span,
     ) -> ValueId {
         if matching_variants.is_empty() {
-            return self.emit_const_bool(false);
+            return self.emit_bool_literal(false);
         }
 
         if matching_variants.len() == total_variants {
-            return self.emit_const_bool(true);
+            return self.emit_bool_literal(true);
         }
 
         let mut iter = matching_variants.iter();

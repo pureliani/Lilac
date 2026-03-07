@@ -3,27 +3,38 @@ use std::collections::HashMap;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
+use inkwell::targets::TargetData;
 use inkwell::types::{
     BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, StructType,
 };
 use inkwell::values::{BasicValueEnum, PhiValue};
 
+use crate::compile::interner::StringId;
 use crate::globals::STRING_INTERNER;
 use crate::hir::types::checked_declaration::{CheckedDeclaration, CheckedParam, FnType};
-use crate::hir::utils::numeric::is_signed;
+use crate::hir::types::checked_type::LiteralType;
+use crate::hir::types::ordered_number_kind::OrderedNumberKind;
 use crate::hir::{
     builders::{BasicBlockId, Function, Program, ValueId},
     instructions::{Instruction, Terminator},
     types::checked_type::Type,
 };
+use crate::tokenize::NumberKind;
 
 pub mod emitters;
+
+pub struct StructLayout<'ctx> {
+    pub llvm_type: StructType<'ctx>,
+    /// Maps HIR field index -> LLVM field index, None if the field has no physical storage
+    pub field_indices: Vec<Option<u32>>,
+}
 
 pub struct CodeGenerator<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     program: &'ctx Program,
+    target_data: TargetData,
 
     // Maps HIR ValueId (SSA registers) to LLVM Values,
     // this is cleared at the start of every function.
@@ -37,7 +48,11 @@ pub struct CodeGenerator<'ctx> {
 }
 
 impl<'ctx> CodeGenerator<'ctx> {
-    pub fn new(context: &'ctx Context, program: &'ctx Program) -> Self {
+    pub fn new(
+        context: &'ctx Context,
+        program: &'ctx Program,
+        target_data: TargetData,
+    ) -> Self {
         Self {
             context,
             module: context.create_module("main"),
@@ -46,6 +61,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             fn_values: HashMap::new(),
             fn_blocks: HashMap::new(),
             current_fn: None,
+            target_data,
         }
     }
 
@@ -69,7 +85,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// Returns None for Void
     fn lower_type(&self, ty: &Type) -> Option<BasicTypeEnum<'ctx>> {
         match ty {
-            Type::Void => None,
+            Type::Void | Type::Null | Type::Literal(_) => None,
             Type::Bool => Some(self.context.bool_type().into()),
             Type::I8 | Type::U8 => Some(self.context.i8_type().into()),
             Type::I16 | Type::U16 => Some(self.context.i16_type().into()),
@@ -79,8 +95,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
             Type::F32 => Some(self.context.f32_type().into()),
             Type::F64 => Some(self.context.f64_type().into()),
-            Type::Literal(lit) => self.lower_type(&lit.widen()),
-            Type::Struct(_) | Type::List(_) | Type::String => Some(
+            Type::Struct(_) | Type::List(_) | Type::Fn(_) | Type::String => Some(
                 self.context
                     .ptr_type(inkwell::AddressSpace::default())
                     .into(),
@@ -94,14 +109,6 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .into(),
                 )
             }
-            Type::Null => unimplemented!("Codegen for Type::Null not yet implemented"),
-
-            Type::Fn(_) => Some(
-                self.context
-                    .ptr_type(inkwell::AddressSpace::default())
-                    .into(),
-            ),
-
             Type::Unknown | Type::Never => {
                 panic!("INTERNAL COMPILER ERROR: Invalid type in codegen")
             }
@@ -186,13 +193,25 @@ impl<'ctx> CodeGenerator<'ctx> {
         self.current_fn = None;
     }
 
-    pub fn get_struct_layout(&self, fields: &[CheckedParam]) -> StructType<'ctx> {
-        let field_types: Vec<BasicTypeEnum> = fields
-            .iter()
-            .filter_map(|field| self.lower_type(&field.ty.kind))
-            .collect();
+    pub fn get_struct_layout(&self, fields: &[CheckedParam]) -> StructLayout<'ctx> {
+        let mut llvm_fields = Vec::new();
+        let mut field_indices = Vec::new();
+        let mut llvm_index = 0u32;
 
-        self.context.struct_type(&field_types, false)
+        for field in fields {
+            if self.lower_type(&field.ty.kind).is_some() {
+                llvm_fields.push(self.lower_type(&field.ty.kind).unwrap());
+                field_indices.push(Some(llvm_index));
+                llvm_index += 1;
+            } else {
+                field_indices.push(None);
+            }
+        }
+
+        StructLayout {
+            llvm_type: self.context.struct_type(&llvm_fields, false),
+            field_indices,
+        }
     }
 
     pub fn lower_fn_type(&self, fn_ty: &FnType) -> FunctionType<'ctx> {
@@ -248,58 +267,94 @@ impl<'ctx> CodeGenerator<'ctx> {
         llvm_val
     }
 
-    pub fn emit_cast(
-        &self,
-        val: BasicValueEnum<'ctx>,
-        src_ty: &Type,
-        dest_ty: &Type,
-    ) -> BasicValueEnum<'ctx> {
-        if src_ty == dest_ty {
-            return val;
+    fn synth_number_const(&self, n: &OrderedNumberKind) -> BasicValueEnum<'ctx> {
+        match n.0 {
+            NumberKind::I8(v) => self.context.i8_type().const_int(v as u64, true).into(),
+            NumberKind::I16(v) => {
+                self.context.i16_type().const_int(v as u64, true).into()
+            }
+            NumberKind::I32(v) => {
+                self.context.i32_type().const_int(v as u64, true).into()
+            }
+            NumberKind::I64(v) => {
+                self.context.i64_type().const_int(v as u64, true).into()
+            }
+            NumberKind::ISize(v) => {
+                self.context.i64_type().const_int(v as u64, true).into()
+            }
+            NumberKind::U8(v) => self.context.i8_type().const_int(v as u64, false).into(),
+            NumberKind::U16(v) => {
+                self.context.i16_type().const_int(v as u64, false).into()
+            }
+            NumberKind::U32(v) => {
+                self.context.i32_type().const_int(v as u64, false).into()
+            }
+            NumberKind::U64(v) => self.context.i64_type().const_int(v, false).into(),
+            NumberKind::USize(v) => {
+                self.context.i64_type().const_int(v as u64, false).into()
+            }
+            NumberKind::F32(v) => self.context.f32_type().const_float(v as f64).into(),
+            NumberKind::F64(v) => self.context.f64_type().const_float(v).into(),
+        }
+    }
+
+    fn synth_string_const(&self, sid: StringId) -> BasicValueEnum<'ctx> {
+        let s = STRING_INTERNER.resolve(sid);
+        let bytes = s.as_bytes(); // UTF-8 by virtue of Rust's str
+        let len = bytes.len() as u64;
+
+        let desc_name = format!("str.desc.{}", sid.0);
+        if let Some(existing) = self.module.get_global(&desc_name) {
+            return existing.as_pointer_value().into();
         }
 
-        let llvm_dest_type = self
-            .lower_type(dest_ty)
-            .expect("Invalid destination type for cast");
+        let i8_type = self.context.i8_type();
+        let buf_name = format!("str.buf.{}", sid.0);
+        let buf_global = {
+            let array_type = i8_type.array_type(bytes.len() as u32);
+            let global = self.module.add_global(array_type, None, &buf_name);
+            global.set_constant(true);
+            global.set_linkage(inkwell::module::Linkage::Private);
+            let chars: Vec<_> = bytes
+                .iter()
+                .map(|&b| i8_type.const_int(b as u64, false))
+                .collect();
+            global.set_initializer(&i8_type.const_array(&chars));
+            global.as_pointer_value()
+        };
 
-        match (val, llvm_dest_type) {
-            (BasicValueEnum::IntValue(int_val), BasicTypeEnum::IntType(int_dest_ty)) => {
-                let src_width = int_val.get_type().get_bit_width();
-                let dest_width = int_dest_ty.get_bit_width();
+        // { len: usize, cap: usize, ptr: ptr<u8> }
+        let usize_type = self.context.i64_type();
+        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+        let desc_type = self.context.struct_type(
+            &[usize_type.into(), usize_type.into(), ptr_type.into()],
+            false,
+        );
 
-                if src_width == dest_width {
-                    val
-                } else if src_width > dest_width {
-                    self.builder
-                        .build_int_truncate(int_val, int_dest_ty, "trunc")
-                        .unwrap()
-                        .into()
-                } else if is_signed(src_ty) {
-                    self.builder
-                        .build_int_s_extend(int_val, int_dest_ty, "sext")
-                        .unwrap()
-                        .into()
-                } else {
-                    self.builder
-                        .build_int_z_extend(int_val, int_dest_ty, "zext")
-                        .unwrap()
-                        .into()
+        let desc_global = self.module.add_global(desc_type, None, &desc_name);
+        desc_global.set_constant(true);
+        desc_global.set_linkage(inkwell::module::Linkage::Private);
+        desc_global.set_initializer(&desc_type.const_named_struct(&[
+            usize_type.const_int(len, false).into(), // len = byte length in UTF-8
+            usize_type.const_int(0, false).into(),   // cap = 0, signals non-owning
+            buf_global.into(),                       // ptr to UTF-8 buffer
+        ]));
+
+        desc_global.as_pointer_value().into()
+    }
+
+    pub fn get_val(&self, id: ValueId) -> Option<BasicValueEnum<'ctx>> {
+        match self.program.value_types.get(&id)? {
+            Type::Literal(lit) => match lit {
+                LiteralType::Number(n) => Some(self.synth_number_const(n)),
+                LiteralType::Bool(b) => {
+                    Some(self.context.bool_type().const_int(*b as u64, false).into())
                 }
-            }
-            (
-                BasicValueEnum::FloatValue(float_val),
-                BasicTypeEnum::FloatType(float_dest_ty),
-            ) => self
-                .builder
-                .build_float_cast(float_val, float_dest_ty, "fpcast")
-                .unwrap()
-                .into(),
+                LiteralType::String(sid) => Some(self.synth_string_const(*sid)),
+            },
+            Type::Null | Type::Void => None,
 
-            (v, t) => panic!(
-                "INTERNAL COMPILER ERROR: Invalid implicit cast requested.\nValue: \
-                 {:?}\nSource HIR: {:?}\nTarget HIR: {:?}\nTarget LLVM: {:?}",
-                v, src_ty, dest_ty, t
-            ),
+            _ => Some(self.get_val_strict(id)),
         }
     }
 
@@ -317,6 +372,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                 unimplemented!("Struct instruction not implemented")
             }
             Instruction::List(_) => unimplemented!("List instruction not implemented"),
+            Instruction::BitCast(_) => {
+                unimplemented!("BitCast instruction not implemented")
+            }
         }
     }
 

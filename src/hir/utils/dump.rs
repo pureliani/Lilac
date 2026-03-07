@@ -166,15 +166,9 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                 ConstInstr::ConstBool { dest, val } => {
                     writeln!(out, "v{}: bool = {};", dest.0, val).unwrap();
                 }
-                ConstInstr::ConstString { dest, constant_id } => {
-                    let literal = String::from_utf8(
-                        p.constant_data.get(constant_id).unwrap().clone(),
-                    )
-                    .unwrap();
+                ConstInstr::ConstString { dest, val } => {
+                    let literal = STRING_INTERNER.resolve(*val);
                     writeln!(out, "v{}: string = \"{}\";", dest.0, literal).unwrap();
-                }
-                ConstInstr::ConstVoid { dest } => {
-                    writeln!(out, "v{}: void = void;", dest.0).unwrap();
                 }
                 ConstInstr::ConstFn { dest, decl_id } => {
                     let decl = p.declarations.get(decl_id).unwrap_or_else(|| {
@@ -202,9 +196,6 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                         fn_identifier.span.path.0.display()
                     )
                     .unwrap();
-                }
-                ConstInstr::ConstNull { dest } => {
-                    writeln!(out, "v{}: {} = null;", dest.0, get_vt(p, dest)).unwrap();
                 }
             },
             Instruction::Unary(kind) => match kind {

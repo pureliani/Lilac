@@ -146,8 +146,12 @@ impl<'ctx> CodeGenerator<'ctx> {
             BasicValueEnum<'ctx>,
         ) -> BasicValueEnum<'ctx>,
     {
-        let lhs_val = self.get_val_strict(lhs);
-        let rhs_val = self.get_val_strict(rhs);
+        let lhs_val = self.get_val(lhs).expect(
+            "INTERNAL COMPILER ERROR: Expected lhs to be a valid arithmetic operand",
+        );
+        let rhs_val = self.get_val(rhs).expect(
+            "INTERNAL COMPILER ERROR: Expected rhs to be a valid arithmetic operand",
+        );
 
         let lhs_ty = self
             .program

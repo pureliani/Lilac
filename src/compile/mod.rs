@@ -111,7 +111,6 @@ impl Compiler {
         let mut type_predicates = HashMap::new();
 
         let mut program = Program {
-            constant_data: HashMap::new(),
             declarations: HashMap::new(),
             modules: HashMap::new(),
             value_types: HashMap::new(),

@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::ast::DeclarationId;
 use crate::compile::interner::{SharedStringInterner, StringId};
-use crate::hir::builders::{BasicBlockId, ConstantId, ValueId};
+use crate::hir::builders::{BasicBlockId, ValueId};
 
 pub struct CommonIdentifiers {
     pub ptr: StringId,
@@ -16,8 +16,7 @@ pub struct CommonIdentifiers {
 
 pub static VALUE_COUNTER: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
 pub static BLOCK_COUNTER: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
-pub static CONSTANT_COUNTER: LazyLock<AtomicUsize> =
-    LazyLock::new(|| AtomicUsize::new(0));
+
 pub static DECLARATION_COUNTER: LazyLock<AtomicUsize> =
     LazyLock::new(|| AtomicUsize::new(0));
 pub static STRING_INTERNER: LazyLock<SharedStringInterner> =
@@ -40,10 +39,6 @@ pub fn next_block_id() -> BasicBlockId {
     BasicBlockId(BLOCK_COUNTER.fetch_add(1, Ordering::SeqCst))
 }
 
-pub fn next_constant_id() -> ConstantId {
-    ConstantId(CONSTANT_COUNTER.fetch_add(1, Ordering::SeqCst))
-}
-
 pub fn next_declaration_id() -> DeclarationId {
     DeclarationId(DECLARATION_COUNTER.fetch_add(1, Ordering::SeqCst))
 }
@@ -51,7 +46,6 @@ pub fn next_declaration_id() -> DeclarationId {
 pub fn reset_globals() {
     VALUE_COUNTER.store(0, Ordering::SeqCst);
     BLOCK_COUNTER.store(0, Ordering::SeqCst);
-    CONSTANT_COUNTER.store(0, Ordering::SeqCst);
     DECLARATION_COUNTER.store(0, Ordering::SeqCst);
     STRING_INTERNER.clear();
 }

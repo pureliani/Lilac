@@ -1,6 +1,7 @@
 pub mod access;
 pub mod and;
 pub mod binary_op;
+pub mod bool;
 pub mod codeblock;
 pub mod r#fn;
 pub mod fn_call;
@@ -8,6 +9,7 @@ pub mod identifier;
 pub mod r#if;
 pub mod is_type;
 pub mod list_literal;
+pub mod number;
 pub mod or;
 pub mod static_access;
 pub mod string;
@@ -100,16 +102,20 @@ impl<'a> Builder<'a, InBlock> {
             ExprKind::Or { left, right } => {
                 self.build_or_expr(*left, *right, expected_type)
             }
-            ExprKind::BoolLiteral(value) => self.emit_const_bool(value),
-            ExprKind::Number(number_kind) => self.emit_const_number(number_kind),
+            ExprKind::BoolLiteral(value) => {
+                self.build_bool_expr(span, value, expected_type)
+            }
+            ExprKind::Number(number_kind) => {
+                self.build_number_expr(span, number_kind, expected_type)
+            }
             ExprKind::String(string_node) => {
                 self.build_string_literal(string_node, expected_type)
             }
             ExprKind::Struct(fields) => {
-                self.build_struct_init_expr(span.clone(), fields, expected_type)
+                self.build_struct_init_expr(span, fields, expected_type)
             }
             ExprKind::List(items) => {
-                self.build_list_literal_expr(span.clone(), items, expected_type)
+                self.build_list_literal_expr(span, items, expected_type)
             }
             ExprKind::Access { left, field } => {
                 self.build_access_expr(*left, field, expected_type)
@@ -128,7 +134,7 @@ impl<'a> Builder<'a, InBlock> {
             }
             ExprKind::Fn(fn_decl) => self.build_fn_expr(*fn_decl, expected_type),
             ExprKind::FnCall { left, args } => {
-                self.build_fn_call_expr(*left, args, span.clone(), expected_type)
+                self.build_fn_call_expr(*left, args, span, expected_type)
             }
             ExprKind::Identifier(identifier_node) => {
                 self.build_identifier_expr(identifier_node, expected_type)

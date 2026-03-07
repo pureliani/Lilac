@@ -16,7 +16,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         let llvm_args: Vec<BasicMetadataValueEnum> = args
             .iter()
-            .map(|arg_id| self.get_val_strict(*arg_id).into())
+            .filter_map(|arg_id| self.get_val(*arg_id).map(Into::into))
             .collect();
 
         let direct_fn = self.resolve_const_fn(*func);

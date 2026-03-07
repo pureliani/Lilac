@@ -97,7 +97,7 @@ impl<'a> Builder<'a, InBlock> {
 
         match list_type {
             Type::List(inner) => {
-                if &value_type != &inner.kind {
+                if value_type != inner.kind {
                     return self.report_error_and_get_poison(SemanticError {
                         kind: SemanticErrorKind::TypeMismatch {
                             expected: inner.kind,

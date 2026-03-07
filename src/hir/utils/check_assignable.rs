@@ -38,26 +38,30 @@ pub enum Adjustment {
 
 /// Computes the adjustment needed to convert `source_type` to `target_type`
 pub fn compute_type_adjustment(
-    source_type: &Type,
+    source: &Type,
     target: &Type,
     is_explicit: bool,
 ) -> Result<Adjustment, AdjustmentError> {
-    let source = if let Type::Literal(lit) = source_type {
+    if source == target {
+        return Ok(Adjustment::Identity);
+    }
+
+    let source = if let Type::Literal(lit) = source {
         lit.widen()
     } else {
-        source_type
+        source
     };
 
     if source == target {
         return Ok(Adjustment::Identity);
     }
 
-    if is_integer(&source) && is_integer(target) {
-        let s_rank = get_numeric_type_rank(&source).unwrap();
+    if is_integer(source) && is_integer(target) {
+        let s_rank = get_numeric_type_rank(source).unwrap();
         let t_rank = get_numeric_type_rank(target).unwrap();
 
         if t_rank > s_rank {
-            return if is_signed(&source) {
+            return if is_signed(source) {
                 Ok(Adjustment::SExt)
             } else {
                 Ok(Adjustment::ZExt)
@@ -67,8 +71,8 @@ pub fn compute_type_adjustment(
         }
     }
 
-    if is_float(&source) && is_float(target) {
-        let s_rank = get_numeric_type_rank(&source).unwrap();
+    if is_float(source) && is_float(target) {
+        let s_rank = get_numeric_type_rank(source).unwrap();
         let t_rank = get_numeric_type_rank(target).unwrap();
 
         if t_rank > s_rank {
@@ -78,15 +82,15 @@ pub fn compute_type_adjustment(
         }
     }
 
-    if is_integer(&source) && is_float(target) {
-        return if is_signed(&source) {
+    if is_integer(source) && is_float(target) {
+        return if is_signed(source) {
             Ok(Adjustment::SIToF)
         } else {
             Ok(Adjustment::UIToF)
         };
     }
 
-    if is_float(&source) && is_integer(target) && is_explicit {
+    if is_float(source) && is_integer(target) && is_explicit {
         return if is_signed(target) {
             Ok(Adjustment::FToSI)
         } else {
