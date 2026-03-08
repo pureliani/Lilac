@@ -31,7 +31,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                         .iter()
                         .enumerate()
                         .find(|(_, f)| f.identifier.name == *field_name)
-                        .expect("INTERNAL COMPILER ERROR: Field not found in struct definition");
+                        .expect(
+                            "INTERNAL COMPILER ERROR: Field not found in struct \
+                             definition",
+                        );
 
                     let val_ty = self
                         .program
@@ -41,10 +44,8 @@ impl<'ctx> CodeGenerator<'ctx> {
 
                     if val_ty != &field_def.ty.kind {
                         panic!(
-                            "INTERNAL COMPILER ERROR: Struct field type mismatch.\n\
-                             Field: {:?}\n\
-                             Expected: {:?}\n\
-                             Got: {:?}",
+                            "INTERNAL COMPILER ERROR: Struct field type \
+                             mismatch.\nField: {:?}\nExpected: {:?}\nGot: {:?}",
                             field_name, field_def.ty, val_ty
                         );
                     }
@@ -94,8 +95,10 @@ impl<'ctx> CodeGenerator<'ctx> {
 
                 let Some(llvm_index) = layout.field_indices[hir_index] else {
                     // ZST field - the value is known from the type alone
-                    let val = self.get_val(*dest)
-                        .expect("INTERNAL COMPILER ERROR: ReadField of ZST field returned no value");
+                    let val = self.get_val(*dest).expect(
+                        "INTERNAL COMPILER ERROR: ReadField of ZST field returned no \
+                         value",
+                    );
                     self.fn_values.insert(*dest, val);
                     return;
                 };
@@ -153,10 +156,8 @@ impl<'ctx> CodeGenerator<'ctx> {
 
                 if new_val_ty != &field_def.ty.kind {
                     panic!(
-                        "INTERNAL COMPILER ERROR: UpdateField type mismatch.\n\
-                         Field: {:?}\n\
-                         Expected: {:?}\n\
-                         Got: {:?}",
+                        "INTERNAL COMPILER ERROR: UpdateField type mismatch.\nField: \
+                         {:?}\nExpected: {:?}\nGot: {:?}",
                         field, field_def.ty, new_val_ty
                     );
                 }

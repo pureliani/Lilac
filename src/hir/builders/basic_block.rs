@@ -340,7 +340,10 @@ impl<'a> Builder<'a, InBlock> {
             match &pred_bb.terminator {
                 Some(Terminator::CondJump { .. }) => true,
                 Some(Terminator::Jump { .. }) => false, // only one successor
-                _ => panic!("INTERNAL COMPILER ERROR: Predecessor of Phi ends with Return or None"),
+                _ => panic!(
+                    "INTERNAL COMPILER ERROR: Predecessor of Phi ends with Return or \
+                     None"
+                ),
             }
         };
 

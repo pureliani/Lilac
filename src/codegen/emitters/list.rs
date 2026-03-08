@@ -150,7 +150,8 @@ impl<'ctx> CodeGenerator<'ctx> {
 
                 for (i, item_id) in items.iter().enumerate() {
                     let val = self.get_val(*item_id).expect(
-                        "INTERNAL COMPILER ERROR: Non-ZST list element has no runtime value",
+                        "INTERNAL COMPILER ERROR: Non-ZST list element has no runtime \
+                         value",
                     );
                     let offset = i64_type.const_int(i as u64, false);
                     self.store_element_at(ptr, offset, elem_llvm_ty, val);

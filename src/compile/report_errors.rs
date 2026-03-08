@@ -37,6 +37,9 @@ fn get_err_sort_key(err: &CompilerErrorKind) -> (u8, std::path::PathBuf, usize) 
         CompilerErrorKind::ModuleNotFound { target_path, .. } => {
             (1, target_path.0.to_path_buf(), 0)
         }
+        CompilerErrorKind::MissingMainFunction(module_path) => {
+            (2, module_path.0.to_path_buf(), 0)
+        }
     }
 }
 
@@ -630,11 +633,30 @@ impl Compiler {
                             .with_message("Try explicit casting to the target type")
                             .with_labels(vec![Label::primary(file_id, range)
                                 .with_message(
-                                    "Try to explicitly cast this value into the target type using the ::as(T) method",
-                                )]).with_note("::as(T) method has runtime overhead"),
+                                    "Try to explicitly cast this value into the target \
+                                     type using the ::as(T) method",
+                                )])
+                            .with_note("::as(T) method has runtime overhead"),
+                        SemanticErrorKind::MainFunctionCannotHaveParameters => diag
+                            .with_message("Main function cannot have parameters")
+                            .with_labels(vec![Label::primary(file_id, range)
+                                .with_message(
+                                    "main must be declared as fn main() or fn main(): \
+                                     i32",
+                                )]),
+                        SemanticErrorKind::MainFunctionInvalidReturnType => diag
+                            .with_message("Main function has invalid return type")
+                            .with_labels(vec![Label::primary(file_id, range)
+                                .with_message("main must return void or i32")]),
+                        SemanticErrorKind::MainFunctionMustBeInEntryFile => diag
+                            .with_message("Main function must be in the entry file")
+                            .with_labels(vec![Label::primary(file_id, range)
+                                .with_message(
+                                    "main can only be defined in the entry file passed \
+                                     to the compiler",
+                                )]),
                     }
                 }
-
                 CompilerErrorKind::CouldNotReadFile { path, error } => {
                     println!(
                         "Error: Could not read file `{}`: {}",
@@ -643,7 +665,6 @@ impl Compiler {
                     );
                     continue;
                 }
-
                 CompilerErrorKind::ModuleNotFound {
                     importing_module,
                     target_path,
@@ -654,6 +675,13 @@ impl Compiler {
                         target_path.0.display(),
                         importing_module.0.display(),
                         error
+                    );
+                    continue;
+                }
+                CompilerErrorKind::MissingMainFunction(module_path) => {
+                    println!(
+                        "Missing the main function in the entry path {}",
+                        module_path.0.display(),
                     );
                     continue;
                 }

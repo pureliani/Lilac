@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{decl::FnDecl, Span},
-    globals::{next_block_id, next_declaration_id},
+    globals::{next_block_id, next_declaration_id, STRING_INTERNER},
     hir::{
         builders::{BasicBlock, Builder, InBlock, InModule, ValueId},
         errors::{SemanticError, SemanticErrorKind},
@@ -32,6 +32,37 @@ impl<'a> Builder<'a, InModule> {
             body,
             ..
         } = fn_decl;
+        let raw_name = STRING_INTERNER.resolve(identifier.name);
+        if raw_name == "main" {
+            if let Some(entry_path) = &self.program.entry_path {
+                if self.context.path != *entry_path {
+                    return Err(SemanticError {
+                        kind: SemanticErrorKind::MainFunctionMustBeInEntryFile,
+                        span: identifier.span.clone(),
+                    });
+                }
+            }
+
+            let func = match self.program.declarations.get(&decl_id) {
+                Some(CheckedDeclaration::Function(f)) => f,
+                _ => panic!("INTERNAL COMPILER ERROR: Function declaration not found"),
+            };
+
+            if !func.params.is_empty() {
+                return Err(SemanticError {
+                    kind: SemanticErrorKind::MainFunctionCannotHaveParameters,
+                    span: identifier.span.clone(),
+                });
+            }
+
+            let ret = &func.return_type.kind;
+            if !matches!(ret, Type::Void | Type::I32) {
+                return Err(SemanticError {
+                    kind: SemanticErrorKind::MainFunctionInvalidReturnType,
+                    span: identifier.span.clone(),
+                });
+            }
+        }
 
         let entry_block_id = next_block_id();
 

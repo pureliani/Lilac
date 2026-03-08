@@ -40,7 +40,10 @@ impl<'ctx> CodeGenerator<'ctx> {
                     CheckedDeclaration::Function(f) => {
                         STRING_INTERNER.resolve(f.identifier.name)
                     }
-                    _ => panic!("INTERNAL COMPILER ERROR: ConstFn points to non-function declaration"),
+                    _ => panic!(
+                        "INTERNAL COMPILER ERROR: ConstFn points to non-function \
+                         declaration"
+                    ),
                 };
 
                 let fn_val = self.module.get_function(&fn_name).unwrap_or_else(|| {

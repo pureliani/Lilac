@@ -70,13 +70,10 @@ impl<'ctx> CodeGenerator<'ctx> {
 
                 if src_ty != phi_ty {
                     panic!(
-                        "INTERNAL COMPILER ERROR: Phi node type mismatch in Codegen.\n\
-                             Phi ID: {:?}\n\
-                             Phi Type: {:?}\n\
-                             Source Value: {:?}\n\
-                             Source Type: {:?}\n\
-                             Source Block: {:?}\n\
-                             HIR should have inserted explicit casts or split edges.",
+                        "INTERNAL COMPILER ERROR: Phi node type mismatch in \
+                         Codegen.\nPhi ID: {:?}\nPhi Type: {:?}\nSource Value: \
+                         {:?}\nSource Type: {:?}\nSource Block: {:?}\nHIR should have \
+                         inserted explicit casts or split edges.",
                         phi_val_id, phi_ty, source.value, src_ty, source.from
                     );
                 }

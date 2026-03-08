@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::targets::TargetData;
+use inkwell::targets::{FileType, TargetMachine};
 use inkwell::types::{
     BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, StructType,
 };
@@ -34,7 +35,7 @@ pub struct CodeGenerator<'ctx> {
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     program: &'ctx Program,
-    target_data: TargetData,
+    target_machine: TargetMachine,
 
     // Maps HIR ValueId (SSA registers) to LLVM Values,
     // this is cleared at the start of every function.
@@ -51,7 +52,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     pub fn new(
         context: &'ctx Context,
         program: &'ctx Program,
-        target_data: TargetData,
+        target_machine: TargetMachine,
     ) -> Self {
         Self {
             context,
@@ -61,11 +62,11 @@ impl<'ctx> CodeGenerator<'ctx> {
             fn_values: HashMap::new(),
             fn_blocks: HashMap::new(),
             current_fn: None,
-            target_data,
+            target_machine,
         }
     }
 
-    pub fn generate(&mut self) {
+    pub fn generate(&mut self, path: &Path) {
         for decl in self.program.declarations.values() {
             if let CheckedDeclaration::Function(f) = decl {
                 self.gen_function_prototype(f);
@@ -78,7 +79,9 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
-        self.module.print_to_stderr();
+        self.target_machine
+            .write_to_file(&self.module, FileType::Object, path)
+            .unwrap();
     }
 
     /// Converts a Lilac Type to an LLVM BasicType
@@ -113,6 +116,13 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// Creates the function signature (name, return type, param types) in the LLVM module
     fn gen_function_prototype(&self, func: &Function) {
         let name = STRING_INTERNER.resolve(func.identifier.name);
+
+        if name == "main" {
+            let i32_type = self.context.i32_type();
+            let main_type = i32_type.fn_type(&[], false);
+            self.module.add_function("main", main_type, None);
+            return;
+        }
 
         let fn_ty = FnType {
             params: func
@@ -363,12 +373,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             Instruction::Call(c) => self.emit_call(c),
             Instruction::Select(s) => self.emit_select(s),
             Instruction::Union(u) => self.emit_union(u),
-            Instruction::Struct(_) => {
-                unimplemented!("Struct instruction not implemented")
+            Instruction::Struct(s) => {
+                self.emit_struct(s);
             }
-            Instruction::List(_) => unimplemented!("List instruction not implemented"),
-            Instruction::BitCast(_) => {
-                unimplemented!("BitCast instruction not implemented")
+            Instruction::List(l) => self.emit_list(l),
+            Instruction::BitCast(bc) => {
+                if let Some(val) = self.get_val(bc.src) {
+                    self.fn_values.insert(bc.dest, val);
+                }
             }
         }
     }

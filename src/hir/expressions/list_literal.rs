@@ -53,7 +53,10 @@ impl<'a> Builder<'a, InBlock> {
                         adjusted_items.push(adjusted);
                     }
                     Err(_) => {
-                        panic!("INTERNAL COMPILER ERROR: List item not assignable to element type");
+                        panic!(
+                            "INTERNAL COMPILER ERROR: List item not assignable to \
+                             element type"
+                        );
                     }
                 }
             }

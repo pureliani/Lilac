@@ -42,6 +42,7 @@ pub struct Program {
     pub modules: HashMap<ModulePath, Module>,
     pub value_types: HashMap<ValueId, Type>,
     pub declarations: HashMap<DeclarationId, CheckedDeclaration>,
+    pub entry_path: Option<ModulePath>,
 }
 
 pub struct Module {

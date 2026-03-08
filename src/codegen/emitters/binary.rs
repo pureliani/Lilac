@@ -169,7 +169,11 @@ impl<'ctx> CodeGenerator<'ctx> {
             );
 
         if lhs_ty != dest_ty || rhs_ty != dest_ty {
-            panic!("INTERNAL COMPILER ERROR: Type mismatch in binary arithmetic op. HIR must insert explicit casts.\nLHS: {:?}\nRHS: {:?}\nDest: {:?}", lhs_ty, rhs_ty, dest_ty);
+            panic!(
+                "INTERNAL COMPILER ERROR: Type mismatch in binary arithmetic op. HIR \
+                 must insert explicit casts.\nLHS: {:?}\nRHS: {:?}\nDest: {:?}",
+                lhs_ty, rhs_ty, dest_ty
+            );
         }
 
         let res = op(&self.builder, lhs_val, rhs_val);

@@ -15,6 +15,9 @@ pub enum SemanticErrorKind {
         aliased_path: Vec<PathSegment>,
     },
     UnsupportedUnionNarrowing,
+    MainFunctionCannotHaveParameters,
+    MainFunctionInvalidReturnType,
+    MainFunctionMustBeInEntryFile,
     CannotNarrowNonUnion(Type),
     ValuedTagInIsExpression,
     UnreachableCode,
@@ -163,6 +166,15 @@ impl SemanticErrorKind {
             SemanticErrorKind::CannotGetLen { .. } => SemanticErrorSeverity::Error,
             SemanticErrorKind::ArgumentAliasing { .. } => SemanticErrorSeverity::Error,
             SemanticErrorKind::TryExplicitCast => SemanticErrorSeverity::Error,
+            SemanticErrorKind::MainFunctionCannotHaveParameters => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::MainFunctionInvalidReturnType => {
+                SemanticErrorSeverity::Error
+            }
+            SemanticErrorKind::MainFunctionMustBeInEntryFile => {
+                SemanticErrorSeverity::Error
+            }
         }
     }
 
@@ -210,6 +222,9 @@ impl SemanticErrorKind {
             SemanticErrorKind::CannotGetLen { .. } => 40,
             SemanticErrorKind::ArgumentAliasing { .. } => 41,
             SemanticErrorKind::TryExplicitCast => 42,
+            SemanticErrorKind::MainFunctionInvalidReturnType => 43,
+            SemanticErrorKind::MainFunctionMustBeInEntryFile => 44,
+            SemanticErrorKind::MainFunctionCannotHaveParameters => 45,
         }
     }
 }

@@ -1,17 +1,45 @@
-use crate::{codegen::CodeGenerator, hir::instructions::Terminator};
+use crate::{
+    codegen::CodeGenerator,
+    globals::STRING_INTERNER,
+    hir::{instructions::Terminator, types::checked_type::Type},
+};
 
 impl<'ctx> CodeGenerator<'ctx> {
     pub fn emit_terminator(&mut self, term: &Terminator) {
         match term {
             Terminator::Return { value } => {
-                match self.get_val(*value) {
-                    Some(val) => {
+                let is_main = self
+                    .current_fn
+                    .map(|f| STRING_INTERNER.resolve(f.identifier.name) == "main")
+                    .unwrap_or(false);
+
+                if is_main {
+                    let i32_type = self.context.i32_type();
+                    let ret_ty = &self.current_fn.unwrap().return_type.kind;
+
+                    if *ret_ty == Type::I32 {
+                        let val = self.get_val(*value).unwrap();
                         self.builder.build_return(Some(&val)).unwrap();
+                    } else if *ret_ty == Type::Void {
+                        self.builder
+                            .build_return(Some(&i32_type.const_int(0, false)))
+                            .unwrap();
+                    } else {
+                        panic!(
+                            "INTERNAL COMPILER ERROR: main function should either \
+                             return an i32 or void"
+                        )
                     }
-                    None => {
-                        self.builder.build_return(None).unwrap();
-                    }
-                };
+                } else {
+                    match self.get_val(*value) {
+                        Some(val) => {
+                            self.builder.build_return(Some(&val)).unwrap();
+                        }
+                        None => {
+                            self.builder.build_return(None).unwrap();
+                        }
+                    };
+                }
             }
             Terminator::Jump { target } => {
                 let bb = self.fn_blocks.get(target).unwrap_or_else(|| {

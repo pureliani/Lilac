@@ -77,12 +77,14 @@ impl<'ctx> CodeGenerator<'ctx> {
         int_pred: IntPredicate,
         float_pred: FloatPredicate,
     ) {
-        let lhs_val = self
-            .get_val(lhs)
-            .expect("INTERNAL COMPILER ERROR: Expected a valid lhs operand for a comparison instruction");
-        let rhs_val = self
-            .get_val(rhs)
-            .expect("INTERNAL COMPILER ERROR: Expected a valid rhs operand for a comparison instruction");
+        let lhs_val = self.get_val(lhs).expect(
+            "INTERNAL COMPILER ERROR: Expected a valid lhs operand for a comparison \
+             instruction",
+        );
+        let rhs_val = self.get_val(rhs).expect(
+            "INTERNAL COMPILER ERROR: Expected a valid rhs operand for a comparison \
+             instruction",
+        );
 
         let res: BasicValueEnum = if lhs_val.is_int_value() {
             self.builder

@@ -13,7 +13,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let max_size = variants
             .iter()
             .filter_map(|v| self.lower_type(v))
-            .map(|ty| self.target_data.get_abi_size(&ty))
+            .map(|ty| self.target_machine.get_target_data().get_abi_size(&ty))
             .max()
             .unwrap_or(0);
 

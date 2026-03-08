@@ -17,6 +17,7 @@ use crate::{
         ModulePath, Span,
     },
     compile::file_cache::FileCache,
+    globals::STRING_INTERNER,
     hir::{
         builders::{Builder, InGlobal, Program},
         errors::SemanticError,
@@ -44,6 +45,7 @@ pub enum CompilerErrorKind {
     Tokenization(TokenizationError),
     Parsing(ParsingError),
     Semantic(SemanticError),
+    MissingMainFunction(ModulePath),
 }
 
 pub struct Compiler {
@@ -71,7 +73,13 @@ pub struct ParallelParseResult {
 
 impl Compiler {
     pub fn compile(&mut self, main_path: PathBuf) {
-        let parsed_modules = self.parallel_parse_modules(main_path);
+        let canonical_main = ModulePath(Arc::new(
+            main_path
+                .canonicalize()
+                .expect("Could not find the main module"),
+        ));
+
+        let parsed_modules = self.parallel_parse_modules(canonical_main.clone());
         let mut modules_to_compile = Vec::new();
 
         for m in parsed_modules {
@@ -111,6 +119,7 @@ impl Compiler {
         let mut type_predicates = HashMap::new();
 
         let mut program = Program {
+            entry_path: None,
             declarations: HashMap::new(),
             modules: HashMap::new(),
             value_types: HashMap::new(),
@@ -132,6 +141,16 @@ impl Compiler {
 
         program_builder.build(modules_to_compile);
 
+        let entry_module = program.modules.get(&canonical_main);
+        let has_main = entry_module
+            .and_then(|m| m.root_scope.lookup(STRING_INTERNER.intern("main")))
+            .is_some();
+
+        if !has_main {
+            self.errors
+                .push(CompilerErrorKind::MissingMainFunction(canonical_main));
+        }
+
         if std::env::var("DUMP_HIR").is_ok() {
             dump_program(&program);
         }
@@ -152,14 +171,8 @@ impl Compiler {
 
     pub fn parallel_parse_modules(
         &self,
-        main_path: PathBuf,
+        main_path: ModulePath,
     ) -> Vec<Result<ParallelParseResult, CompilerErrorKind>> {
-        let canonical_main = ModulePath(Arc::new(
-            main_path
-                .canonicalize()
-                .expect("Could not find the main module"),
-        ));
-
         let visited = Arc::new(Mutex::new(HashSet::new()));
         let all_results = Arc::new(Mutex::new(Vec::new()));
 
@@ -225,7 +238,7 @@ impl Compiler {
 
             parse_recursive(
                 s,
-                canonical_main,
+                main_path,
                 self.files.clone(),
                 visited,
                 all_results.clone(),
