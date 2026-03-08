@@ -1,3 +1,6 @@
+use inkwell::context::Context;
+use inkwell::targets::*;
+use inkwell::OptimizationLevel;
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -5,9 +8,48 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::codegen::CodeGenerator;
+
 pub mod file_cache;
 pub mod interner;
 pub mod report_errors;
+
+pub struct CompileOptions {
+    pub input: PathBuf,
+    pub output: PathBuf,
+    pub target: Option<String>,
+    pub opt_level: u8,
+    pub emit_hir: bool,
+    pub emit_llvm_ir: bool,
+    pub emit_obj: bool,
+}
+
+impl CompileOptions {
+    fn optimization_level(&self) -> OptimizationLevel {
+        match self.opt_level {
+            0 => OptimizationLevel::None,
+            1 => OptimizationLevel::Less,
+            2 => OptimizationLevel::Default,
+            3 => OptimizationLevel::Aggressive,
+            _ => unreachable!("clap enforces 0..=3"),
+        }
+    }
+
+    fn target_triple(&self) -> TargetTriple {
+        match &self.target {
+            Some(t) => TargetTriple::create(t),
+            None => TargetMachine::get_default_triple(),
+        }
+    }
+
+    fn object_path(&self) -> PathBuf {
+        if self.emit_obj {
+            self.output.clone()
+        } else {
+            self.output.with_extension("o")
+        }
+    }
+}
 
 use crate::{
     ast::{
@@ -72,9 +114,10 @@ pub struct ParallelParseResult {
 }
 
 impl Compiler {
-    pub fn compile(&mut self, main_path: PathBuf) {
+    pub fn compile(&mut self, options: CompileOptions) {
         let canonical_main = ModulePath(Arc::new(
-            main_path
+            options
+                .input
                 .canonicalize()
                 .expect("Could not find the main module"),
         ));
@@ -119,7 +162,7 @@ impl Compiler {
         let mut type_predicates = HashMap::new();
 
         let mut program = Program {
-            entry_path: None,
+            entry_path: Some(canonical_main.clone()),
             declarations: HashMap::new(),
             modules: HashMap::new(),
             value_types: HashMap::new(),
@@ -151,7 +194,7 @@ impl Compiler {
                 .push(CompilerErrorKind::MissingMainFunction(canonical_main));
         }
 
-        if std::env::var("DUMP_HIR").is_ok() {
+        if options.emit_hir {
             dump_program(&program);
         }
 
@@ -163,10 +206,62 @@ impl Compiler {
             return;
         }
 
-        println!(
-            "Compilation successful: HIR generated for {} modules.",
-            program.modules.len()
-        );
+        let triple = options.target_triple();
+
+        let target = Target::from_triple(&triple).unwrap_or_else(|e| {
+            eprintln!("Unsupported target '{}': {}", triple, e.to_string());
+            std::process::exit(1);
+        });
+
+        let target_machine = target
+            .create_target_machine(
+                &triple,
+                "generic",
+                "",
+                options.optimization_level(),
+                RelocMode::PIC,
+                CodeModel::Default,
+            )
+            .unwrap_or_else(|| {
+                eprintln!("Failed to create target machine for '{}'", triple);
+                std::process::exit(1);
+            });
+
+        let context = Context::create();
+        let mut codegen = CodeGenerator::new(&context, &program, target_machine);
+
+        if options.emit_llvm_ir {
+            codegen.generate_ir();
+            return;
+        }
+
+        let obj_path = options.object_path();
+        codegen.generate(&obj_path);
+
+        if options.emit_obj {
+            return;
+        }
+
+        let linker_status = std::process::Command::new("cc")
+            .arg(&obj_path)
+            .arg("-o")
+            .arg(&options.output)
+            .status();
+
+        let _ = std::fs::remove_file(&obj_path);
+
+        match linker_status {
+            Ok(status) if status.success() => {}
+            Ok(status) => {
+                eprintln!("Linker failed with exit code: {}", status);
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("Failed to invoke linker: {}", e);
+                eprintln!("Make sure 'cc' is available in your PATH");
+                std::process::exit(1);
+            }
+        }
     }
 
     pub fn parallel_parse_modules(

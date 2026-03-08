@@ -67,6 +67,16 @@ impl<'ctx> CodeGenerator<'ctx> {
     }
 
     pub fn generate(&mut self, path: &Path) {
+        self.compile_all();
+        self.write_object_file(path);
+    }
+
+    pub fn generate_ir(&mut self) {
+        self.compile_all();
+        self.module.print_to_stderr();
+    }
+
+    fn compile_all(&mut self) {
         for decl in self.program.declarations.values() {
             if let CheckedDeclaration::Function(f) = decl {
                 self.gen_function_prototype(f);
@@ -78,7 +88,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.gen_function_body(f);
             }
         }
+    }
 
+    pub fn write_object_file(&self, path: &Path) {
         self.target_machine
             .write_to_file(&self.module, FileType::Object, path)
             .unwrap();
