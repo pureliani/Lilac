@@ -7,7 +7,10 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, StructInstr},
-        types::{checked_declaration::CheckedParam, checked_type::Type},
+        types::{
+            checked_declaration::CheckedParam,
+            checked_type::{SpannedType, Type},
+        },
         utils::{layout::pack_struct, points_to::PathSegment},
     },
 };
@@ -19,9 +22,15 @@ impl<'a> Builder<'a, InBlock> {
     ) -> ValueId {
         let type_fields: Vec<CheckedParam> = fields
             .iter()
-            .map(|(ident, val_id)| CheckedParam {
-                identifier: ident.clone(),
-                ty: todo!(),
+            .map(|(ident, val_id)| {
+                let ty = self.get_value_type(*val_id).clone();
+                CheckedParam {
+                    identifier: ident.clone(),
+                    ty: SpannedType {
+                        kind: ty,
+                        span: ident.span.clone(),
+                    },
+                }
             })
             .collect();
 
