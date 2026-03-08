@@ -24,7 +24,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         let call_site = if let Some(fn_val) = direct_fn {
             self.builder.build_call(fn_val, &llvm_args, "call").unwrap()
         } else {
-            let func_ptr = self.get_val_strict(*func).into_pointer_value();
+            let func_ptr = self.get_val(*func).unwrap().into_pointer_value();
 
             let func_hir_type = self
                 .program

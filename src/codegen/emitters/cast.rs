@@ -10,7 +10,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     pub fn emit_cast_instr(&mut self, instr: &CastInstr) {
         let CastInstr { src, dest, op } = instr;
 
-        let src_val = self.get_val_strict(*src);
+        let src_val = self.get_val(*src);
 
         let src_ty = self
             .program

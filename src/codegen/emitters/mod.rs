@@ -3,6 +3,7 @@ pub mod call;
 pub mod cast;
 pub mod comp;
 pub mod r#const;
+pub mod helpers;
 pub mod list;
 pub mod phi;
 pub mod select;

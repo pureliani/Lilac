@@ -3,6 +3,7 @@ use crate::{
     hir::{
         builders::{Builder, InBlock, ValueId},
         types::checked_type::{SpannedType, Type},
+        utils::check_assignable::compute_type_adjustment,
     },
 };
 
@@ -38,7 +39,28 @@ impl<'a> Builder<'a, InBlock> {
             kind: Type::make_union(element_types),
             span: expr_span.clone(),
         };
-        let result = self.emit_list_init(element_type, item_values);
+
+        let mut adjusted_items = Vec::with_capacity(item_values.len());
+        for val_id in item_values {
+            let val_ty = self.get_value_type(val_id).clone();
+            if val_ty == element_type.kind {
+                adjusted_items.push(val_id);
+            } else {
+                match compute_type_adjustment(&val_ty, &element_type.kind, false) {
+                    Ok(adj) => {
+                        let adjusted =
+                            self.apply_adjustment(val_id, adj, element_type.kind.clone());
+                        adjusted_items.push(adjusted);
+                    }
+                    Err(_) => {
+                        panic!("INTERNAL COMPILER ERROR: List item not assignable to element type");
+                    }
+                }
+            }
+        }
+
+        let result = self.emit_list_init(element_type, adjusted_items);
+
         self.check_expected(result, expr_span, expected_type)
     }
 }

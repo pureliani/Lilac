@@ -9,9 +9,9 @@ impl<'ctx> CodeGenerator<'ctx> {
             false_val,
         } = instr;
 
-        let cond_val = self.get_val_strict(*cond);
-        let t_val = self.get_val_strict(*true_val);
-        let f_val = self.get_val_strict(*false_val);
+        let cond_val = self.get_val(*cond).unwrap();
+        let t_val = self.get_val(*true_val).unwrap();
+        let f_val = self.get_val(*false_val).unwrap();
 
         if !cond_val.is_int_value() {
             panic!("INTERNAL COMPILER ERROR: Select condition must be integer/bool");

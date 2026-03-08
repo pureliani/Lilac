@@ -90,7 +90,7 @@ impl<'a> Builder<'a, InBlock> {
         let right_entry_block = self.as_fn().new_bb();
         let merge_block = self.as_fn().new_bb();
 
-        let const_true = self.emit_bool_literal(true);
+        let const_true = self.emit_bool(true);
 
         self.emit_cond_jmp(left, merge_block, right_entry_block);
 
@@ -150,7 +150,7 @@ impl<'a> Builder<'a, InBlock> {
         let right_entry_block = self.as_fn().new_bb();
         let merge_block = self.as_fn().new_bb();
 
-        let const_false = self.emit_bool_literal(false);
+        let const_false = self.emit_bool(false);
 
         self.emit_cond_jmp(left, right_entry_block, merge_block);
 

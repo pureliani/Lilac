@@ -40,7 +40,6 @@ impl<'ctx> CodeGenerator<'ctx> {
     ) {
         for (phi_val_id, sources) in &block.phis {
             let Some(phi) = phi_nodes.get(phi_val_id) else {
-                // ZST phi - no LLVM node, nothing to resolve
                 continue;
             };
 
@@ -51,7 +50,13 @@ impl<'ctx> CodeGenerator<'ctx> {
                 .expect("Phi type missing");
 
             for source in sources {
-                let incoming_val = self.get_val_strict(source.value);
+                let Some(incoming_val) = self.get_val(source.value) else {
+                    panic!(
+                        "INTERNAL COMPILER ERROR: Non-ZST phi {:?} has ZST source {:?}",
+                        phi_val_id, source.value
+                    );
+                };
+
                 let incoming_bb = self
                     .fn_blocks
                     .get(&source.from)

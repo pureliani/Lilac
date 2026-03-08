@@ -6,7 +6,7 @@ impl<'ctx> CodeGenerator<'ctx> {
     pub fn emit_unary(&mut self, instr: &UnaryInstr) {
         match instr {
             UnaryInstr::Neg { dest, src } => {
-                let val = self.get_val_strict(*src);
+                let val = self.get_val(*src).unwrap();
 
                 let res: BasicValueEnum = if val.is_int_value() {
                     self.builder
@@ -23,7 +23,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 self.fn_values.insert(*dest, res);
             }
             UnaryInstr::Not { dest, src } => {
-                let val = self.get_val_strict(*src);
+                let val = self.get_val(*src).unwrap();
 
                 if val.is_int_value() {
                     let res = self

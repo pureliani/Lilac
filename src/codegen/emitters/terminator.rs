@@ -4,8 +4,14 @@ impl<'ctx> CodeGenerator<'ctx> {
     pub fn emit_terminator(&mut self, term: &Terminator) {
         match term {
             Terminator::Return { value } => {
-                let val = self.get_val_strict(*value);
-                self.builder.build_return(Some(&val)).unwrap();
+                match self.get_val(*value) {
+                    Some(val) => {
+                        self.builder.build_return(Some(&val)).unwrap();
+                    }
+                    None => {
+                        self.builder.build_return(None).unwrap();
+                    }
+                };
             }
             Terminator::Jump { target } => {
                 let bb = self.fn_blocks.get(target).unwrap_or_else(|| {
@@ -18,7 +24,7 @@ impl<'ctx> CodeGenerator<'ctx> {
                 true_target,
                 false_target,
             } => {
-                let cond = self.get_val_strict(*condition);
+                let cond = self.get_val(*condition).unwrap();
 
                 if !cond.is_int_value() {
                     panic!(

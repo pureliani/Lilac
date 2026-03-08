@@ -100,14 +100,9 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .ptr_type(inkwell::AddressSpace::default())
                     .into(),
             ),
-            Type::Union(_) => {
-                let tag_type = self.context.i16_type();
-                let payload_type = self.context.i64_type();
-                Some(
-                    self.context
-                        .struct_type(&[tag_type.into(), payload_type.into()], false)
-                        .into(),
-                )
+            Type::Union(variants) => {
+                let (layout, _) = self.get_union_layout(variants);
+                Some(BasicTypeEnum::StructType(layout))
             }
             Type::Unknown | Type::Never => {
                 panic!("INTERNAL COMPILER ERROR: Invalid type in codegen")
