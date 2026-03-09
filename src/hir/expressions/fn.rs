@@ -1,10 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    ast::{decl::FnDecl, Span},
+    ast::{
+        decl::{FnDecl, FnDeclBody},
+        Span,
+    },
     globals::{next_block_id, next_declaration_id, STRING_INTERNER},
     hir::{
-        builders::{BasicBlock, Builder, InBlock, InModule, ValueId},
+        builders::{
+            BasicBlock, Builder, ExpectBody, FunctionBodyKind, FunctionCFG, InBlock,
+            InModule, ValueId,
+        },
         errors::{SemanticError, SemanticErrorKind},
         instructions::Terminator,
         types::{
@@ -13,7 +19,7 @@ use crate::{
             },
             checked_type::{SpannedType, Type},
         },
-        utils::scope::ScopeKind,
+        utils::{points_to::PointsToGraph, scope::ScopeKind},
     },
 };
 
@@ -29,9 +35,15 @@ impl<'a> Builder<'a, InModule> {
         let FnDecl {
             id: decl_id,
             identifier,
-            body,
+            body: body_variant,
             ..
         } = fn_decl;
+
+        let body = match body_variant {
+            FnDeclBody::External => return Ok(()),
+            FnDeclBody::Internal(block) => block,
+        };
+
         let raw_name = STRING_INTERNER.resolve(identifier.name);
         if raw_name == "main" {
             if let Some(entry_path) = &self.program.entry_path {
@@ -69,12 +81,16 @@ impl<'a> Builder<'a, InModule> {
         if let Some(CheckedDeclaration::Function(func)) =
             self.program.declarations.get_mut(&decl_id)
         {
-            func.entry_block = entry_block_id;
+            let cfg = FunctionCFG {
+                entry_block: entry_block_id,
+                blocks: HashMap::new(),
+                value_definitions: HashMap::new(),
+                ptg: PointsToGraph::new(),
+                effects: FunctionEffects::default(),
+            };
+            func.body = FunctionBodyKind::Internal(cfg);
         } else {
-            panic!(
-                "INTERNAL COMPILER ERROR: Function declaration not found for body \
-                 compilation"
-            );
+            panic!("INTERNAL COMPILER ERROR: Function declaration not found");
         }
 
         let mut fn_builder = Builder {
@@ -102,7 +118,11 @@ impl<'a> Builder<'a, InModule> {
             phis: HashMap::new(),
             sealed: true,
         };
-        fn_builder.get_fn().blocks.insert(entry_block_id, entry_bb);
+        fn_builder
+            .get_fn()
+            .expect_body()
+            .blocks
+            .insert(entry_block_id, entry_bb);
 
         let param_count = fn_builder.get_fn().params.len();
 
@@ -145,7 +165,7 @@ impl<'a> Builder<'a, InModule> {
         fn_builder.emit_return(final_value);
 
         let effects = fn_builder.compute_effects(&identifier.span);
-        fn_builder.get_fn().effects = effects;
+        fn_builder.get_fn().expect_body().effects = effects;
 
         Ok(())
     }
@@ -173,6 +193,7 @@ impl<'a> Builder<'a, InBlock> {
         let func = self.get_fn();
 
         let return_block_ids: Vec<_> = func
+            .expect_body()
             .blocks
             .iter()
             .filter_map(|(id, bb)| {

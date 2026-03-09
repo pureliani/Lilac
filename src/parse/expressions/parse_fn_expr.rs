@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        decl::{FnDecl, Param},
+        decl::{FnDecl, FnDeclBody, Param},
         expr::{Expr, ExprKind},
         type_annotation::{TypeAnnotation, TypeAnnotationKind},
     },
@@ -14,6 +14,13 @@ impl Parser {
         let documentation = self.consume_optional_doc();
 
         let start_offset = self.offset;
+
+        let is_extern = if self.match_token(0, TokenKind::Keyword(KeywordKind::Extern)) {
+            self.advance();
+            true
+        } else {
+            false
+        };
 
         let is_exported = if self.match_token(0, TokenKind::Keyword(KeywordKind::Export))
         {
@@ -52,7 +59,11 @@ impl Parser {
                 }
             };
 
-        let body = self.parse_codeblock_expr()?;
+        let body = if is_extern {
+            FnDeclBody::External
+        } else {
+            FnDeclBody::Internal(self.parse_codeblock_expr()?)
+        };
 
         let id = next_declaration_id();
 

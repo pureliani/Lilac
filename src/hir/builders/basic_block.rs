@@ -5,8 +5,8 @@ use crate::{
     globals::next_value_id,
     hir::{
         builders::{
-            BasicBlock, BasicBlockId, Builder, Function, InBlock, InFunction, InGlobal,
-            InModule, PhiSource, ValueId,
+            BasicBlock, BasicBlockId, Builder, ExpectBody, Function, InBlock, InFunction,
+            InGlobal, InModule, PhiSource, ValueId,
         },
         errors::{SemanticError, SemanticErrorKind},
         instructions::{CastInstr, Instruction, Terminator},
@@ -78,6 +78,7 @@ impl<'a> Builder<'a, InBlock> {
 
         match decl {
             CheckedDeclaration::Function(f) => f
+                .expect_body()
                 .blocks
                 .get_mut(&block_id)
                 .expect("INTERNAL COMPILER ERROR: Block not found"),
@@ -96,6 +97,7 @@ impl<'a> Builder<'a, InBlock> {
 
         match decl {
             CheckedDeclaration::Function(f) => f
+                .expect_body()
                 .blocks
                 .get(&block_id)
                 .expect("INTERNAL COMPILER ERROR: Block not found"),
@@ -392,6 +394,7 @@ impl<'a> Builder<'a, InBlock> {
         let this_block_id = self.context.block_id;
 
         self.get_fn()
+            .expect_body()
             .value_definitions
             .insert(value_id, this_block_id);
 

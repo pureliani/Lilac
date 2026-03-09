@@ -3,7 +3,7 @@ use std::path::Path;
 
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::Module;
+use inkwell::module::{Linkage, Module};
 use inkwell::targets::{FileType, TargetMachine};
 use inkwell::types::{
     BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, StructType,
@@ -12,6 +12,7 @@ use inkwell::values::{BasicValueEnum, PhiValue};
 
 use crate::compile::interner::StringId;
 use crate::globals::STRING_INTERNER;
+use crate::hir::builders::FunctionBodyKind;
 use crate::hir::types::checked_declaration::{CheckedDeclaration, CheckedParam, FnType};
 use crate::hir::types::checked_type::LiteralType;
 use crate::hir::types::ordered_number_kind::OrderedNumberKind;
@@ -149,10 +150,23 @@ impl<'ctx> CodeGenerator<'ctx> {
         };
 
         let llvm_fn_type = self.lower_fn_type(&fn_ty);
-        self.module.add_function(&name, llvm_fn_type, None);
+
+        let linkage = match &func.body {
+            FunctionBodyKind::External => Some(Linkage::External),
+            FunctionBodyKind::Internal(_) => None,
+            FunctionBodyKind::NotBuilt => {
+                panic!("INTERNAL COMPILER ERROR: Codegen gen_function_prototype expected either an internal or external function")
+            }
+        };
+
+        self.module.add_function(&name, llvm_fn_type, linkage);
     }
 
     fn gen_function_body(&mut self, func: &'ctx Function) {
+        let FunctionBodyKind::Internal(cfg) = &func.body else {
+            return;
+        };
+
         self.current_fn = Some(func);
 
         let name = STRING_INTERNER.resolve(func.identifier.name);
@@ -164,10 +178,10 @@ impl<'ctx> CodeGenerator<'ctx> {
         let mut phi_nodes: HashMap<ValueId, PhiValue<'ctx>> = HashMap::new();
 
         let entry_bb = self.context.append_basic_block(function, "entry");
-        self.fn_blocks.insert(func.entry_block, entry_bb);
+        self.fn_blocks.insert(cfg.entry_block, entry_bb);
 
-        for id in func.blocks.keys() {
-            if *id == func.entry_block {
+        for id in cfg.blocks.keys() {
+            if *id == cfg.entry_block {
                 continue;
             }
             let bb_name = format!("bb_{}", id.0);
@@ -188,7 +202,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
-        for (id, block) in &func.blocks {
+        for (id, block) in &cfg.blocks {
             self.create_phis_for_block(block, &mut phi_nodes);
 
             let llvm_bb = self.fn_blocks.get(id).unwrap();
@@ -203,7 +217,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             }
         }
 
-        for block in func.blocks.values() {
+        for block in cfg.blocks.values() {
             self.resolve_phis_for_block(block, &phi_nodes);
         }
 

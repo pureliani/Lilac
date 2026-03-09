@@ -4,7 +4,7 @@ use crate::{
         DeclarationId, Span,
     },
     hir::{
-        builders::{Builder, InBlock, ValueId},
+        builders::{Builder, ExpectBody, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{BitCastInstr, Instruction},
         types::{
@@ -111,7 +111,7 @@ impl<'a> Builder<'a, InBlock> {
         evaluated: &[(ValueId, Span)],
     ) {
         let effects = match self.program.declarations.get(&callee_decl_id) {
-            Some(CheckedDeclaration::Function(f)) => f.effects.clone(),
+            Some(CheckedDeclaration::Function(f)) => f.expect_body().effects.clone(),
             _ => return,
         };
 

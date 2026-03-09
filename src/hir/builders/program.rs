@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     ast::{
         decl::{Declaration, FnDecl},
@@ -10,12 +8,12 @@ use crate::{
     compile::ParallelParseResult,
     hir::{
         builders::{
-            BasicBlockId, Builder, Function, FunctionParam, InGlobal, InModule, Module,
+            Builder, Function, FunctionBodyKind, FunctionParam, InGlobal, InModule,
+            Module,
         },
-        types::checked_declaration::{CheckedDeclaration, FunctionEffects},
+        types::checked_declaration::CheckedDeclaration,
         utils::{
             check_type::{check_params, check_type_annotation, TypeCheckerContext},
-            points_to::PointsToGraph,
             scope::ScopeKind,
         },
     },
@@ -118,11 +116,7 @@ impl<'a> Builder<'a, InModule> {
             params: function_params,
             return_type: checked_return_type,
             is_exported: f.is_exported,
-            entry_block: BasicBlockId(0),
-            blocks: HashMap::new(),
-            value_definitions: HashMap::new(),
-            ptg: PointsToGraph::new(),
-            effects: FunctionEffects::default(),
+            body: FunctionBodyKind::NotBuilt,
         };
 
         self.program

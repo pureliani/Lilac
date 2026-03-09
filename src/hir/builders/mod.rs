@@ -59,6 +59,23 @@ pub struct FunctionParam {
 }
 
 #[derive(Debug, Clone)]
+pub struct FunctionCFG {
+    pub entry_block: BasicBlockId,
+    pub blocks: HashMap<BasicBlockId, BasicBlock>,
+
+    pub value_definitions: HashMap<ValueId, BasicBlockId>,
+    pub ptg: PointsToGraph,
+    pub effects: FunctionEffects,
+}
+
+#[derive(Debug, Clone)]
+pub enum FunctionBodyKind {
+    Internal(FunctionCFG),
+    External,
+    NotBuilt,
+}
+
+#[derive(Debug, Clone)]
 pub struct Function {
     // Signature
     pub id: DeclarationId,
@@ -67,13 +84,32 @@ pub struct Function {
     pub return_type: SpannedType,
     pub is_exported: bool,
 
-    // CFG
-    pub entry_block: BasicBlockId,
-    pub blocks: HashMap<BasicBlockId, BasicBlock>,
+    pub body: FunctionBodyKind,
+}
 
-    pub value_definitions: HashMap<ValueId, BasicBlockId>,
-    pub ptg: PointsToGraph,
-    pub effects: FunctionEffects,
+pub trait ExpectBody {
+    type Output;
+    fn expect_body(self) -> Self::Output;
+}
+
+impl<'a> ExpectBody for &'a Function {
+    type Output = &'a FunctionCFG;
+    fn expect_body(self) -> Self::Output {
+        match &self.body {
+            FunctionBodyKind::Internal(cfg) => cfg,
+            _ => panic!("INTERNAL COMPILER ERROR: Expected internal function"),
+        }
+    }
+}
+
+impl<'a> ExpectBody for &'a mut Function {
+    type Output = &'a mut FunctionCFG;
+    fn expect_body(self) -> Self::Output {
+        match &mut self.body {
+            FunctionBodyKind::Internal(cfg) => cfg,
+            _ => panic!("INTERNAL COMPILER ERROR: Expected internal function"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

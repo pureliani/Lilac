@@ -1,7 +1,10 @@
 use crate::{
     globals::STRING_INTERNER,
     hir::{
-        builders::{BasicBlockId, Function, Program, ValueId},
+        builders::{
+            BasicBlockId, ExpectBody, Function, FunctionBodyKind, FunctionCFG, Program,
+            ValueId,
+        },
         instructions::{
             BinaryInstr, CallInstr, CompInstr, ConstInstr, Instruction, ListInstr,
             SelectInstr, StructInstr, Terminator, UnaryInstr, UnionInstr,
@@ -22,33 +25,41 @@ fn find_blocks(f: &Function) -> Vec<BasicBlockId> {
     let mut queue = VecDeque::new();
     let mut expanded = std::collections::HashSet::new();
 
-    queue.push_back(f.entry_block);
+    if let FunctionBodyKind::Internal(FunctionCFG {
+        entry_block: f_entry_block,
+        blocks: f_blocks,
+        ..
+    }) = &f.body
+    {
+        queue.push_back(*f_entry_block);
 
-    while let Some(bid) = queue.pop_front() {
-        blocks.retain(|&id| id != bid);
-        blocks.push(bid);
+        while let Some(bid) = queue.pop_front() {
+            blocks.retain(|&id| id != bid);
+            blocks.push(bid);
 
-        if expanded.insert(bid) {
-            if let Some(bb) = f.blocks.get(&bid) {
-                if let Some(terminator) = &bb.terminator {
-                    match terminator {
-                        Terminator::Jump { target, .. } => {
-                            queue.push_back(*target);
+            if expanded.insert(bid) {
+                if let Some(bb) = f_blocks.get(&bid) {
+                    if let Some(terminator) = &bb.terminator {
+                        match terminator {
+                            Terminator::Jump { target, .. } => {
+                                queue.push_back(*target);
+                            }
+                            Terminator::CondJump {
+                                true_target,
+                                false_target,
+                                ..
+                            } => {
+                                queue.push_back(*true_target);
+                                queue.push_back(*false_target);
+                            }
+                            _ => {}
                         }
-                        Terminator::CondJump {
-                            true_target,
-                            false_target,
-                            ..
-                        } => {
-                            queue.push_back(*true_target);
-                            queue.push_back(*false_target);
-                        }
-                        _ => {}
                     }
                 }
             }
         }
     }
+
     blocks
 }
 
@@ -76,7 +87,7 @@ fn dump_function(f: &Function, p: &Program, out: &mut String) {
 }
 
 pub fn dump_block(block_id: &BasicBlockId, f: &Function, p: &Program, out: &mut String) {
-    let bb = f.blocks.get(block_id).unwrap();
+    let bb = f.expect_body().blocks.get(block_id).unwrap();
     writeln!(out, "  block_{}:", bb.id.0).unwrap();
 
     writeln!(out, "    predecessors {{ ").unwrap();

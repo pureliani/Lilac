@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::{
     globals::next_block_id,
     hir::{
-        builders::{BasicBlock, BasicBlockId, Builder, InFunction},
+        builders::{BasicBlock, BasicBlockId, Builder, ExpectBody, InFunction},
         types::checked_declaration::CheckedDeclaration,
     },
 };
@@ -38,7 +38,7 @@ impl<'a> Builder<'a, InFunction> {
             _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
         };
 
-        func.blocks.insert(id, bb);
+        func.expect_body().blocks.insert(id, bb);
 
         id
     }

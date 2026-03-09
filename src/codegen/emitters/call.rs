@@ -4,7 +4,7 @@ use crate::{
     codegen::CodeGenerator,
     globals::STRING_INTERNER,
     hir::{
-        builders::ValueId,
+        builders::{FunctionBodyKind, ValueId},
         instructions::{CallInstr, ConstInstr, Instruction},
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
     },
@@ -53,8 +53,14 @@ impl<'ctx> CodeGenerator<'ctx> {
     fn resolve_const_fn(&self, value_id: ValueId) -> Option<FunctionValue<'ctx>> {
         let func = self.current_fn?;
 
-        let block_id = func.value_definitions.get(&value_id)?;
-        let block = func.blocks.get(block_id)?;
+        let cfg = match &func.body {
+            FunctionBodyKind::Internal(cfg) => cfg,
+            FunctionBodyKind::External => return None,
+            FunctionBodyKind::NotBuilt => panic!("INTERNAL COMPILER ERROR: resolve_const_fn expected either internal or external function"),
+        };
+
+        let block_id = cfg.value_definitions.get(&value_id)?;
+        let block = cfg.blocks.get(block_id)?;
 
         for instr in &block.instructions {
             if let Instruction::Const(ConstInstr::ConstFn { dest, decl_id }) = instr {
