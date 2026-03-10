@@ -187,8 +187,14 @@ impl<'ctx> CodeGenerator<'ctx> {
 
 impl<'ctx> CodeGenerator<'ctx> {
     fn emit_list_get(&mut self, dest: ValueId, list: ValueId, index: ValueId) {
-        let list_ptr = self.get_val_strict(list).into_pointer_value();
-        let idx_val = self.get_val_strict(index).into_int_value();
+        let dest_ty = self.program.value_types.get(&dest).unwrap().clone();
+
+        if self.lower_type(&dest_ty).is_none() {
+            return;
+        }
+
+        let list_ptr = self.get_val(list).unwrap().into_pointer_value();
+        let idx_val = self.get_val(index).unwrap().into_int_value();
         let header_type = self.get_list_header_layout();
 
         let len = self.load_list_len(list_ptr, header_type);
@@ -197,9 +203,8 @@ impl<'ctx> CodeGenerator<'ctx> {
             .build_int_compare(IntPredicate::ULT, idx_val, len, "in_bounds")
             .unwrap();
 
-        let dest_ty = self.program.value_types.get(&dest).unwrap().clone();
-        let variants = dest_ty
-            .get_narrowed_variants()
+        let dest_base_variants = dest_ty
+            .get_base_variants()
             .expect("INTERNAL COMPILER ERROR: List Get dest must be a union");
 
         let list_ty = self.program.value_types.get(&list).unwrap();
@@ -208,11 +213,11 @@ impl<'ctx> CodeGenerator<'ctx> {
         };
         let elem_ty = &inner.kind;
 
-        let null_tag = self.find_variant_tag(variants, &Type::Null);
-        let (union_llvm_ty, _) = self.get_union_layout(variants);
+        let null_tag = self.find_variant_tag(dest_base_variants, &Type::Null);
+        let (union_llvm_ty, _) = self.get_union_layout(dest_base_variants);
 
         if self.lower_type(elem_ty).is_none() {
-            let elem_tag = self.find_variant_tag(variants, elem_ty);
+            let elem_tag = self.find_variant_tag(dest_base_variants, elem_ty);
             let selected_tag = self
                 .builder
                 .build_select(
@@ -240,16 +245,16 @@ impl<'ctx> CodeGenerator<'ctx> {
             |cg| {
                 let elem_val = cg.load_element_at(data_ptr, idx_val, elem_llvm_ty);
 
-                if let Some(elem_variants) = elem_ty.get_narrowed_variants() {
+                if let Some(elem_base_variants) = elem_ty.get_base_variants() {
                     let mut mapping: Vec<(u64, u64)> = Vec::new();
-                    for (old_idx, sv) in elem_variants.iter().enumerate() {
-                        let new_idx = cg.find_variant_tag(variants, sv);
+                    for (old_idx, sv) in elem_base_variants.iter().enumerate() {
+                        let new_idx = cg.find_variant_tag(dest_base_variants, sv);
                         mapping.push((old_idx.try_into().unwrap(), new_idx));
                     }
                     cg.retag_union(elem_val.into_struct_value(), union_llvm_ty, &mapping)
                         .into()
                 } else {
-                    let elem_tag = cg.find_variant_tag(variants, elem_ty);
+                    let elem_tag = cg.find_variant_tag(dest_base_variants, elem_ty);
                     cg.pack_union_variant(elem_val, elem_tag, union_llvm_ty)
                         .into()
                 }
@@ -270,8 +275,8 @@ impl<'ctx> CodeGenerator<'ctx> {
             return;
         }
 
-        let list_ptr = self.get_val_strict(list).into_pointer_value();
-        let idx_val = self.get_val_strict(index).into_int_value();
+        let list_ptr = self.get_val(list).unwrap().into_pointer_value();
+        let idx_val = self.get_val(index).unwrap().into_int_value();
         let header_type = self.get_list_header_layout();
 
         let data_ptr = self.load_list_data_ptr(list_ptr, header_type);
@@ -291,7 +296,7 @@ impl<'ctx> CodeGenerator<'ctx> {
         value: ValueId,
     ) {
         let val_ty = self.program.value_types.get(&value).unwrap();
-        let list_val = self.get_val_strict(list);
+        let list_val = self.get_val(list).unwrap();
 
         if self.lower_type(val_ty).is_none() {
             // ZST - store is a no-op, dest aliases the same list
@@ -300,8 +305,8 @@ impl<'ctx> CodeGenerator<'ctx> {
         }
 
         let list_ptr = list_val.into_pointer_value();
-        let idx_val = self.get_val_strict(index).into_int_value();
-        let new_val = self.get_val_strict(value);
+        let idx_val = self.get_val(index).unwrap().into_int_value();
+        let new_val = self.get_val(value).unwrap();
 
         let header_type = self.get_list_header_layout();
         let data_ptr = self.load_list_data_ptr(list_ptr, header_type);
@@ -315,7 +320,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
 impl<'ctx> CodeGenerator<'ctx> {
     fn emit_list_len(&mut self, dest: ValueId, list: ValueId) {
-        let list_ptr = self.get_val_strict(list).into_pointer_value();
+        let list_ptr = self.get_val(list).unwrap().into_pointer_value();
         let header_type = self.get_list_header_layout();
         let len = self.load_list_len(list_ptr, header_type);
         self.fn_values.insert(dest, len.into());

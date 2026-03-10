@@ -14,9 +14,14 @@ impl<'ctx> CodeGenerator<'ctx> {
             return;
         }
 
-        let src_val = self.get_val_strict(*src);
         let dest_ty = self.program.value_types.get(dest).unwrap();
-        let dest_llvm_ty = self.lower_type(dest_ty).unwrap();
+
+        let dest_llvm_ty = match self.lower_type(dest_ty) {
+            Some(ty) => ty,
+            None => return,
+        };
+
+        let src_val_opt = self.get_val(*src);
 
         let result = match op {
             Adjustment::Identity => unreachable!(),
@@ -24,7 +29,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Adjustment::SExt => self
                 .builder
                 .build_int_cast_sign_flag(
-                    src_val.into_int_value(),
+                    src_val_opt.unwrap().into_int_value(),
                     dest_llvm_ty.into_int_type(),
                     true,
                     "sext",
@@ -35,7 +40,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Adjustment::ZExt => self
                 .builder
                 .build_int_cast_sign_flag(
-                    src_val.into_int_value(),
+                    src_val_opt.unwrap().into_int_value(),
                     dest_llvm_ty.into_int_type(),
                     false,
                     "zext",
@@ -46,7 +51,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Adjustment::Trunc => self
                 .builder
                 .build_int_truncate(
-                    src_val.into_int_value(),
+                    src_val_opt.unwrap().into_int_value(),
                     dest_llvm_ty.into_int_type(),
                     "trunc",
                 )
@@ -56,7 +61,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Adjustment::FExt => self
                 .builder
                 .build_float_ext(
-                    src_val.into_float_value(),
+                    src_val_opt.unwrap().into_float_value(),
                     dest_llvm_ty.into_float_type(),
                     "fext",
                 )
@@ -66,7 +71,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Adjustment::FTrunc => self
                 .builder
                 .build_float_trunc(
-                    src_val.into_float_value(),
+                    src_val_opt.unwrap().into_float_value(),
                     dest_llvm_ty.into_float_type(),
                     "ftrunc",
                 )
@@ -76,7 +81,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Adjustment::SIToF => self
                 .builder
                 .build_signed_int_to_float(
-                    src_val.into_int_value(),
+                    src_val_opt.unwrap().into_int_value(),
                     dest_llvm_ty.into_float_type(),
                     "sitof",
                 )
@@ -86,7 +91,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Adjustment::UIToF => self
                 .builder
                 .build_unsigned_int_to_float(
-                    src_val.into_int_value(),
+                    src_val_opt.unwrap().into_int_value(),
                     dest_llvm_ty.into_float_type(),
                     "uitof",
                 )
@@ -96,7 +101,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Adjustment::FToSI => self
                 .builder
                 .build_float_to_signed_int(
-                    src_val.into_float_value(),
+                    src_val_opt.unwrap().into_float_value(),
                     dest_llvm_ty.into_int_type(),
                     "ftosi",
                 )
@@ -106,7 +111,7 @@ impl<'ctx> CodeGenerator<'ctx> {
             Adjustment::FToUI => self
                 .builder
                 .build_float_to_unsigned_int(
-                    src_val.into_float_value(),
+                    src_val_opt.unwrap().into_float_value(),
                     dest_llvm_ty.into_int_type(),
                     "ftoui",
                 )
@@ -115,8 +120,15 @@ impl<'ctx> CodeGenerator<'ctx> {
 
             Adjustment::WrapInUnion(tag_index) => {
                 let union_llvm_ty = dest_llvm_ty.into_struct_type();
-                self.pack_union_variant(src_val, *tag_index as u64, union_llvm_ty)
-                    .into()
+
+                if let Some(src_val) = src_val_opt {
+                    self.pack_union_variant(src_val, *tag_index as u64, union_llvm_ty)
+                        .into()
+                } else {
+                    let tag_val =
+                        self.context.i16_type().const_int(*tag_index as u64, false);
+                    self.build_zst_union(tag_val, union_llvm_ty).into()
+                }
             }
 
             Adjustment::UnwrapUnion => {
@@ -125,20 +137,19 @@ impl<'ctx> CodeGenerator<'ctx> {
                     .unwrap()
                     .into_struct_type();
                 self.unpack_union_variant(
-                    src_val.into_struct_value(),
+                    src_val_opt.unwrap().into_struct_value(),
                     dest_llvm_ty,
                     union_llvm_ty,
                 )
             }
 
             Adjustment::ReTagUnion(mapping) => {
-                let src_struct = src_val.into_struct_value();
+                let src_struct = src_val_opt.unwrap().into_struct_value();
                 let dest_struct_ty = dest_llvm_ty.into_struct_type();
                 self.retag_union(src_struct, dest_struct_ty, mapping).into()
             }
 
-            Adjustment::CoerceStruct { field_adjustments } => {
-                // TODO: implement per-field recursive casting
+            Adjustment::CoerceStruct { .. } => {
                 todo!("CoerceStruct not yet implemented")
             }
         };

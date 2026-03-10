@@ -38,18 +38,18 @@ pub enum Adjustment {
 
 /// Computes the adjustment needed to convert `source_type` to `target_type`
 pub fn compute_type_adjustment(
-    source: &Type,
+    original_source: &Type,
     target: &Type,
     is_explicit: bool,
 ) -> Result<Adjustment, AdjustmentError> {
-    if source == target {
+    if original_source == target {
         return Ok(Adjustment::Identity);
     }
 
-    let source = if let Type::Literal(lit) = source {
+    let source = if let Type::Literal(lit) = original_source {
         lit.widen()
     } else {
-        source
+        original_source
     };
 
     if source == target {
@@ -98,14 +98,14 @@ pub fn compute_type_adjustment(
         };
     }
 
-    if let Type::Union { narrowed, .. } = source {
+    if let Type::Union { narrowed, .. } = original_source {
         if narrowed.len() == 1 && narrowed.contains(target) {
             return Ok(Adjustment::UnwrapUnion);
         }
     }
 
     if let (Some(source_narrowed), Some(target_narrowed)) = (
-        source.get_narrowed_variants(),
+        original_source.get_narrowed_variants(),
         target.get_narrowed_variants(),
     ) {
         let mut all_mapped = true;
@@ -117,12 +117,12 @@ pub fn compute_type_adjustment(
         }
 
         if all_mapped {
-            let source_base = source.get_base_variants().unwrap();
+            let source_base = original_source.get_base_variants().unwrap();
             let target_base = target.get_base_variants().unwrap();
             let mut mapping = Vec::new();
 
             for (old_idx, sv) in source_base.iter().enumerate() {
-                if let Some(new_idx) = target_base.iter().position(|tv| sv == tv) {
+                if let Some(new_idx) = target_base.iter().position(|tv| tv == sv) {
                     mapping.push((old_idx as u64, new_idx as u64));
                 }
             }
@@ -131,6 +131,16 @@ pub fn compute_type_adjustment(
     }
 
     if let Some(target_base) = target.get_base_variants() {
+        if let Some(idx) = target_base.iter().position(|v| v == original_source) {
+            if target
+                .get_narrowed_variants()
+                .unwrap()
+                .contains(original_source)
+            {
+                return Ok(Adjustment::WrapInUnion(idx));
+            }
+        }
+
         if let Some(idx) = target_base.iter().position(|v| v == source) {
             if target.get_narrowed_variants().unwrap().contains(source) {
                 return Ok(Adjustment::WrapInUnion(idx));
@@ -138,7 +148,7 @@ pub fn compute_type_adjustment(
         }
     }
 
-    if let (Type::Struct(s_fields), Type::Struct(t_fields)) = (&source, target) {
+    if let (Type::Struct(s_fields), Type::Struct(t_fields)) = (original_source, target) {
         if s_fields.len() == t_fields.len() {
             let mut field_adjustments = Vec::new();
             let mut possible = true;
