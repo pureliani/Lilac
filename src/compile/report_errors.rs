@@ -7,7 +7,7 @@ use crate::{
     ast::{ModulePath, Span},
     compile::{Compiler, CompilerErrorKind},
     globals::STRING_INTERNER,
-    hir::{
+    mir::{
         errors::SemanticErrorKind,
         utils::type_to_string::{token_kind_to_string, type_to_string},
     },

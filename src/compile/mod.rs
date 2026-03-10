@@ -17,7 +17,7 @@ use crate::{
         ModulePath, Span,
     },
     compile::file_cache::FileCache,
-    hir::{
+    mir::{
         builders::{Builder, InGlobal, Program},
         errors::SemanticError,
         utils::{

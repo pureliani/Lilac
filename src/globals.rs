@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::ast::DeclarationId;
 use crate::compile::interner::{SharedStringInterner, SharedTagInterner, StringId};
-use crate::hir::builders::{BasicBlockId, ConstantId, ValueId};
+use crate::mir::builders::{BasicBlockId, ConstantId, ValueId};
 
 pub struct CommonIdentifiers {
     pub ptr: StringId,
