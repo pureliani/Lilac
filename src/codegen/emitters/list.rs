@@ -202,17 +202,17 @@ impl<'ctx> CodeGenerator<'ctx> {
             .get_union_variants()
             .expect("INTERNAL COMPILER ERROR: List Get dest must be a union");
 
-        let null_tag = self.find_variant_tag(variants, &Type::Null);
-        let elem_variant = variants
-            .iter()
-            .find(|v| !matches!(v, Type::Null))
-            .unwrap()
-            .clone();
-        let elem_tag = self.find_variant_tag(variants, &elem_variant);
+        let list_ty = self.program.value_types.get(&list).unwrap();
+        let Type::List(inner) = list_ty else {
+            unreachable!()
+        };
+        let elem_ty = &inner.kind;
 
+        let null_tag = self.find_variant_tag(variants, &Type::Null);
         let (union_llvm_ty, _) = self.get_union_layout(variants);
 
-        if self.lower_type(&elem_variant).is_none() {
+        if self.lower_type(elem_ty).is_none() {
+            let elem_tag = self.find_variant_tag(variants, elem_ty);
             let selected_tag = self
                 .builder
                 .build_select(
@@ -231,7 +231,7 @@ impl<'ctx> CodeGenerator<'ctx> {
 
         // Non-ZST, branch on bounds
         let data_ptr = self.load_list_data_ptr(list_ptr, header_type);
-        let elem_llvm_ty = self.lower_type(&elem_variant).unwrap();
+        let elem_llvm_ty = self.lower_type(elem_ty).unwrap();
         let null_tag_val = self.context.i16_type().const_int(null_tag, false);
 
         let result = self.build_conditional_value(
@@ -239,8 +239,20 @@ impl<'ctx> CodeGenerator<'ctx> {
             union_llvm_ty.into(),
             |cg| {
                 let elem_val = cg.load_element_at(data_ptr, idx_val, elem_llvm_ty);
-                cg.pack_union_variant(elem_val, elem_tag, union_llvm_ty)
-                    .into()
+
+                if let Some(elem_variants) = elem_ty.get_union_variants() {
+                    let mut mapping: Vec<(u64, u64)> = Vec::new();
+                    for (old_idx, sv) in elem_variants.iter().enumerate() {
+                        let new_idx = cg.find_variant_tag(variants, sv);
+                        mapping.push((old_idx.try_into().unwrap(), new_idx));
+                    }
+                    cg.retag_union(elem_val.into_struct_value(), union_llvm_ty, &mapping)
+                        .into()
+                } else {
+                    let elem_tag = cg.find_variant_tag(variants, elem_ty);
+                    cg.pack_union_variant(elem_val, elem_tag, union_llvm_ty)
+                        .into()
+                }
             },
             |cg| cg.build_zst_union(null_tag_val, union_llvm_ty).into(),
             "get",

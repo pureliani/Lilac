@@ -117,11 +117,18 @@ impl<'a> Builder<'a, InBlock> {
 
             let result_type = Type::make_union(type_entries);
 
-            let phi_id = self.new_value_id(result_type);
-            let phi_sources: HashSet<PhiSource> = branch_results
-                .into_iter()
-                .map(|(block, value, _)| PhiSource { from: block, value })
-                .collect();
+            let phi_id = self.new_value_id(result_type.clone());
+            let mut phi_sources: HashSet<PhiSource> = HashSet::new();
+
+            for (block, value, span) in branch_results {
+                let adjusted_val =
+                    self.adjust_phi_source_value(block, value, result_type.clone(), span);
+                phi_sources.insert(PhiSource {
+                    from: block,
+                    value: adjusted_val,
+                });
+            }
+
             self.insert_phi(merge_block_id, phi_id, phi_sources);
             phi_id
         } else {

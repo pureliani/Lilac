@@ -169,6 +169,89 @@ impl<'ctx> CodeGenerator<'ctx> {
         phi.as_basic_value()
     }
 
+    pub fn retag_union(
+        &mut self,
+        src_val: StructValue<'ctx>,
+        dest_llvm_ty: StructType<'ctx>,
+        mapping: &[(u64, u64)],
+    ) -> StructValue<'ctx> {
+        let old_tag = self.extract_union_tag(src_val);
+        let new_tag = self.emit_tag_switch(old_tag, mapping);
+
+        let src_size = self
+            .target_machine
+            .get_target_data()
+            .get_abi_size(&src_val.get_type());
+        let dest_size = self
+            .target_machine
+            .get_target_data()
+            .get_abi_size(&dest_llvm_ty);
+        let max_size = src_size.max(dest_size);
+
+        let i8_array_ty = self.context.i8_type().array_type(max_size as u32);
+        let alloca = self.builder.build_alloca(i8_array_ty, "retag_buf").unwrap();
+
+        self.builder.build_store(alloca, src_val).unwrap();
+        self.builder.build_store(alloca, new_tag).unwrap();
+
+        self.builder
+            .build_load(dest_llvm_ty, alloca, "retagged")
+            .unwrap()
+            .into_struct_value()
+    }
+
+    pub fn emit_tag_switch(
+        &mut self,
+        old_tag: IntValue<'ctx>,
+        mapping: &[(u64, u64)],
+    ) -> IntValue<'ctx> {
+        let fn_name = STRING_INTERNER.resolve(self.current_fn.unwrap().identifier.name);
+        let current_fn = self.module.get_function(&fn_name).unwrap();
+
+        let switch_bb = self.builder.get_insert_block().unwrap();
+        let merge_bb = self.context.append_basic_block(current_fn, "tag_map_merge");
+        let default_bb = self
+            .context
+            .append_basic_block(current_fn, "tag_map_default");
+
+        self.builder.position_at_end(default_bb);
+        self.builder.build_unreachable().unwrap();
+
+        let mut cases = Vec::with_capacity(mapping.len());
+        let mut incoming_phis = Vec::with_capacity(mapping.len());
+
+        for (old_idx, new_idx) in mapping {
+            let case_bb = self.context.append_basic_block(
+                current_fn,
+                &format!("map_{}_to_{}", old_idx, new_idx),
+            );
+            self.builder.position_at_end(case_bb);
+
+            let new_tag_val = self.context.i16_type().const_int(*new_idx, false);
+            self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+            cases.push((self.context.i16_type().const_int(*old_idx, false), case_bb));
+            incoming_phis.push((new_tag_val, case_bb));
+        }
+
+        self.builder.position_at_end(switch_bb);
+        self.builder
+            .build_switch(old_tag, default_bb, &cases)
+            .unwrap();
+
+        self.builder.position_at_end(merge_bb);
+        let phi = self
+            .builder
+            .build_phi(self.context.i16_type(), "remapped_tag")
+            .unwrap();
+
+        for (val, bb) in incoming_phis {
+            phi.add_incoming(&[(&val, bb)]);
+        }
+
+        phi.as_basic_value().into_int_value()
+    }
+
     pub fn extract_union_tag(&self, union_val: StructValue<'ctx>) -> IntValue<'ctx> {
         self.builder
             .build_extract_value(union_val, 0, "tag")

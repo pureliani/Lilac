@@ -1,0 +1,34 @@
+error[S10]: Type mismatch
+  ┌─ /home/gabriel/Desktop/Lilac/code.li:5:24
+  │
+1 │ 
+2 │ type Arg = { value: string | i32 };
+3 │ 
+4 │ fn main() {
+5 │     let x = if 1 > 2 { 1 } else { "hello" };
+  │                        ^
+  │                        │
+  │                        Expected `1i32 | hello`, found `1i32`
+6 │ 
+7 │ 
+8 │ 
+9 │ }
+10 │ 
+
+error[S10]: Type mismatch
+  ┌─ /home/gabriel/Desktop/Lilac/code.li:5:35
+  │
+1 │ 
+2 │ type Arg = { value: string | i32 };
+3 │ 
+4 │ fn main() {
+5 │     let x = if 1 > 2 { 1 } else { "hello" };
+  │                                   ^^^^^^^
+  │                                   │
+  │                                   Expected `1i32 | hello`, found `hello`
+6 │ 
+7 │ 
+8 │ 
+9 │ }
+10 │ 
+

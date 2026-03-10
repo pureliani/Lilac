@@ -296,7 +296,7 @@ impl<'a> Builder<'a, InBlock> {
         self.ptg.merge_values(phi_id, &source_values);
     }
 
-    fn adjust_phi_source_value(
+    pub fn adjust_phi_source_value(
         &mut self,
         block_id: BasicBlockId,
         src: ValueId,

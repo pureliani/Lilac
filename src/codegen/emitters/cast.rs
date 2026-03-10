@@ -1,8 +1,5 @@
-use inkwell::values::IntValue;
-
 use crate::{
     codegen::CodeGenerator,
-    globals::STRING_INTERNER,
     hir::{instructions::CastInstr, utils::check_assignable::Adjustment},
 };
 
@@ -136,27 +133,8 @@ impl<'ctx> CodeGenerator<'ctx> {
 
             Adjustment::ReTagUnion(mapping) => {
                 let src_struct = src_val.into_struct_value();
-                let old_tag = self.extract_union_tag(src_struct);
-                let new_tag = self.emit_tag_switch(old_tag, mapping);
-
                 let dest_struct_ty = dest_llvm_ty.into_struct_type();
-                let payload = self
-                    .builder
-                    .build_extract_value(src_struct, 1, "payload")
-                    .unwrap();
-
-                let mut result = dest_struct_ty.get_undef();
-                result = self
-                    .builder
-                    .build_insert_value(result, new_tag, 0, "new_tag")
-                    .unwrap()
-                    .into_struct_value();
-                result = self
-                    .builder
-                    .build_insert_value(result, payload, 1, "keep_payload")
-                    .unwrap()
-                    .into_struct_value();
-                result.into()
+                self.retag_union(src_struct, dest_struct_ty, mapping).into()
             }
 
             Adjustment::CoerceStruct { field_adjustments } => {
@@ -166,57 +144,5 @@ impl<'ctx> CodeGenerator<'ctx> {
         };
 
         self.fn_values.insert(*dest, result);
-    }
-
-    pub fn emit_tag_switch(
-        &mut self,
-        old_tag: IntValue<'ctx>,
-        mapping: &[(u64, u64)],
-    ) -> IntValue<'ctx> {
-        let fn_name = STRING_INTERNER.resolve(self.current_fn.unwrap().identifier.name);
-        let current_fn = self.module.get_function(&fn_name).unwrap();
-
-        let switch_bb = self.builder.get_insert_block().unwrap();
-        let merge_bb = self.context.append_basic_block(current_fn, "tag_map_merge");
-        let default_bb = self
-            .context
-            .append_basic_block(current_fn, "tag_map_default");
-
-        self.builder.position_at_end(default_bb);
-        self.builder.build_unreachable().unwrap();
-
-        let mut cases = Vec::with_capacity(mapping.len());
-        let mut incoming_phis = Vec::with_capacity(mapping.len());
-
-        for (old_idx, new_idx) in mapping {
-            let case_bb = self.context.append_basic_block(
-                current_fn,
-                &format!("map_{}_to_{}", old_idx, new_idx),
-            );
-            self.builder.position_at_end(case_bb);
-
-            let new_tag_val = self.context.i16_type().const_int(*new_idx, false);
-            self.builder.build_unconditional_branch(merge_bb).unwrap();
-
-            cases.push((self.context.i16_type().const_int(*old_idx, false), case_bb));
-            incoming_phis.push((new_tag_val, case_bb));
-        }
-
-        self.builder.position_at_end(switch_bb);
-        self.builder
-            .build_switch(old_tag, default_bb, &cases)
-            .unwrap();
-
-        self.builder.position_at_end(merge_bb);
-        let phi = self
-            .builder
-            .build_phi(self.context.i16_type(), "remapped_tag")
-            .unwrap();
-
-        for (val, bb) in incoming_phis {
-            phi.add_incoming(&[(&val, bb)]);
-        }
-
-        phi.as_basic_value().into_int_value()
     }
 }
