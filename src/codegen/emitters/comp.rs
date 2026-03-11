@@ -2,7 +2,7 @@ use inkwell::{values::BasicValueEnum, FloatPredicate, IntPredicate};
 
 use crate::{
     codegen::CodeGenerator,
-    hir::{builders::ValueId, instructions::CompInstr, utils::numeric::is_signed},
+    mir::{builders::ValueId, instructions::CompInstr, utils::numeric::is_signed},
 };
 
 impl<'ctx> CodeGenerator<'ctx> {

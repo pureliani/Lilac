@@ -9,7 +9,7 @@ use crate::{
         Span,
     },
     globals::STRING_INTERNER,
-    hir::types::{checked_type::LiteralType, ordered_number_kind::OrderedNumberKind},
+    mir::types::{checked_type::LiteralType, ordered_number_kind::OrderedNumberKind},
     tokenize::{KeywordKind, PunctuationKind, TokenKind},
 };
 

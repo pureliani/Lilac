@@ -60,7 +60,7 @@ use crate::{
     },
     compile::file_cache::FileCache,
     globals::STRING_INTERNER,
-    hir::{
+    mir::{
         builders::{Builder, InGlobal, Program},
         errors::SemanticError,
         utils::{

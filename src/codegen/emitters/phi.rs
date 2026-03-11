@@ -4,7 +4,7 @@ use inkwell::values::PhiValue;
 
 use crate::{
     codegen::CodeGenerator,
-    hir::builders::{BasicBlock, ValueId},
+    mir::builders::{BasicBlock, ValueId},
 };
 
 impl<'ctx> CodeGenerator<'ctx> {

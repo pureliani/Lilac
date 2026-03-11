@@ -2,7 +2,7 @@ use inkwell::values::BasicValueEnum;
 
 use crate::{
     codegen::CodeGenerator,
-    hir::{builders::ValueId, instructions::BinaryInstr, utils::numeric::is_signed},
+    mir::{builders::ValueId, instructions::BinaryInstr, utils::numeric::is_signed},
 };
 
 impl<'ctx> CodeGenerator<'ctx> {

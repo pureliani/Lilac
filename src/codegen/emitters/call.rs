@@ -3,7 +3,7 @@ use inkwell::values::{BasicMetadataValueEnum, FunctionValue};
 use crate::{
     codegen::CodeGenerator,
     globals::STRING_INTERNER,
-    hir::{
+    mir::{
         builders::{FunctionBodyKind, ValueId},
         instructions::{CallInstr, ConstInstr, Instruction},
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},

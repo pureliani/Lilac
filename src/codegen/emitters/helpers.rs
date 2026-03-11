@@ -6,7 +6,7 @@ use inkwell::{
 };
 
 use crate::{
-    codegen::CodeGenerator, globals::STRING_INTERNER, hir::types::checked_type::Type,
+    codegen::CodeGenerator, globals::STRING_INTERNER, mir::types::checked_type::Type,
 };
 
 impl<'ctx> CodeGenerator<'ctx> {

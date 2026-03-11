@@ -5,7 +5,7 @@ use inkwell::IntPredicate;
 
 use crate::{
     codegen::CodeGenerator,
-    hir::{instructions::UnionInstr, types::checked_type::Type},
+    mir::{instructions::UnionInstr, types::checked_type::Type},
 };
 
 impl<'ctx> CodeGenerator<'ctx> {

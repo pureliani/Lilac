@@ -2,7 +2,7 @@ use inkwell::values::BasicValue;
 
 use crate::{
     codegen::CodeGenerator,
-    hir::{instructions::StructInstr, types::checked_type::Type},
+    mir::{instructions::StructInstr, types::checked_type::Type},
 };
 
 impl<'ctx> CodeGenerator<'ctx> {

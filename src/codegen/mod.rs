@@ -12,11 +12,11 @@ use inkwell::values::{BasicValueEnum, PhiValue};
 
 use crate::compile::interner::StringId;
 use crate::globals::STRING_INTERNER;
-use crate::hir::builders::FunctionBodyKind;
-use crate::hir::types::checked_declaration::{CheckedDeclaration, CheckedParam, FnType};
-use crate::hir::types::checked_type::LiteralType;
-use crate::hir::types::ordered_number_kind::OrderedNumberKind;
-use crate::hir::{
+use crate::mir::builders::FunctionBodyKind;
+use crate::mir::types::checked_declaration::{CheckedDeclaration, CheckedParam, FnType};
+use crate::mir::types::checked_type::LiteralType;
+use crate::mir::types::ordered_number_kind::OrderedNumberKind;
+use crate::mir::{
     builders::{BasicBlockId, Function, Program, ValueId},
     instructions::{Instruction, Terminator},
     types::checked_type::Type,

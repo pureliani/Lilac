@@ -1,7 +1,7 @@
 use crate::{
     codegen::CodeGenerator,
     globals::STRING_INTERNER,
-    hir::{instructions::Terminator, types::checked_type::Type},
+    mir::{instructions::Terminator, types::checked_type::Type},
 };
 
 impl<'ctx> CodeGenerator<'ctx> {

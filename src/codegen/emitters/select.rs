@@ -1,4 +1,4 @@
-use crate::{codegen::CodeGenerator, hir::instructions::SelectInstr};
+use crate::{codegen::CodeGenerator, mir::instructions::SelectInstr};
 
 impl<'ctx> CodeGenerator<'ctx> {
     pub fn emit_select(&mut self, instr: &SelectInstr) {

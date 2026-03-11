@@ -1,6 +1,6 @@
 use inkwell::values::BasicValueEnum;
 
-use crate::{codegen::CodeGenerator, hir::instructions::UnaryInstr};
+use crate::{codegen::CodeGenerator, mir::instructions::UnaryInstr};
 
 impl<'ctx> CodeGenerator<'ctx> {
     pub fn emit_unary(&mut self, instr: &UnaryInstr) {

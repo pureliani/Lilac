@@ -1,6 +1,6 @@
 use crate::{
     ast::{IdentifierNode, Span},
-    hir::types::checked_type::LiteralType,
+    mir::types::checked_type::LiteralType,
 };
 
 use super::decl::Param;

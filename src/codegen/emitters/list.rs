@@ -6,7 +6,7 @@ use inkwell::{
 
 use crate::{
     codegen::CodeGenerator,
-    hir::{builders::ValueId, instructions::ListInstr, types::checked_type::Type},
+    mir::{builders::ValueId, instructions::ListInstr, types::checked_type::Type},
 };
 
 const DATA_PTR_FIELD_INDEX: u32 = 0;

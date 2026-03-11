@@ -1,7 +1,7 @@
 use crate::{
     codegen::CodeGenerator,
     globals::STRING_INTERNER,
-    hir::{
+    mir::{
         instructions::ConstInstr,
         types::{
             checked_declaration::CheckedDeclaration,
