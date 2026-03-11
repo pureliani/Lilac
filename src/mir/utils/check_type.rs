@@ -11,6 +11,7 @@ use crate::{
         types::{
             checked_declaration::{CheckedDeclaration, CheckedParam, FnType},
             checked_type::{SpannedType, Type},
+            ordered_float::{OrderedF32, OrderedF64},
         },
         utils::scope::Scope,
     },
@@ -81,17 +82,20 @@ pub fn check_type_annotation(
 ) -> SpannedType {
     let kind = match &annotation.kind {
         TypeAnnotationKind::Void => Type::Void,
-        TypeAnnotationKind::Bool => Type::Bool,
-        TypeAnnotationKind::U8 => Type::U8,
-        TypeAnnotationKind::U16 => Type::U16,
-        TypeAnnotationKind::U32 => Type::U32,
-        TypeAnnotationKind::U64 => Type::U64,
-        TypeAnnotationKind::I8 => Type::I8,
-        TypeAnnotationKind::I16 => Type::I16,
-        TypeAnnotationKind::I32 => Type::I32,
-        TypeAnnotationKind::I64 => Type::I64,
-        TypeAnnotationKind::F32 => Type::F32,
-        TypeAnnotationKind::F64 => Type::F64,
+        TypeAnnotationKind::Null => Type::Null,
+        TypeAnnotationKind::Bool(lit) => Type::Bool(*lit),
+        TypeAnnotationKind::U8(lit) => Type::U8(*lit),
+        TypeAnnotationKind::U16(lit) => Type::U16(*lit),
+        TypeAnnotationKind::U32(lit) => Type::U32(*lit),
+        TypeAnnotationKind::U64(lit) => Type::U64(*lit),
+        TypeAnnotationKind::I8(lit) => Type::I8(*lit),
+        TypeAnnotationKind::I16(lit) => Type::I16(*lit),
+        TypeAnnotationKind::I32(lit) => Type::I32(*lit),
+        TypeAnnotationKind::I64(lit) => Type::I64(*lit),
+        TypeAnnotationKind::F32(lit) => Type::F32(lit.map(OrderedF32)),
+        TypeAnnotationKind::F64(lit) => Type::F64(lit.map(OrderedF64)),
+        TypeAnnotationKind::String(lit) => Type::String,
+
         TypeAnnotationKind::Identifier(id) => {
             check_type_identifier_annotation(ctx, id.clone())
         }
@@ -107,7 +111,6 @@ pub fn check_type_annotation(
                 return_type: Box::new(checked_return_type),
             })
         }
-        TypeAnnotationKind::Literal(t) => Type::Literal(t.clone()),
         TypeAnnotationKind::Union(variants) => {
             let mut checked_variants = Vec::new();
 
@@ -117,7 +120,6 @@ pub fn check_type_annotation(
 
             Type::make_union(checked_variants)
         }
-        TypeAnnotationKind::String => Type::String,
         TypeAnnotationKind::List(item_type) => {
             let checked_item_type = check_type_annotation(ctx, item_type);
             Type::List(Box::new(checked_item_type))
@@ -126,7 +128,6 @@ pub fn check_type_annotation(
             let checked_field_types = check_params(ctx, items);
             Type::Struct(checked_field_types)
         }
-        TypeAnnotationKind::Null => Type::Null,
     };
 
     SpannedType {

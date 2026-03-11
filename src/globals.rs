@@ -7,11 +7,10 @@ use crate::mir::builders::{BasicBlockId, ValueId};
 
 pub struct CommonIdentifiers {
     pub ptr: StringId,
-    pub capacity: StringId,
-    pub is_heap_allocated: StringId,
+    pub cap: StringId,
     pub len: StringId,
     pub id: StringId,
-    pub value: StringId,
+    pub val: StringId,
 }
 
 pub static VALUE_COUNTER: LazyLock<AtomicUsize> = LazyLock::new(|| AtomicUsize::new(0));
@@ -24,10 +23,9 @@ pub static STRING_INTERNER: LazyLock<SharedStringInterner> =
 pub static COMMON_IDENTIFIERS: LazyLock<CommonIdentifiers> =
     LazyLock::new(|| CommonIdentifiers {
         id: STRING_INTERNER.intern("id"),
-        value: STRING_INTERNER.intern("value"),
-        capacity: STRING_INTERNER.intern("capacity"),
-        is_heap_allocated: STRING_INTERNER.intern("is_heap_allocated"),
+        val: STRING_INTERNER.intern("val"),
         len: STRING_INTERNER.intern("len"),
+        cap: STRING_INTERNER.intern("cap"),
         ptr: STRING_INTERNER.intern("ptr"),
     });
 

@@ -7,7 +7,7 @@ use crate::{
         types::{
             checked_declaration::{CheckedDeclaration, CheckedParam, FnType},
             checked_type::{LiteralType, Type},
-            ordered_number_kind::OrderedNumberKind,
+            ordered_float::OrderedNumberKind,
         },
     },
     tokenize::NumberKind,

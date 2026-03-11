@@ -1,90 +1,121 @@
 use crate::{
     ast::Span,
     compile::interner::StringId,
+    globals::COMMON_IDENTIFIERS,
     mir::types::{
         checked_declaration::{CheckedParam, FnType},
-        ordered_number_kind::OrderedNumberKind,
+        ordered_float::{OrderedF32, OrderedF64},
     },
     tokenize::NumberKind,
 };
 use std::{cmp::Ordering, collections::BTreeSet, hash::Hash};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum LiteralType {
-    Number(OrderedNumberKind),
-    Bool(bool),
-    String(StringId),
-}
+pub enum StructKind {
+    // packed
+    UserDefined(Vec<CheckedParam>),
 
-impl LiteralType {
-    pub fn widen(&self) -> &Type {
-        match self {
-            LiteralType::Bool(_) => &Type::Bool,
-            LiteralType::String(_) => &Type::String,
-            LiteralType::Number(n) => match n.0 {
-                NumberKind::I64(_) => &Type::I64,
-                NumberKind::I32(_) => &Type::I32,
-                NumberKind::I16(_) => &Type::I16,
-                NumberKind::I8(_) => &Type::I8,
-                NumberKind::U64(_) => &Type::U64,
-                NumberKind::U32(_) => &Type::U32,
-                NumberKind::U16(_) => &Type::U16,
-                NumberKind::U8(_) => &Type::U8,
-                NumberKind::F64(_) => &Type::F64,
-                NumberKind::F32(_) => &Type::F32,
-                NumberKind::ISize(_) => &Type::ISize,
-                NumberKind::USize(_) => &Type::USize,
-            },
-        }
-    }
-}
-
-// TODO: make cheaper to clone
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Type {
-    Void,
-    Bool,
-    U8,
-    U16,
-    U32,
-    U64,
-    USize,
-    ISize,
-    I8,
-    I16,
-    I32,
-    I64,
-    F32,
-    F64,
-    Null,
-    Literal(LiteralType),
-    Struct(Vec<CheckedParam>),
-    Union {
+    /// { id: u16, value: TaglessUnion }
+    TaggedUnion {
         base: BTreeSet<Type>,
         narrowed: BTreeSet<Type>,
     },
-    List(Box<SpannedType>),
-    String,
-    Fn(FnType),
-    Unknown,
+
+    /// { len: usize, cap: usize, ptr: ptr<T> }
+    ListHeader(Box<Type>),
+
+    /// { len: usize, cap: usize, ptr: ptr<u8> }
+    StringHeader(Option<StringId>),
+}
+
+impl StructKind {
+    pub fn fields(&self) -> Vec<(StringId, Type)> {
+        match self {
+            StructKind::UserDefined(params) => params
+                .iter()
+                .map(|p| (p.identifier.name, p.ty.kind.clone()))
+                .collect(),
+
+            StructKind::ListHeader(elem_ty) => vec![
+                (COMMON_IDENTIFIERS.len, Type::USize(None)),
+                (COMMON_IDENTIFIERS.cap, Type::USize(None)),
+                (COMMON_IDENTIFIERS.ptr, Type::Pointer(elem_ty.clone())),
+            ],
+
+            StructKind::StringHeader(_) => vec![
+                (COMMON_IDENTIFIERS.len, Type::USize(None)),
+                (COMMON_IDENTIFIERS.cap, Type::USize(None)),
+                (
+                    COMMON_IDENTIFIERS.ptr,
+                    Type::Pointer(Box::new(Type::U8(None))),
+                ),
+            ],
+            StructKind::TaggedUnion { base, .. } => {
+                if base.len() < 2 {
+                    panic!(
+                        "INTERNAL COMPILER ERROR: Unflattened or empty Union detected. \
+                         Always use Type::make_union()"
+                    );
+                }
+
+                vec![
+                    (COMMON_IDENTIFIERS.id, Type::U16(None)),
+                    (COMMON_IDENTIFIERS.val, Type::TaglessUnion(base.clone())),
+                ]
+            }
+        }
+    }
+
+    /// Maps a field name -> (Index, Type).
+    pub fn get_field(&self, name: &StringId) -> Option<(usize, Type)> {
+        self.fields()
+            .into_iter()
+            .enumerate()
+            .find(|(_, (field_name, _))| field_name == name)
+            .map(|(index, (_, ty))| (index, ty))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Type {
+    Void,
     Never,
+    Unknown,
+    Null,
+    Bool(Option<bool>),
+    U8(Option<u8>),
+    U16(Option<u16>),
+    U32(Option<u32>),
+    U64(Option<u64>),
+    USize(Option<usize>),
+    ISize(Option<isize>),
+    I8(Option<i8>),
+    I16(Option<i16>),
+    I32(Option<i32>),
+    I64(Option<i64>),
+    F32(Option<OrderedF32>),
+    F64(Option<OrderedF64>),
+    Pointer(Box<Type>),
+    Struct(StructKind),
+    TaglessUnion(BTreeSet<Type>),
+    Fn(FnType),
 }
 
 impl Type {
     pub fn from_number_kind(val: &NumberKind) -> Type {
-        match val {
-            NumberKind::I64(_) => Type::I64,
-            NumberKind::I32(_) => Type::I32,
-            NumberKind::I16(_) => Type::I16,
-            NumberKind::I8(_) => Type::I8,
-            NumberKind::F32(_) => Type::F32,
-            NumberKind::F64(_) => Type::F64,
-            NumberKind::U64(_) => Type::U64,
-            NumberKind::U32(_) => Type::U32,
-            NumberKind::U16(_) => Type::U16,
-            NumberKind::U8(_) => Type::U8,
-            NumberKind::ISize(_) => Type::ISize,
-            NumberKind::USize(_) => Type::USize,
+        match *val {
+            NumberKind::I64(v) => Type::I64(Some(v)),
+            NumberKind::I32(v) => Type::I32(Some(v)),
+            NumberKind::I16(v) => Type::I16(Some(v)),
+            NumberKind::I8(v) => Type::I8(Some(v)),
+            NumberKind::F32(v) => Type::F32(Some(OrderedF32(v))),
+            NumberKind::F64(v) => Type::F64(Some(OrderedF64(v))),
+            NumberKind::U64(v) => Type::U64(Some(v)),
+            NumberKind::U32(v) => Type::U32(Some(v)),
+            NumberKind::U16(v) => Type::U16(Some(v)),
+            NumberKind::U8(v) => Type::U8(Some(v)),
+            NumberKind::ISize(v) => Type::ISize(Some(v)),
+            NumberKind::USize(v) => Type::USize(Some(v)),
         }
     }
 
@@ -96,10 +127,10 @@ impl Type {
             if matches!(ty, Type::Never) {
                 continue;
             }
-            if let Type::Union {
+            if let Type::Struct(StructKind::TaggedUnion {
                 base: b,
                 narrowed: n,
-            } = ty
+            }) = ty
             {
                 base.extend(b);
                 narrowed.extend(n);
@@ -113,12 +144,11 @@ impl Type {
             return Type::Never;
         }
 
-        // CRITICAL: Only unwrap if the PHYSICAL variants collapse to 1.
         if base.len() == 1 {
             return base.into_iter().next().unwrap();
         }
 
-        Type::Union { base, narrowed }
+        Type::Struct(StructKind::TaggedUnion { base, narrowed })
     }
 
     pub fn union(self, other: Type) -> Type {
@@ -148,7 +178,7 @@ impl Type {
         if matches!(self, Type::Never) {
             return BTreeSet::new();
         }
-        if let Type::Union { narrowed, .. } = self {
+        if let Type::Struct(StructKind::TaggedUnion { narrowed, .. }) = self {
             return narrowed;
         }
 
@@ -158,7 +188,7 @@ impl Type {
     }
 
     pub fn get_narrowed_variants(&self) -> Option<&BTreeSet<Type>> {
-        if let Type::Union { narrowed, .. } = self {
+        if let Type::Struct(StructKind::TaggedUnion { narrowed, .. }) = self {
             Some(narrowed)
         } else {
             None
@@ -166,7 +196,7 @@ impl Type {
     }
 
     pub fn get_base_variants(&self) -> Option<&BTreeSet<Type>> {
-        if let Type::Union { base, .. } = self {
+        if let Type::Struct(StructKind::TaggedUnion { base, .. }) = self {
             Some(base)
         } else {
             None
@@ -174,14 +204,36 @@ impl Type {
     }
 
     /// Maps a struct field name -> (Index, Type)
-    pub fn get_field(&self, name: &StringId) -> Option<(usize, &SpannedType)> {
+    pub fn get_field(&self, name: &StringId) -> Option<(usize, Type)> {
         match self {
-            Type::Struct(fields) => fields
-                .iter()
-                .enumerate()
-                .find(|(_, param)| &param.identifier.name == name)
-                .map(|(index, param)| (index, &param.ty)),
+            Type::Struct(kind) => kind.get_field(name),
             _ => None,
+        }
+    }
+
+    /// Helper to strip the literal value, returning the generic type.
+    /// e.g., I32(Some(5)) -> I32(None)
+    pub fn widen(&self) -> Self {
+        match self {
+            Type::Bool(_) => Type::Bool(None),
+            Type::U8(_) => Type::U8(None),
+            Type::U16(_) => Type::U16(None),
+            Type::U32(_) => Type::U32(None),
+            Type::U64(_) => Type::U64(None),
+            Type::USize(_) => Type::USize(None),
+            Type::ISize(_) => Type::ISize(None),
+            Type::I8(_) => Type::I8(None),
+            Type::I16(_) => Type::I16(None),
+            Type::I32(_) => Type::I32(None),
+            Type::I64(_) => Type::I64(None),
+            Type::F32(_) => Type::F32(None),
+            Type::F64(_) => Type::F64(None),
+
+            Type::Struct(StructKind::StringHeader(_)) => {
+                Type::Struct(StructKind::StringHeader(None))
+            }
+
+            _ => self.clone(),
         }
     }
 }

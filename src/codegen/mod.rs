@@ -14,8 +14,7 @@ use crate::compile::interner::StringId;
 use crate::globals::STRING_INTERNER;
 use crate::mir::builders::FunctionBodyKind;
 use crate::mir::types::checked_declaration::{CheckedDeclaration, CheckedParam, FnType};
-use crate::mir::types::checked_type::LiteralType;
-use crate::mir::types::ordered_number_kind::OrderedNumberKind;
+use crate::mir::types::checked_type::StructKind;
 use crate::mir::{
     builders::{BasicBlockId, Function, Program, ValueId},
     instructions::{Instruction, Terminator},
@@ -47,6 +46,16 @@ pub struct CodeGenerator<'ctx> {
     fn_blocks: HashMap<BasicBlockId, inkwell::basic_block::BasicBlock<'ctx>>,
 
     current_fn: Option<&'ctx Function>,
+}
+
+fn lower_maybe_lit_type<'ctx, T>(
+    lit: &Option<T>,
+    on_non_lit: BasicTypeEnum<'ctx>,
+) -> Option<BasicTypeEnum<'ctx>> {
+    match lit {
+        Some(_) => None,
+        None => Some(on_non_lit),
+    }
 }
 
 impl<'ctx> CodeGenerator<'ctx> {
@@ -101,28 +110,86 @@ impl<'ctx> CodeGenerator<'ctx> {
     /// Returns None for Void
     fn lower_type(&self, ty: &Type) -> Option<BasicTypeEnum<'ctx>> {
         match ty {
-            Type::Void | Type::Null | Type::Literal(_) => None,
-            Type::Bool => Some(self.context.bool_type().into()),
-            Type::I8 | Type::U8 => Some(self.context.i8_type().into()),
-            Type::I16 | Type::U16 => Some(self.context.i16_type().into()),
-            Type::I32 | Type::U32 => Some(self.context.i32_type().into()),
-            Type::I64 | Type::U64 | Type::ISize | Type::USize => {
-                Some(self.context.i64_type().into())
+            Type::Void | Type::Null => None,
+            Type::Bool(lit) => {
+                lit.map_or_else(|| Some(self.context.bool_type().into()), |_| None)
             }
-            Type::F32 => Some(self.context.f32_type().into()),
-            Type::F64 => Some(self.context.f64_type().into()),
-            Type::Struct(_) | Type::List(_) | Type::Fn(_) | Type::String => Some(
+            Type::I8(lit) => {
+                lit.map_or_else(|| Some(self.context.i8_type().into()), |_| None)
+            }
+            Type::U8(lit) => {
+                lit.map_or_else(|| Some(self.context.i8_type().into()), |_| None)
+            }
+            Type::I16(lit) => {
+                lit.map_or_else(|| Some(self.context.i16_type().into()), |_| None)
+            }
+            Type::U16(lit) => {
+                lit.map_or_else(|| Some(self.context.i16_type().into()), |_| None)
+            }
+            Type::I32(lit) => {
+                lit.map_or_else(|| Some(self.context.i32_type().into()), |_| None)
+            }
+            Type::U32(lit) => {
+                lit.map_or_else(|| Some(self.context.i32_type().into()), |_| None)
+            }
+            Type::I64(lit) => {
+                lit.map_or_else(|| Some(self.context.i64_type().into()), |_| None)
+            }
+            Type::U64(lit) => {
+                lit.map_or_else(|| Some(self.context.i64_type().into()), |_| None)
+            }
+            Type::ISize(lit) => lit.map_or_else(
+                || {
+                    Some(
+                        self.context
+                            .ptr_sized_int_type(
+                                &self.target_machine.get_target_data(),
+                                None,
+                            )
+                            .into(),
+                    )
+                },
+                |_| None,
+            ),
+            Type::USize(lit) => lit.map_or_else(
+                || {
+                    Some(
+                        self.context
+                            .ptr_sized_int_type(
+                                &self.target_machine.get_target_data(),
+                                None,
+                            )
+                            .into(),
+                    )
+                },
+                |_| None,
+            ),
+            Type::F32(lit) => {
+                lit.map_or_else(|| Some(self.context.f32_type().into()), |_| None)
+            }
+            Type::F64(lit) => {
+                lit.map_or_else(|| Some(self.context.f64_type().into()), |_| None)
+            }
+            Type::Pointer(_) => Some(
                 self.context
                     .ptr_type(inkwell::AddressSpace::default())
                     .into(),
             ),
-            Type::Union { base, .. } => {
-                let (layout, _) = self.get_union_layout(base);
-                Some(BasicTypeEnum::StructType(layout))
-            }
+            Type::Fn(_) => Some(
+                self.context
+                    .ptr_type(inkwell::AddressSpace::default())
+                    .into(),
+            ),
+            Type::Struct(s) => match s {
+                StructKind::UserDefined(checked_params) => todo!(),
+                StructKind::TaggedUnion { base, narrowed } => todo!(),
+                StructKind::ListHeader(_) => todo!(),
+                StructKind::StringHeader(string_id) => todo!(),
+            },
             Type::Unknown | Type::Never => {
                 panic!("INTERNAL COMPILER ERROR: Invalid type in codegen")
             }
+            Type::TaglessUnion(btree_set) => todo!(),
         }
     }
 

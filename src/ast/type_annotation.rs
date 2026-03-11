@@ -1,29 +1,28 @@
 use crate::{
     ast::{IdentifierNode, Span},
-    mir::types::checked_type::LiteralType,
+    compile::interner::StringId,
 };
 
 use super::decl::Param;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeAnnotationKind {
-    Void,
-    Bool,
-    U8,
-    U16,
-    U32,
-    U64,
-    I8,
-    I16,
-    I32,
-    I64,
-    F32,
-    F64,
-    String,
     Null,
+    Void,
+    Bool(Option<bool>),
+    U8(Option<u8>),
+    U16(Option<u16>),
+    U32(Option<u32>),
+    U64(Option<u64>),
+    I8(Option<i8>),
+    I16(Option<i16>),
+    I32(Option<i32>),
+    I64(Option<i64>),
+    F32(Option<f32>),
+    F64(Option<f64>),
+    String(Option<StringId>),
     Identifier(IdentifierNode),
     Struct(Vec<Param>),
-    Literal(LiteralType),
     Union(Vec<TypeAnnotation>),
     List(Box<TypeAnnotation>),
     FnType {

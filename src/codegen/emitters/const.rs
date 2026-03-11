@@ -4,8 +4,7 @@ use crate::{
     mir::{
         instructions::ConstInstr,
         types::{
-            checked_declaration::CheckedDeclaration,
-            ordered_number_kind::OrderedNumberKind,
+            checked_declaration::CheckedDeclaration, ordered_float::OrderedNumberKind,
         },
     },
 };

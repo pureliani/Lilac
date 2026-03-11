@@ -4,7 +4,7 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         types::{
             checked_type::{LiteralType, SpannedType, Type},
-            ordered_number_kind::OrderedNumberKind,
+            ordered_float::OrderedNumberKind,
         },
     },
     tokenize::NumberKind,

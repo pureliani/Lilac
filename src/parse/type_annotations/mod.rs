@@ -9,7 +9,6 @@ use crate::{
         Span,
     },
     globals::STRING_INTERNER,
-    mir::types::{checked_type::LiteralType, ordered_number_kind::OrderedNumberKind},
     tokenize::{KeywordKind, PunctuationKind, TokenKind},
 };
 
