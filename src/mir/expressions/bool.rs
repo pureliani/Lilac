@@ -13,6 +13,7 @@ impl<'a> Builder<'a, InBlock> {
         value: bool,
         expected_type: Option<&SpannedType>,
     ) -> ValueId {
-        self.emit_bool(value)
+        let result = self.emit_bool(value);
+        self.check_expected(result, span, expected_type)
     }
 }

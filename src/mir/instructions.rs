@@ -156,6 +156,20 @@ pub enum UnaryInstr {
 }
 
 #[derive(Clone, Debug)]
+pub enum CastInstr {
+    SIToF { dest: ValueId, src: ValueId },
+    UIToF { dest: ValueId, src: ValueId },
+    FToSI { dest: ValueId, src: ValueId },
+    FToUI { dest: ValueId, src: ValueId },
+    FExt { dest: ValueId, src: ValueId },
+    FTrunc { dest: ValueId, src: ValueId },
+    Trunc { dest: ValueId, src: ValueId },
+    SExt { dest: ValueId, src: ValueId },
+    ZExt { dest: ValueId, src: ValueId },
+    BitCast { dest: ValueId, src: ValueId },
+}
+
+#[derive(Clone, Debug)]
 pub enum MemoryInstr {
     StackAlloc {
         dest: ValueId,
@@ -215,6 +229,7 @@ pub struct ReinterpretInstr {
 
 #[derive(Clone, Debug)]
 pub enum Instruction {
+    Cast(CastInstr),
     Unary(UnaryInstr),
     Binary(BinaryInstr),
     Comp(CompInstr),

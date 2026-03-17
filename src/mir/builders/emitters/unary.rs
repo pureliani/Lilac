@@ -1,6 +1,5 @@
 use crate::mir::{
-    builders::{Builder, InBlock, ValueId},
-    errors::SemanticError,
+    builders::{Builder, InBlock, TypePredicate, ValueId},
     instructions::{Instruction, UnaryInstr},
     types::checked_type::Type,
     utils::numeric::{is_float, is_signed},
@@ -20,12 +19,6 @@ impl<'a> Builder<'a, InBlock> {
         self.push_instruction(Instruction::Unary(UnaryInstr::FNeg { dest, src }));
         dest
     }
-
-    fn emit_bnot(&mut self, src: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
-        self.push_instruction(Instruction::Unary(UnaryInstr::BNot { dest, src }));
-        dest
-    }
 }
 impl<'a> Builder<'a, InBlock> {
     pub fn neg(&mut self, src: ValueId) -> ValueId {
@@ -40,13 +33,30 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn not(&mut self, src: ValueId) -> Result<ValueId, SemanticError> {
+    pub fn not(&mut self, src: ValueId) -> ValueId {
         let ty = self.get_value_type(src);
 
         if !matches!(ty, &Type::Bool(_)) {
             panic!("INTERNAL COMPILER ERROR: Cannot apply unary not `-` operator to this type")
         }
 
-        Ok(self.emit_bnot(src))
+        let dest = self.new_value_id(Type::Bool(None));
+
+        if let Some(preds) = self.type_predicates.get(&src).cloned() {
+            let flipped: Vec<TypePredicate> = preds
+                .into_iter()
+                .map(|pred| TypePredicate {
+                    decl_id: pred.decl_id,
+                    on_true_type: pred.on_false_type,
+                    on_false_type: pred.on_true_type,
+                })
+                .collect();
+
+            self.type_predicates.insert(dest, flipped);
+        }
+
+        self.push_instruction(Instruction::Unary(UnaryInstr::BNot { dest, src }));
+
+        dest
     }
 }

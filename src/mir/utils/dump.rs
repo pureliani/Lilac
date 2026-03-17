@@ -6,8 +6,8 @@ use crate::{
             ValueId,
         },
         instructions::{
-            BinaryInstr, CallInstr, CompInstr, Instruction, MemoryInstr, SelectInstr,
-            Terminator, UnaryInstr,
+            BinaryInstr, CallInstr, CastInstr, CompInstr, Instruction, MemoryInstr,
+            SelectInstr, Terminator, UnaryInstr,
         },
         types::{checked_declaration::CheckedDeclaration, checked_type::Type},
         utils::type_to_string::type_to_string,
@@ -143,6 +143,19 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
         CompInstr::SLte { .. } | CompInstr::ULte { .. } | CompInstr::FLte { .. } => "<=",
         CompInstr::SGt { .. } | CompInstr::UGt { .. } | CompInstr::FGt { .. } => ">",
         CompInstr::SGte { .. } | CompInstr::UGte { .. } | CompInstr::FGte { .. } => ">=",
+    };
+
+    let get_cast_name = |instr: &CastInstr| match instr {
+        CastInstr::SIToF { .. } => "SIToF",
+        CastInstr::FToSI { .. } => "FToSI",
+        CastInstr::FExt { .. } => "FExt",
+        CastInstr::FTrunc { .. } => "FTrunc",
+        CastInstr::Trunc { .. } => "Trunc",
+        CastInstr::SExt { .. } => "SExt",
+        CastInstr::ZExt { .. } => "ZExt",
+        CastInstr::BitCast { .. } => "BitCast",
+        CastInstr::UIToF { .. } => "UIToF",
+        CastInstr::FToUI { .. } => "FToUI",
     };
 
     for instruction in instrs {
@@ -341,6 +354,28 @@ pub fn dump_instructions(instrs: &[Instruction], p: &Program, out: &mut String) 
                         get_vt(p, dest),
                         base_ptr.0,
                         index.0
+                    )
+                    .unwrap();
+                }
+            },
+            Instruction::Cast(kind) => match kind {
+                CastInstr::SIToF { dest, src }
+                | CastInstr::UIToF { dest, src }
+                | CastInstr::FToSI { dest, src }
+                | CastInstr::FToUI { dest, src }
+                | CastInstr::FExt { dest, src }
+                | CastInstr::FTrunc { dest, src }
+                | CastInstr::Trunc { dest, src }
+                | CastInstr::SExt { dest, src }
+                | CastInstr::ZExt { dest, src }
+                | CastInstr::BitCast { dest, src } => {
+                    writeln!(
+                        out,
+                        "v{}: {} = {}(v{})",
+                        dest.0,
+                        get_vt(p, dest),
+                        get_cast_name(kind),
+                        src.0
                     )
                     .unwrap();
                 }

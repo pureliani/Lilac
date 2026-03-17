@@ -1,14 +1,10 @@
 use crate::ast::Span;
 use crate::compile::interner::StringId;
-use crate::mir::builders::ValueId;
 use crate::mir::errors::{SemanticError, SemanticErrorKind};
-use crate::mir::types::checked_type::Type;
+use crate::mir::types::checked_type::{StructKind, Type};
 use crate::mir::utils::numeric::{
     get_numeric_type_rank, is_float, is_integer, is_signed,
 };
-
-#[derive(Clone, Debug)]
-pub enum CastInstr {}
 
 pub enum AdjustmentError {
     Incompatible,
@@ -19,50 +15,19 @@ pub enum AdjustmentError {
 pub enum Adjustment {
     Identity,
 
-    SIToF {
-        dest: ValueId,
-        src: ValueId,
-    },
-    UIToF {
-        dest: ValueId,
-        src: ValueId,
-    },
-    FToSI {
-        dest: ValueId,
-        src: ValueId,
-    },
-    FToUI {
-        dest: ValueId,
-        src: ValueId,
-    },
-    FExt {
-        dest: ValueId,
-        src: ValueId,
-    },
-    FTrunc {
-        dest: ValueId,
-        src: ValueId,
-    },
-    Trunc {
-        dest: ValueId,
-        src: ValueId,
-    },
-    SExt {
-        dest: ValueId,
-        src: ValueId,
-    },
-    ZExt {
-        dest: ValueId,
-        src: ValueId,
-    },
-    BitCast {
-        dest: ValueId,
-        src: ValueId,
-    },
+    SIToF,
+    UIToF,
+    FToSI,
+    FToUI,
+    FExt,
+    FTrunc,
+    Trunc,
+    SExt,
+    ZExt,
+    BitCast,
 
     WrapInUnion(usize),
     UnwrapUnion,
-
     /// Maps old variant indices to new variant indices, Vec<(old_idx, new_idx)>
     ReTagUnion(Vec<(u64, u64)>),
 
@@ -73,23 +38,13 @@ pub enum Adjustment {
 
 /// Computes the adjustment needed to convert `source_type` to `target_type`
 pub fn compute_type_adjustment(
-    original_source: &Type,
+    source: &Type,
     target: &Type,
     is_explicit: bool,
 ) -> Result<Adjustment, AdjustmentError> {
-    if original_source == target {
-        return Ok(Adjustment::Identity);
-    }
-
-    let source = if let Type::Literal(lit) = original_source {
-        lit.widen()
-    } else {
-        original_source
-    };
-
     if source == target {
         return Ok(Adjustment::Identity);
-    }
+    };
 
     if is_integer(source) && is_integer(target) {
         let s_rank = get_numeric_type_rank(source).unwrap();
@@ -103,6 +58,10 @@ pub fn compute_type_adjustment(
             };
         } else if t_rank < s_rank && is_explicit {
             return Ok(Adjustment::Trunc);
+        } else {
+            if is_explicit {
+                return Ok(Adjustment::BitCast);
+            }
         }
     }
 
@@ -118,11 +77,39 @@ pub fn compute_type_adjustment(
     }
 
     if is_integer(source) && is_float(target) {
-        return if is_signed(source) {
-            Ok(Adjustment::SIToF)
-        } else {
-            Ok(Adjustment::UIToF)
+        let is_lossless = match (source, target.widen()) {
+            (Type::I32(Some(v)), Type::F32(_)) => (*v as f32) as i32 == *v,
+            (Type::U32(Some(v)), Type::F32(_)) => (*v as f32) as u32 == *v,
+            (Type::I64(Some(v)), Type::F32(_)) => (*v as f32) as i64 == *v,
+            (Type::U64(Some(v)), Type::F32(_)) => (*v as f32) as u64 == *v,
+            (Type::I64(Some(v)), Type::F64(_)) => (*v as f64) as i64 == *v,
+            (Type::U64(Some(v)), Type::F64(_)) => (*v as f64) as u64 == *v,
+            (Type::ISize(Some(v)), Type::F32(_)) => (*v as f32) as isize == *v,
+            (Type::USize(Some(v)), Type::F32(_)) => (*v as f32) as usize == *v,
+            (Type::ISize(Some(v)), Type::F64(_)) => (*v as f64) as isize == *v,
+            (Type::USize(Some(v)), Type::F64(_)) => (*v as f64) as usize == *v,
+
+            (src, tgt) => match (src.widen(), tgt) {
+                (
+                    Type::I8(_) | Type::U8(_) | Type::I16(_) | Type::U16(_),
+                    Type::F32(_) | Type::F64(_),
+                ) => true,
+
+                (Type::I32(_) | Type::U32(_), Type::F64(_)) => true,
+
+                _ => false,
+            },
         };
+
+        if is_lossless || is_explicit {
+            return if is_signed(source) {
+                Ok(Adjustment::SIToF)
+            } else {
+                Ok(Adjustment::UIToF)
+            };
+        } else {
+            return Err(AdjustmentError::TryExplicitCast);
+        }
     }
 
     if is_float(source) && is_integer(target) && is_explicit {
@@ -133,57 +120,39 @@ pub fn compute_type_adjustment(
         };
     }
 
-    if let Type::Union { narrowed, .. } = original_source {
-        if narrowed.len() == 1 && narrowed.contains(target) {
+    if let Type::Struct(StructKind::TaggedUnion(variants)) = source {
+        if variants.len() == 1 && variants.contains(target) {
             return Ok(Adjustment::UnwrapUnion);
         }
     }
 
-    if let (Some(source_narrowed), Some(target_narrowed)) = (
-        original_source.get_narrowed_variants(),
-        target.get_narrowed_variants(),
-    ) {
-        let mut all_mapped = true;
-        for sv in source_narrowed {
-            if !target_narrowed.contains(sv) {
-                all_mapped = false;
-                break;
+    if let (Some(source_variants), Some(target_variants)) =
+        (source.get_union_variants(), target.get_union_variants())
+    {
+        let mut mapping = Vec::new();
+
+        for (old_idx, sv) in source_variants.iter().enumerate() {
+            if let Some(new_idx) = target_variants.iter().position(|tv| tv == sv) {
+                mapping.push((old_idx as u64, new_idx as u64));
+            } else {
+                return Err(AdjustmentError::Incompatible);
             }
         }
 
-        if all_mapped {
-            let source_base = original_source.get_base_variants().unwrap();
-            let target_base = target.get_base_variants().unwrap();
-            let mut mapping = Vec::new();
+        return Ok(Adjustment::ReTagUnion(mapping));
+    }
 
-            for (old_idx, sv) in source_base.iter().enumerate() {
-                if let Some(new_idx) = target_base.iter().position(|tv| tv == sv) {
-                    mapping.push((old_idx as u64, new_idx as u64));
-                }
-            }
-            return Ok(Adjustment::ReTagUnion(mapping));
+    if let Some(target_variants) = target.get_union_variants() {
+        if let Some(idx) = target_variants.iter().position(|v| v == source) {
+            return Ok(Adjustment::WrapInUnion(idx));
         }
     }
 
-    if let Some(target_base) = target.get_base_variants() {
-        if let Some(idx) = target_base.iter().position(|v| v == original_source) {
-            if target
-                .get_narrowed_variants()
-                .unwrap()
-                .contains(original_source)
-            {
-                return Ok(Adjustment::WrapInUnion(idx));
-            }
-        }
-
-        if let Some(idx) = target_base.iter().position(|v| v == source) {
-            if target.get_narrowed_variants().unwrap().contains(source) {
-                return Ok(Adjustment::WrapInUnion(idx));
-            }
-        }
-    }
-
-    if let (Type::Struct(s_fields), Type::Struct(t_fields)) = (original_source, target) {
+    if let (
+        Type::Struct(StructKind::UserDefined(s_fields)),
+        Type::Struct(StructKind::UserDefined(t_fields)),
+    ) = (source, target)
+    {
         if s_fields.len() == t_fields.len() {
             let mut field_adjustments = Vec::new();
             let mut possible = true;
@@ -192,10 +161,6 @@ pub fn compute_type_adjustment(
                 if sf.identifier.name != tf.identifier.name {
                     possible = false;
                     break;
-                }
-
-                if sf.ty == tf.ty {
-                    continue;
                 }
 
                 match compute_type_adjustment(&sf.ty.kind, &tf.ty.kind, is_explicit) {
