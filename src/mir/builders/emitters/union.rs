@@ -78,7 +78,9 @@ impl<'a> Builder<'a, InBlock> {
     /// bool ValueId.
     pub fn test_variant(&mut self, union_ptr: ValueId, variant_type: &Type) -> ValueId {
         let union_type = self.get_value_type(union_ptr).clone();
+
         let variants = union_type
+            .unwrap_ptr()
             .get_union_variants()
             .expect("INTERNAL COMPILER ERROR: test_variant called with non-union");
 
@@ -93,73 +95,43 @@ impl<'a> Builder<'a, InBlock> {
         self.eq(id_val, expected)
     }
 
-    /// Widens a union to a larger union that contains all source variants
-    /// plus additional ones. Copies the payload and remaps the discriminant.
-    pub fn widen_union(
+    pub fn retag_union(
         &mut self,
         source_ptr: ValueId,
         source_variants: &BTreeSet<Type>,
         target_variants: &BTreeSet<Type>,
     ) -> ValueId {
-        assert!(
-            source_variants.len() <= target_variants.len(),
-            "INTERNAL COMPILER ERROR: widen_union called but source has more \
-             variants than target"
+        let source_ptr_ty = self.get_value_type(source_ptr);
+
+        let actual_source_variants = source_ptr_ty
+            .unwrap_ptr()
+            .get_union_variants()
+            .expect("SAFETY CHECK FAILED: retag_union called on a ValueId that is not a union pointer!");
+
+        assert_eq!(
+            actual_source_variants, source_variants,
+            "SAFETY CHECK FAILED: The variants of the source ValueId do not match \
+             the source_variants provided by the Adjustment recipe!"
         );
 
-        for sv in source_variants {
-            assert!(
-                target_variants.iter().any(|tv| sv == tv),
-                "INTERNAL COMPILER ERROR: widen_union - source variant not found \
-                 in target union"
-            );
+        let is_widening = source_variants.len() <= target_variants.len();
+
+        if is_widening {
+            for sv in source_variants {
+                assert!(
+                    target_variants.contains(sv),
+                    "INTERNAL COMPILER ERROR: retag_union (widen) - source variant not found in target union"
+                );
+            }
+        } else {
+            for tv in target_variants {
+                assert!(
+                    source_variants.contains(tv),
+                    "INTERNAL COMPILER ERROR: retag_union (narrow) - target variant not found in source union"
+                );
+            }
         }
 
-        let remap = self.build_variant_remap(source_variants, target_variants);
-
-        let target_struct =
-            Type::Struct(StructKind::TaggedUnion(target_variants.clone()));
-        let target_ptr = self.emit_stack_alloc(target_struct, 1);
-
-        let src_value_ptr = self.get_field_ptr(source_ptr, COMMON_IDENTIFIERS.val);
-        let dst_value_ptr = self.get_field_ptr(target_ptr, COMMON_IDENTIFIERS.val);
-        self.emit_memcopy(src_value_ptr, dst_value_ptr);
-
-        self.emit_discriminant_remap(source_ptr, target_ptr, &remap);
-
-        target_ptr
-    }
-
-    /// Narrows a union to a smaller union that contains a subset of the
-    /// source variants. Copies the payload and remaps the discriminant.
-    ///
-    /// The caller must ensure that the runtime active variant is one of
-    /// the target variants (via a prior type check). This method validates
-    /// the structural precondition (target ⊂ source) but cannot validate
-    /// the runtime invariant.
-    pub fn narrow_union(
-        &mut self,
-        source_ptr: ValueId,
-        source_variants: &BTreeSet<Type>,
-        target_variants: &BTreeSet<Type>,
-    ) -> ValueId {
-        assert!(
-            target_variants.len() < source_variants.len(),
-            "INTERNAL COMPILER ERROR: narrow_union called but target has >= \
-             variants than source (use widen_union instead)"
-        );
-
-        for tv in target_variants {
-            assert!(
-                source_variants.iter().any(|sv| sv == tv),
-                "INTERNAL COMPILER ERROR: narrow_union - target variant not found \
-                 in source union"
-            );
-        }
-
-        // Remap: for each source variant that exists in target, map
-        // source_index -> target_index. Source variants not in target
-        // are skipped (they can't be active at runtime).
         let remap: Vec<(u16, u16)> = source_variants
             .iter()
             .enumerate()
@@ -173,41 +145,22 @@ impl<'a> Builder<'a, InBlock> {
             Type::Struct(StructKind::TaggedUnion(target_variants.clone()));
         let target_ptr = self.emit_stack_alloc(target_struct, 1);
 
-        // Source payload >= target payload in size. The active variant
-        // fits in the target buffer. Bitcast the source payload to the
-        // target payload type so memcopy uses the target (smaller) size.
         let src_value_ptr = self.get_field_ptr(source_ptr, COMMON_IDENTIFIERS.val);
         let dst_value_ptr = self.get_field_ptr(target_ptr, COMMON_IDENTIFIERS.val);
 
-        let src_as_target_payload = self.emit_bitcast_unsafe(
-            src_value_ptr,
-            Type::Pointer(Box::new(Type::TaglessUnion(target_variants.clone()))),
-        );
-        self.emit_memcopy(src_as_target_payload, dst_value_ptr);
+        if is_widening {
+            self.emit_memcopy(src_value_ptr, dst_value_ptr);
+        } else {
+            let src_as_target_payload = self.emit_bitcast_unsafe(
+                src_value_ptr,
+                Type::Pointer(Box::new(Type::TaglessUnion(target_variants.clone()))),
+            );
+            self.emit_memcopy(src_as_target_payload, dst_value_ptr);
+        }
 
         self.emit_discriminant_remap(source_ptr, target_ptr, &remap);
 
         target_ptr
-    }
-
-    /// Builds the index remap table: for each source variant, find its
-    /// position in the target variant set.
-    fn build_variant_remap(
-        &self,
-        source_variants: &BTreeSet<Type>,
-        target_variants: &BTreeSet<Type>,
-    ) -> Vec<(u16, u16)> {
-        source_variants
-            .iter()
-            .enumerate()
-            .map(|(src_idx, variant)| {
-                let tgt_idx = target_variants.iter().position(|v| v == variant).expect(
-                    "INTERNAL COMPILER ERROR: source variant not found in target \
-                         union",
-                );
-                (src_idx as u16, tgt_idx as u16)
-            })
-            .collect()
     }
 
     /// Emits the select chain that remaps the discriminant from source

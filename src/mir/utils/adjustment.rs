@@ -1,5 +1,6 @@
 use crate::ast::Span;
 use crate::compile::interner::StringId;
+use crate::mir::builders::{Builder, InBlock, ValueId};
 use crate::mir::errors::{SemanticError, SemanticErrorKind};
 use crate::mir::types::checked_type::{StructKind, Type};
 use crate::mir::utils::numeric::{
@@ -120,12 +121,6 @@ pub fn compute_type_adjustment(
         };
     }
 
-    if let Type::Struct(StructKind::TaggedUnion(variants)) = source {
-        if variants.len() == 1 && variants.contains(target) {
-            return Ok(Adjustment::UnwrapUnion);
-        }
-    }
-
     if let (Some(source_variants), Some(target_variants)) =
         (source.get_union_variants(), target.get_union_variants())
     {
@@ -145,6 +140,12 @@ pub fn compute_type_adjustment(
     if let Some(target_variants) = target.get_union_variants() {
         if let Some(idx) = target_variants.iter().position(|v| v == source) {
             return Ok(Adjustment::WrapInUnion(idx));
+        }
+    }
+
+    if let Some(source_variants) = source.get_union_variants() {
+        if source_variants.len() == 1 && source_variants.contains(target) {
+            return Ok(Adjustment::UnwrapUnion);
         }
     }
 
@@ -190,6 +191,63 @@ pub fn compute_type_adjustment(
     }
 
     Err(AdjustmentError::Incompatible)
+}
+
+impl<'a> Builder<'a, InBlock> {
+    pub fn compute_adjustment(
+        &self,
+        source: ValueId,
+        target: &Type,
+        is_explicit: bool,
+    ) -> Result<Adjustment, SemanticErrorKind> {
+        let source_type = self.get_value_type(source).clone();
+
+        compute_type_adjustment(&source_type, target, is_explicit).map_err(
+            |err| match err {
+                AdjustmentError::Incompatible => SemanticErrorKind::CannotCastType {
+                    source_type,
+                    target_type: target.clone(),
+                },
+                AdjustmentError::TryExplicitCast => SemanticErrorKind::TryExplicitCast,
+            },
+        )
+    }
+
+    /// Applies a previously computed adjustment, emitting the necessary
+    /// instructions and returning the adjusted value.
+    pub fn apply_adjustment(
+        &mut self,
+        source: ValueId,
+        adjustment: Adjustment,
+        target_type: &Type,
+        span: Span,
+    ) -> ValueId {
+        match adjustment {
+            Adjustment::Identity => source,
+
+            Adjustment::SExt => self.emit_sext(source, target_type.clone()),
+            Adjustment::ZExt => self.emit_zext(source, target_type.clone()),
+            Adjustment::Trunc => self.emit_trunc(source, target_type.clone()),
+            Adjustment::FExt => self.emit_fext(source, target_type.clone()),
+            Adjustment::FTrunc => self.emit_ftrunc(source, target_type.clone()),
+            Adjustment::SIToF => self.emit_sitof(source, target_type.clone()),
+            Adjustment::UIToF => self.emit_uitof(source, target_type.clone()),
+            Adjustment::FToSI => self.emit_ftosi(source, target_type.clone()),
+            Adjustment::FToUI => self.emit_ftoui(source, target_type.clone()),
+            Adjustment::BitCast => self.emit_bitcast(source, target_type.clone()),
+
+            Adjustment::WrapInUnion(tag_idx) => {
+                self.wrap_in_union(source, tag_idx, target_type)
+            }
+            Adjustment::UnwrapUnion => self.unwrap_from_union(source, target_type, span),
+            Adjustment::ReTagUnion(mapping) => {
+                self.retag_union(source, mapping, target_type, span)
+            }
+            Adjustment::CoerceStruct { field_adjustments } => {
+                self.apply_struct_coercion(source, target_type, field_adjustments, span)
+            }
+        }
+    }
 }
 
 pub fn arithmetic_supertype(
