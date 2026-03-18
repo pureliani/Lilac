@@ -1,7 +1,7 @@
 use crate::{
     ast::Span,
-    compile::interner::StringId,
-    globals::COMMON_IDENTIFIERS,
+    compile::interner::{StringId, TypeId},
+    globals::{COMMON_IDENTIFIERS, TYPE_INTERNER},
     mir::types::{
         checked_declaration::{CheckedParam, FnType},
         ordered_float::{OrderedF32, OrderedF64},
@@ -15,61 +15,76 @@ pub enum StructKind {
     // packed
     UserDefined(Vec<CheckedParam>),
 
-    /// { id: u16, value: TaglessUnion }
-    TaggedUnion(BTreeSet<Type>),
+    /// { id: u32, value: TaglessUnion }
+    TaggedUnion(BTreeSet<TypeId>),
 
     /// { len: usize, cap: usize, ptr: ptr<T> }
-    ListHeader(Box<Type>),
+    ListHeader(TypeId),
 
     /// { len: usize, cap: usize, ptr: ptr<u8> }
     StringHeader(Option<StringId>),
 }
 
 impl StructKind {
-    pub fn fields(&self) -> Vec<(StringId, Type)> {
+    pub fn fields(&self) -> Vec<(StringId, TypeId)> {
         match self {
             StructKind::UserDefined(params) => params
                 .iter()
-                .map(|p| (p.identifier.name, p.ty.kind.clone()))
+                .map(|p| (p.identifier.name, p.ty.id))
                 .collect(),
 
-            StructKind::ListHeader(elem_ty) => vec![
-                (COMMON_IDENTIFIERS.len, Type::USize(None)),
-                (COMMON_IDENTIFIERS.cap, Type::USize(None)),
-                (COMMON_IDENTIFIERS.ptr, Type::Pointer(elem_ty.clone())),
+            StructKind::ListHeader(elem_ty_id) => vec![
+                (
+                    COMMON_IDENTIFIERS.len,
+                    TYPE_INTERNER.intern(&Type::USize(None)),
+                ),
+                (
+                    COMMON_IDENTIFIERS.cap,
+                    TYPE_INTERNER.intern(&Type::USize(None)),
+                ),
+                (
+                    COMMON_IDENTIFIERS.ptr,
+                    TYPE_INTERNER.intern(&Type::Pointer(*elem_ty_id)),
+                ),
             ],
 
             StructKind::StringHeader(_) => vec![
-                (COMMON_IDENTIFIERS.len, Type::USize(None)),
-                (COMMON_IDENTIFIERS.cap, Type::USize(None)),
+                (
+                    COMMON_IDENTIFIERS.len,
+                    TYPE_INTERNER.intern(&Type::USize(None)),
+                ),
+                (
+                    COMMON_IDENTIFIERS.cap,
+                    TYPE_INTERNER.intern(&Type::USize(None)),
+                ),
                 (
                     COMMON_IDENTIFIERS.ptr,
-                    Type::Pointer(Box::new(Type::U8(None))),
+                    TYPE_INTERNER
+                        .intern(&Type::Pointer(TYPE_INTERNER.intern(&Type::U8(None)))),
                 ),
             ],
             StructKind::TaggedUnion(variants) => {
-                if variants.len() < 2 {
-                    panic!(
-                        "INTERNAL COMPILER ERROR: Unflattened or empty Union detected. \
-                         Always use Type::make_union()"
-                    );
-                }
-
                 vec![
-                    (COMMON_IDENTIFIERS.id, Type::U16(None)),
-                    (COMMON_IDENTIFIERS.val, Type::TaglessUnion(variants.clone())),
+                    (
+                        COMMON_IDENTIFIERS.id,
+                        TYPE_INTERNER.intern(&Type::U32(None)),
+                    ),
+                    (
+                        COMMON_IDENTIFIERS.val,
+                        TYPE_INTERNER.intern(&Type::TaglessUnion(variants.clone())),
+                    ),
                 ]
             }
         }
     }
 
-    /// Maps a field name -> (Index, Type).
-    pub fn get_field(&self, name: &StringId) -> Option<(usize, Type)> {
+    /// Maps a field name -> (Index, TypeId)
+    pub fn get_field(&self, name: &StringId) -> Option<(usize, TypeId)> {
         self.fields()
             .into_iter()
             .enumerate()
             .find(|(_, (field_name, _))| field_name == name)
-            .map(|(index, (_, ty))| (index, ty))
+            .map(|(index, (_, ty_id))| (index, ty_id))
     }
 }
 
@@ -92,16 +107,16 @@ pub enum Type {
     I64(Option<i64>),
     F32(Option<OrderedF32>),
     F64(Option<OrderedF64>),
-    Pointer(Box<Type>),
+    Pointer(TypeId),
     Struct(StructKind),
-    TaglessUnion(BTreeSet<Type>),
+    TaglessUnion(BTreeSet<TypeId>),
     Fn(FnType),
 }
 
 impl Type {
-    pub fn unwrap_ptr(&self) -> &Type {
+    pub fn unwrap_ptr(&self) -> TypeId {
         if let Type::Pointer(to) = self {
-            return to;
+            return *to;
         }
 
         panic!("INTERNAL COMPILER ERROR: Called unwrap_ptr on non-pointer type")
@@ -124,46 +139,50 @@ impl Type {
         }
     }
 
-    pub fn make_union(types: impl IntoIterator<Item = Type>) -> Type {
+    pub fn make_union(types: impl IntoIterator<Item = TypeId>) -> TypeId {
         let mut flat = BTreeSet::new();
 
-        for ty in types {
+        for ty_id in types {
+            let ty = TYPE_INTERNER.resolve(ty_id);
+
             if matches!(ty, Type::Never) {
                 continue;
             }
+
             if let Type::Struct(StructKind::TaggedUnion(variants)) = ty {
                 flat.extend(variants);
             } else {
-                flat.insert(ty);
+                flat.insert(ty_id);
             }
         }
 
         if flat.is_empty() {
-            return Type::Never;
+            return TYPE_INTERNER.intern(&Type::Never);
         }
 
         if flat.len() == 1 {
-            return flat.into_iter().next().unwrap();
+            return *flat.iter().next().unwrap();
         }
 
-        Type::Struct(StructKind::TaggedUnion(flat))
+        TYPE_INTERNER.intern(&Type::Struct(StructKind::TaggedUnion(flat)))
     }
 
-    pub fn union(self, other: Type) -> Type {
-        Type::make_union(vec![self, other])
+    pub fn union(a: TypeId, b: TypeId) -> TypeId {
+        Type::make_union(vec![a, b])
     }
 
-    pub fn intersect(self, other: Type) -> Type {
-        let s1 = self.into_set();
-        let s2 = other.into_set();
-        let result = s1.intersection(&s2).cloned();
+    pub fn intersect(a: TypeId, b: TypeId) -> TypeId {
+        let s1 = TYPE_INTERNER.resolve(a).into_set();
+        let s2 = TYPE_INTERNER.resolve(b).into_set();
 
-        Type::make_union(result)
+        let result_types = s1.intersection(&s2).copied().collect::<Vec<_>>();
+
+        Type::make_union(result_types)
     }
 
-    pub fn subtract(self, other: Type) -> Type {
-        let mut s1 = self.into_set();
-        let s2 = other.into_set();
+    pub fn subtract(a: TypeId, b: TypeId) -> TypeId {
+        let mut s1 = TYPE_INTERNER.resolve(a).into_set();
+        let s2 = TYPE_INTERNER.resolve(b).into_set();
 
         for t in s2 {
             s1.remove(&t);
@@ -172,7 +191,7 @@ impl Type {
         Type::make_union(s1)
     }
 
-    fn into_set(self) -> BTreeSet<Type> {
+    fn into_set(self) -> BTreeSet<TypeId> {
         if matches!(self, Type::Never) {
             return BTreeSet::new();
         }
@@ -180,22 +199,14 @@ impl Type {
             return variants;
         }
 
-        BTreeSet::from([self])
+        BTreeSet::from([TYPE_INTERNER.intern(&self)])
     }
 
-    pub fn get_union_variants(&self) -> Option<&BTreeSet<Type>> {
+    pub fn get_union_variants(&self) -> Option<&BTreeSet<TypeId>> {
         if let Type::Struct(StructKind::TaggedUnion(variants)) = self {
             Some(variants)
         } else {
             None
-        }
-    }
-
-    /// Maps a struct field name -> (Index, Type)
-    pub fn get_field(&self, name: &StringId) -> Option<(usize, Type)> {
-        match self {
-            Type::Struct(kind) => kind.get_field(name),
-            _ => None,
         }
     }
 
@@ -228,26 +239,26 @@ impl Type {
 
 #[derive(Clone, Debug)]
 pub struct SpannedType {
-    pub kind: Type,
+    pub id: TypeId,
     pub span: Span,
 }
 
 impl Hash for SpannedType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.kind.hash(state);
+        self.id.hash(state);
     }
 }
 
 impl Eq for SpannedType {}
 impl PartialEq for SpannedType {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
+        self.id == other.id
     }
 }
 
 impl Ord for SpannedType {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.kind.cmp(&other.kind)
+        self.id.cmp(&other.id)
     }
 }
 
