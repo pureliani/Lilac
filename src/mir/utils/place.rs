@@ -144,7 +144,7 @@ impl<'a> Builder<'a, InBlock> {
             self.get_bb(block_id).predecessors.iter().cloned().collect();
 
         let val_id = if !self.get_bb(block_id).sealed {
-            let val_id = self.new_value_id(Type::Unknown);
+            let val_id = self.new_value_id(Type::Unknown.id());
             self.incomplete_phis.entry(block_id).or_default().push((
                 val_id,
                 place.clone(),

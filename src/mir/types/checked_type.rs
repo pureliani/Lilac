@@ -114,6 +114,10 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn id(&self) -> TypeId {
+        TYPE_INTERNER.intern(self)
+    }
+
     pub fn unwrap_ptr(&self) -> TypeId {
         if let Type::Pointer(to) = self {
             return *to;
@@ -202,9 +206,9 @@ impl Type {
         BTreeSet::from([TYPE_INTERNER.intern(&self)])
     }
 
-    pub fn get_union_variants(&self) -> Option<&BTreeSet<TypeId>> {
+    pub fn get_union_variants(&self) -> Option<BTreeSet<TypeId>> {
         if let Type::Struct(StructKind::TaggedUnion(variants)) = self {
-            Some(variants)
+            Some(variants.clone())
         } else {
             None
         }

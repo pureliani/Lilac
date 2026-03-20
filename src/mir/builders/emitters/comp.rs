@@ -7,97 +7,97 @@ use crate::mir::{
 
 impl<'a> Builder<'a, InBlock> {
     fn emit_ieq(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id().id());
         self.push_instruction(Instruction::Comp(CompInstr::IEq { dest, lhs, rhs }));
         dest
     }
 
     fn emit_ineq(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::INeq { dest, lhs, rhs }));
         dest
     }
 
     fn emit_slt(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::SLt { dest, lhs, rhs }));
         dest
     }
 
     fn emit_slte(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::SLte { dest, lhs, rhs }));
         dest
     }
 
     fn emit_sgt(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::SGt { dest, lhs, rhs }));
         dest
     }
 
     fn emit_sgte(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::SGte { dest, lhs, rhs }));
         dest
     }
 
     fn emit_ult(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::ULt { dest, lhs, rhs }));
         dest
     }
 
     fn emit_ulte(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::ULte { dest, lhs, rhs }));
         dest
     }
 
     fn emit_ugt(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::UGt { dest, lhs, rhs }));
         dest
     }
 
     fn emit_ugte(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::UGte { dest, lhs, rhs }));
         dest
     }
 
     fn emit_feq(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::FEq { dest, lhs, rhs }));
         dest
     }
 
     fn emit_fneq(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::FNeq { dest, lhs, rhs }));
         dest
     }
 
     fn emit_flt(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::FLt { dest, lhs, rhs }));
         dest
     }
 
     fn emit_flte(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::FLte { dest, lhs, rhs }));
         dest
     }
 
     fn emit_fgt(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::FGt { dest, lhs, rhs }));
         dest
     }
 
     fn emit_fgte(&mut self, lhs: ValueId, rhs: ValueId) -> ValueId {
-        let dest = self.new_value_id(Type::Bool(None));
+        let dest = self.new_value_id(Type::Bool(None).id());
         self.push_instruction(Instruction::Comp(CompInstr::FGte { dest, lhs, rhs }));
         dest
     }

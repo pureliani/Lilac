@@ -7,7 +7,7 @@ use crate::{
 
 fn get_type_at_path(mut ty: TypeId, path: &[StringId]) -> Option<TypeId> {
     for field_name in path {
-        match ty.as_type() {
+        match ty.ty() {
             Type::Struct(StructKind::UserDefined(fields)) => {
                 let field = fields.iter().find(|f| f.identifier.name == *field_name)?;
                 ty = field.ty.id;

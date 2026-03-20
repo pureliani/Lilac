@@ -15,12 +15,12 @@ impl<'a> Builder<'a, InBlock> {
     ) -> ValueId {
         let span = left.span.clone();
         let expected_left = SpannedType {
-            kind: Type::Bool(None),
+            id: Type::Bool(None).id(),
             span: left.span.clone(),
         };
 
         let expected_right = SpannedType {
-            kind: Type::Bool(None),
+            id: Type::Bool(None).id(),
             span: right.span.clone(),
         };
 

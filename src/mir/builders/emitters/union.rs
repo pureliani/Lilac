@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use crate::{
+    compile::interner::TypeId,
     globals::COMMON_IDENTIFIERS,
     mir::{
         builders::{Builder, InBlock, ValueId},
@@ -15,9 +16,9 @@ impl<'a> Builder<'a, InBlock> {
     pub fn wrap_in_union(
         &mut self,
         source: ValueId,
-        variants: &BTreeSet<Type>,
+        variants: &BTreeSet<TypeId>,
     ) -> ValueId {
-        let source_type = self.get_value_type(source).clone();
+        let source_type = self.get_value_type(source);
 
         let variant_index = variants
             .iter()
@@ -29,7 +30,7 @@ impl<'a> Builder<'a, InBlock> {
                 )
             });
 
-        let struct_type = Type::Struct(StructKind::TaggedUnion(variants.clone()));
+        let struct_type = Type::Struct(StructKind::TaggedUnion(variants.clone())).id();
         let union_ptr = self.emit_stack_alloc(struct_type, 1);
 
         let id_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.id);
@@ -38,7 +39,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let value_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.val);
         let typed_ptr =
-            self.emit_bitcast_unsafe(value_ptr, Type::Pointer(Box::new(source_type)));
+            self.emit_bitcast_unsafe(value_ptr, Type::Pointer(source_type).id());
         self.emit_store(typed_ptr, source);
 
         union_ptr
@@ -50,43 +51,44 @@ impl<'a> Builder<'a, InBlock> {
     pub fn unwrap_from_union(
         &mut self,
         union_ptr: ValueId,
-        variant_type: &Type,
+        variant_type: TypeId,
     ) -> ValueId {
         let union_ptr_ty = self.get_value_type(union_ptr);
         assert!(
             union_ptr_ty
+                .ty()
                 .get_union_variants()
                 .expect(
                     "INTERNAL COMPILER ERROR: unwrap_from_union - union_ptr is not \
                      pointing to a union"
                 )
                 .iter()
-                .any(|v| { v == variant_type }),
+                .any(|v| { *v == variant_type }),
             "INTERNAL COMPILER ERROR: unwrap_from_union - variant_type is not a \
              member of the union"
         );
 
         let value_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.val);
-        let typed_ptr = self.emit_bitcast_unsafe(
-            value_ptr,
-            Type::Pointer(Box::new(variant_type.clone())),
-        );
+        let typed_ptr =
+            self.emit_bitcast_unsafe(value_ptr, Type::Pointer(variant_type).id());
         self.emit_load(typed_ptr)
     }
 
     /// Tests whether a union value holds a specific variant. Returns a
     /// bool ValueId.
-    pub fn test_variant(&mut self, union_ptr: ValueId, variant_type: &Type) -> ValueId {
-        let union_type = self.get_value_type(union_ptr).clone();
+    pub fn test_variant(&mut self, union_ptr: ValueId, variant_type: TypeId) -> ValueId {
+        let union_ptr_type = self.get_value_type(union_ptr).clone();
 
-        let variants = union_type
+        let variants = union_ptr_type
+            .ty()
             .unwrap_ptr()
+            .ty()
             .get_union_variants()
             .expect("INTERNAL COMPILER ERROR: test_variant called with non-union");
 
         let variant_index = variants
             .iter()
-            .position(|v| v == variant_type)
+            .position(|v| *v == variant_type)
             .expect("INTERNAL COMPILER ERROR: variant not found in union");
 
         let id_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.id);
@@ -98,18 +100,18 @@ impl<'a> Builder<'a, InBlock> {
     pub fn retag_union(
         &mut self,
         source_ptr: ValueId,
-        source_variants: &BTreeSet<Type>,
-        target_variants: &BTreeSet<Type>,
+        source_variants: &BTreeSet<TypeId>,
+        target_variants: &BTreeSet<TypeId>,
     ) -> ValueId {
         let source_ptr_ty = self.get_value_type(source_ptr);
 
-        let actual_source_variants = source_ptr_ty
-            .unwrap_ptr()
+        let actual_source_variants = source_ptr_ty.ty()
+            .unwrap_ptr().ty()
             .get_union_variants()
             .expect("SAFETY CHECK FAILED: retag_union called on a ValueId that is not a union pointer!");
 
         assert_eq!(
-            actual_source_variants, source_variants,
+            actual_source_variants, *source_variants,
             "SAFETY CHECK FAILED: The variants of the source ValueId do not match \
              the source_variants provided by the Adjustment recipe!"
         );
@@ -142,7 +144,7 @@ impl<'a> Builder<'a, InBlock> {
             .collect();
 
         let target_struct =
-            Type::Struct(StructKind::TaggedUnion(target_variants.clone()));
+            Type::Struct(StructKind::TaggedUnion(target_variants.clone())).id();
         let target_ptr = self.emit_stack_alloc(target_struct, 1);
 
         let src_value_ptr = self.get_field_ptr(source_ptr, COMMON_IDENTIFIERS.val);
@@ -153,7 +155,7 @@ impl<'a> Builder<'a, InBlock> {
         } else {
             let src_as_target_payload = self.emit_bitcast_unsafe(
                 src_value_ptr,
-                Type::Pointer(Box::new(Type::TaglessUnion(target_variants.clone()))),
+                Type::Pointer(Type::TaglessUnion(target_variants.clone()).id()).id(),
             );
             self.emit_memcopy(src_as_target_payload, dst_value_ptr);
         }

@@ -34,7 +34,7 @@ pub fn type_to_string_recursive(
         return "...".to_string();
     }
 
-    let result = match ty_id.as_type() {
+    let result = match ty_id.ty() {
         Type::Void => String::from("void"),
         Type::Null => String::from("null"),
         Type::Unknown => String::from("unknown"),

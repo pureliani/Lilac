@@ -61,6 +61,12 @@ impl StringInterner {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeId(pub u32);
 
+impl TypeId {
+    pub fn ty(&self) -> Type {
+        TYPE_INTERNER.resolve(*self)
+    }
+}
+
 #[derive(Default)]
 struct TypeInternerState {
     forward: HashMap<Type, u32>,
@@ -111,11 +117,5 @@ impl TypeInterner {
         let mut writer = self.state.write().unwrap();
         writer.forward.clear();
         writer.backward.clear();
-    }
-}
-
-impl TypeId {
-    pub fn as_type(&self) -> Type {
-        TYPE_INTERNER.resolve(*self)
     }
 }

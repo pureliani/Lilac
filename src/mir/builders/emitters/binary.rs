@@ -102,9 +102,9 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if is_float(&lhs_ty) {
+        if is_float(&lhs_ty.ty()) {
             self.emit_fadd(lhs, rhs)
-        } else if is_integer(&lhs_ty) {
+        } else if is_integer(&lhs_ty.ty()) {
             self.emit_iadd(lhs, rhs)
         } else {
             panic!(
@@ -124,9 +124,9 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if is_float(&lhs_ty) {
+        if is_float(&lhs_ty.ty()) {
             self.emit_fsub(lhs, rhs)
-        } else if is_integer(&lhs_ty) {
+        } else if is_integer(&lhs_ty.ty()) {
             self.emit_isub(lhs, rhs)
         } else {
             panic!("INTERNAL COMPILER ERROR: Cannot use subtraction `-` operator on this type")
@@ -144,9 +144,9 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if is_float(&lhs_ty) {
+        if is_float(&lhs_ty.ty()) {
             self.emit_fmul(lhs, rhs)
-        } else if is_integer(&lhs_ty) {
+        } else if is_integer(&lhs_ty.ty()) {
             self.emit_imul(lhs, rhs)
         } else {
             panic!("INTERNAL COMPILER ERROR: Cannot use multiplication `*` operator on this type")
@@ -164,11 +164,11 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if is_float(&lhs_ty) {
+        if is_float(&lhs_ty.ty()) {
             self.emit_fdiv(lhs, rhs)
-        } else if is_signed(&lhs_ty) {
+        } else if is_signed(&lhs_ty.ty()) {
             self.emit_sdiv(lhs, rhs)
-        } else if !is_signed(&lhs_ty) {
+        } else if !is_signed(&lhs_ty.ty()) {
             self.emit_udiv(lhs, rhs)
         } else {
             panic!(
@@ -188,11 +188,11 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if is_float(&lhs_ty) {
+        if is_float(&lhs_ty.ty()) {
             self.emit_frem(lhs, rhs)
-        } else if is_signed(&lhs_ty) {
+        } else if is_signed(&lhs_ty.ty()) {
             self.emit_srem(lhs, rhs)
-        } else if !is_signed(&lhs_ty) {
+        } else if !is_signed(&lhs_ty.ty()) {
             self.emit_urem(lhs, rhs)
         } else {
             panic!(

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::{
     ast::Span,
     compile::interner::TypeId,
-    globals::{next_value_id, TYPE_INTERNER},
+    globals::next_value_id,
     mir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, ExpectBody, Function, InBlock, InFunction,
@@ -118,12 +118,10 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn get_value_type(&self, id: ValueId) -> Type {
-        let type_id = self.program.value_types.get(&id).unwrap_or_else(|| {
+    pub fn get_value_type(&self, id: ValueId) -> TypeId {
+        *self.program.value_types.get(&id).unwrap_or_else(|| {
             panic!("INTERNAL COMPILER ERROR: ValueId({}) has no type", id.0)
-        });
-
-        TYPE_INTERNER.resolve(*type_id)
+        })
     }
 
     pub fn insert_phi(
