@@ -102,8 +102,8 @@ impl<'a> Builder<'a, InBlock> {
         base_type: TypeId,
         field: &IdentifierNode,
     ) -> Result<(), SemanticError> {
-        let struct_kind = match base_type.ty() {
-            Type::Pointer(inner) => match inner.ty() {
+        let struct_kind = match self.types.resolve(base_type) {
+            Type::Pointer(inner) => match self.types.resolve(inner) {
                 Type::Struct(s) => s,
                 _ => return Ok(()),
             },
@@ -130,6 +130,7 @@ impl<'a> Builder<'a, InBlock> {
         place: &Place,
         span: Span,
     ) -> ValueId {
+        let type_unknown = self.types.unknown();
         if let Place::Temporary(val_id) = place {
             return *val_id;
         }
@@ -144,7 +145,7 @@ impl<'a> Builder<'a, InBlock> {
             self.get_bb(block_id).predecessors.iter().cloned().collect();
 
         let val_id = if !self.get_bb(block_id).sealed {
-            let val_id = self.new_value_id(Type::Unknown.id());
+            let val_id = self.new_value_id(type_unknown);
             self.incomplete_phis.entry(block_id).or_default().push((
                 val_id,
                 place.clone(),
@@ -159,7 +160,7 @@ impl<'a> Builder<'a, InBlock> {
                  neither defined the place nor had the predecessors"
             );
         } else {
-            let val_id = self.new_value_id(Type::Unknown.id());
+            let val_id = self.new_value_id(type_unknown);
 
             self.current_defs
                 .entry(block_id)
@@ -199,10 +200,11 @@ impl<'a> Builder<'a, InBlock> {
                 let decl = self.program.declarations.get(decl_id).unwrap();
                 match decl {
                     CheckedDeclaration::Var(v) => {
-                        self.get_value_type(v.stack_ptr).ty().unwrap_ptr()
+                        let stack_ptr_ty = self.get_value_type(v.stack_ptr);
+                        self.types.unwrap_ptr(stack_ptr_ty)
                     }
                     CheckedDeclaration::Function(f) => {
-                        Type::Fn(FnType::Direct(f.id)).id()
+                        self.types.intern(&Type::Fn(FnType::Direct(f.id)))
                     }
                     _ => panic!(),
                 }
@@ -222,12 +224,12 @@ impl<'a> Builder<'a, InBlock> {
     fn type_of_field(&self, base_ty: TypeId, field: StringId) -> Option<TypeId> {
         use Type::*;
 
-        let base_inner = match base_ty.ty() {
+        let base_inner = match self.types.resolve(base_ty) {
             Pointer(inner) => inner,
             _ => return None,
         };
 
-        let struct_kind = match base_inner.ty() {
+        let struct_kind = match self.types.resolve(base_inner) {
             Struct(s) => s,
             _ => return None,
         };

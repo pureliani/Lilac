@@ -41,11 +41,13 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn emit_memcopy(&mut self, src: ValueId, dest: ValueId) {
-        let src_ty = self.get_value_type(src);
-        let dest_ty = self.get_value_type(dest);
+        let src_ptr_ty = self.get_value_type(src);
+        let dest_ptr_ty = self.get_value_type(dest);
 
-        let compatible = matches!((src_ty, dest_ty), (Type::Pointer(src_ptr), Type::Pointer(dest_ptr)) if src_ptr == dest_ptr);
-        if !compatible {
+        let src_ty = self.types.unwrap_ptr(src_ptr_ty);
+        let dest_ty = self.types.unwrap_ptr(dest_ptr_ty);
+
+        if src_ty != dest_ty {
             panic!(
                 "INTERNAL COMPILER ERROR: MemCopy expected source and destination to be \
                  pointers to the same inner type"

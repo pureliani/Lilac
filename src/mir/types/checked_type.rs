@@ -35,7 +35,7 @@ impl StructKind {
             StructKind::ListHeader(elem_ty_id) => vec![
                 (
                     COMMON_IDENTIFIERS.len,
-                    TYPE_INTERNER.intern(&Type::USize(None)),
+                    TYPE_INTERNER.intern(&Type::USize(None)), // NOTE: type interner is here used to be available but it has since been moved and is no longer global variable
                 ),
                 (
                     COMMON_IDENTIFIERS.cap,
