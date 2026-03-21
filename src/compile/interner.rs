@@ -126,75 +126,75 @@ impl TypeInterner {
 }
 
 impl TypeInterner {
-    pub fn bool(&mut self, literal: Option<bool>) -> TypeId {
+    pub fn bool(&self, literal: Option<bool>) -> TypeId {
         self.intern(&Type::Bool(literal))
     }
 
-    pub fn i8(&mut self, literal: Option<i8>) -> TypeId {
+    pub fn i8(&self, literal: Option<i8>) -> TypeId {
         self.intern(&Type::I8(literal))
     }
 
-    pub fn i16(&mut self, literal: Option<i16>) -> TypeId {
+    pub fn i16(&self, literal: Option<i16>) -> TypeId {
         self.intern(&Type::I16(literal))
     }
 
-    pub fn i32(&mut self, literal: Option<i32>) -> TypeId {
+    pub fn i32(&self, literal: Option<i32>) -> TypeId {
         self.intern(&Type::I32(literal))
     }
 
-    pub fn i64(&mut self, literal: Option<i64>) -> TypeId {
+    pub fn i64(&self, literal: Option<i64>) -> TypeId {
         self.intern(&Type::I64(literal))
     }
 
-    pub fn isize(&mut self, literal: Option<isize>) -> TypeId {
+    pub fn isize(&self, literal: Option<isize>) -> TypeId {
         self.intern(&Type::ISize(literal))
     }
 
-    pub fn u8(&mut self, literal: Option<u8>) -> TypeId {
+    pub fn u8(&self, literal: Option<u8>) -> TypeId {
         self.intern(&Type::U8(literal))
     }
 
-    pub fn u16(&mut self, literal: Option<u16>) -> TypeId {
+    pub fn u16(&self, literal: Option<u16>) -> TypeId {
         self.intern(&Type::U16(literal))
     }
 
-    pub fn u32(&mut self, literal: Option<u32>) -> TypeId {
+    pub fn u32(&self, literal: Option<u32>) -> TypeId {
         self.intern(&Type::U32(literal))
     }
 
-    pub fn u64(&mut self, literal: Option<u64>) -> TypeId {
+    pub fn u64(&self, literal: Option<u64>) -> TypeId {
         self.intern(&Type::U64(literal))
     }
 
-    pub fn usize(&mut self, literal: Option<usize>) -> TypeId {
+    pub fn usize(&self, literal: Option<usize>) -> TypeId {
         self.intern(&Type::USize(literal))
     }
 
-    pub fn ptr(&mut self, to: TypeId) -> TypeId {
+    pub fn ptr(&self, to: TypeId) -> TypeId {
         self.intern(&Type::Pointer(to))
     }
 
-    pub fn f32(&mut self, literal: Option<OrderedF32>) -> TypeId {
+    pub fn f32(&self, literal: Option<OrderedF32>) -> TypeId {
         self.intern(&Type::F32(literal))
     }
 
-    pub fn f64(&mut self, literal: Option<OrderedF64>) -> TypeId {
+    pub fn f64(&self, literal: Option<OrderedF64>) -> TypeId {
         self.intern(&Type::F64(literal))
     }
 
-    pub fn unknown(&mut self) -> TypeId {
+    pub fn unknown(&self) -> TypeId {
         self.intern(&Type::Unknown)
     }
 
-    pub fn null(&mut self) -> TypeId {
+    pub fn null(&self) -> TypeId {
         self.intern(&Type::Null)
     }
 
-    pub fn void(&mut self) -> TypeId {
+    pub fn void(&self) -> TypeId {
         self.intern(&Type::Void)
     }
 
-    pub fn never(&mut self) -> TypeId {
+    pub fn never(&self) -> TypeId {
         self.intern(&Type::Never)
     }
 }
@@ -208,7 +208,7 @@ impl TypeInterner {
         panic!("INTERNAL COMPILER ERROR: Called unwrap_ptr on non-pointer type")
     }
 
-    pub fn from_number_kind(&mut self, val: &NumberKind) -> TypeId {
+    pub fn from_number_kind(&self, val: &NumberKind) -> TypeId {
         match *val {
             NumberKind::I8(v) => self.i8(Some(v)),
             NumberKind::I16(v) => self.i16(Some(v)),
@@ -225,7 +225,7 @@ impl TypeInterner {
         }
     }
 
-    pub fn make_union(&mut self, types: impl IntoIterator<Item = TypeId>) -> TypeId {
+    pub fn make_union(&self, types: impl IntoIterator<Item = TypeId>) -> TypeId {
         let mut flat = BTreeSet::new();
 
         for ty_id in types {
@@ -253,11 +253,11 @@ impl TypeInterner {
         self.intern(&Type::Struct(StructKind::TaggedUnion(flat)))
     }
 
-    pub fn union(&mut self, a: TypeId, b: TypeId) -> TypeId {
+    pub fn union(&self, a: TypeId, b: TypeId) -> TypeId {
         self.make_union(vec![a, b])
     }
 
-    pub fn union_intersect(&mut self, a: TypeId, b: TypeId) -> TypeId {
+    pub fn union_intersect(&self, a: TypeId, b: TypeId) -> TypeId {
         let s1 = self.as_union_set(a);
         let s2 = self.as_union_set(b);
 
@@ -266,7 +266,7 @@ impl TypeInterner {
         self.make_union(result_types)
     }
 
-    pub fn union_subtract(&mut self, a: TypeId, b: TypeId) -> TypeId {
+    pub fn union_subtract(&self, a: TypeId, b: TypeId) -> TypeId {
         let mut s1 = self.as_union_set(a);
         let s2 = self.as_union_set(b);
 
@@ -277,7 +277,7 @@ impl TypeInterner {
         self.make_union(s1)
     }
 
-    fn as_union_set(&mut self, ty: TypeId) -> BTreeSet<TypeId> {
+    fn as_union_set(&self, ty: TypeId) -> BTreeSet<TypeId> {
         if ty == self.never() {
             return BTreeSet::new();
         }
@@ -298,7 +298,7 @@ impl TypeInterner {
 
     /// Helper to strip the literal value, returning the generic type.
     /// e.g., I32(Some(5)) -> I32(None)
-    pub fn widen_literal(&mut self, ty: TypeId) -> TypeId {
+    pub fn widen_literal(&self, ty: TypeId) -> TypeId {
         match self.resolve(ty) {
             Type::I8(_) => self.i8(None),
             Type::I16(_) => self.i16(None),

@@ -133,7 +133,7 @@ pub trait BuilderContext {}
 pub struct Builder<'a, C: BuilderContext> {
     pub context: C,
     pub program: &'a mut Program,
-    pub types: &'a mut TypeInterner,
+    pub types: &'a TypeInterner,
 
     pub errors: &'a mut Vec<SemanticError>,
     pub current_scope: Scope,

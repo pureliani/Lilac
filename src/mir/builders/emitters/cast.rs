@@ -3,7 +3,6 @@ use crate::{
     mir::{
         builders::{Builder, InBlock, ValueId},
         instructions::{CastInstr, Instruction},
-        utils::type_to_string::type_to_string,
     },
 };
 
@@ -68,8 +67,8 @@ impl<'a> Builder<'a, InBlock> {
             panic!(
                 "INTERNAL COMPILER ERROR: Tried a bitcast to structurally incompatible \
                  type, from {} to {}",
-                type_to_string(src_ty),
-                type_to_string(target_ty)
+                self.types.to_string(src_ty),
+                self.types.to_string(target_ty)
             );
         }
 

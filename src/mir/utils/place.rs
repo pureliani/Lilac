@@ -234,6 +234,6 @@ impl<'a> Builder<'a, InBlock> {
             _ => return None,
         };
 
-        struct_kind.get_field(&field).map(|(_, ty)| ty)
+        struct_kind.get_field(self.types, &field).map(|(_, ty)| ty)
     }
 }

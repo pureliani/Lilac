@@ -2,7 +2,7 @@ use crate::{
     ast::Span,
     mir::{
         builders::{Builder, InBlock, ValueId},
-        types::checked_type::{SpannedType, Type},
+        types::checked_type::SpannedType,
     },
 };
 
@@ -13,8 +13,8 @@ impl<'a> Builder<'a, InBlock> {
         expected_type: Option<&SpannedType>,
     ) -> ValueId {
         if let Some(et) = expected_type {
-            if let Some(variants) = et.id.ty().get_union_variants() {
-                if variants.contains(&Type::Null.id()) {
+            if let Some(variants) = self.types.get_union_variants(et.id) {
+                if variants.contains(&self.types.null()) {
                     let val = self.emit_null();
                     let result = self.wrap_in_union(val, &variants);
                     return self.check_expected(result, span, expected_type);

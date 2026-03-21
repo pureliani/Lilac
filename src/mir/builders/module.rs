@@ -12,6 +12,7 @@ impl<'a> Builder<'a, InModule> {
             type_predicates: self.type_predicates,
             ptg: self.ptg,
             aliases: self.aliases,
+            types: self.types,
         }
     }
 

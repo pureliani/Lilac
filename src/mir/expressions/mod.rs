@@ -27,7 +27,7 @@ use crate::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         expressions::r#if::IfContext,
-        types::checked_type::{SpannedType, Type},
+        types::checked_type::SpannedType,
     },
 };
 
@@ -41,11 +41,11 @@ impl<'a> Builder<'a, InBlock> {
         let value_type = self.get_value_type(value);
 
         if let Some(et) = expected_type {
-            if value_type != &Type::Unknown && &et.kind != value_type {
+            if value_type != self.types.unknown() && et.id != value_type {
                 return self.report_error_and_get_poison(SemanticError {
                     kind: SemanticErrorKind::TypeMismatch {
-                        expected: et.kind.clone(),
-                        received: value_type.clone(),
+                        expected: et.id,
+                        received: value_type,
                     },
                     span: value_span,
                 });

@@ -1,146 +1,140 @@
-use std::collections::HashMap;
-
 use crate::{
     ast::{
         decl::Param,
         type_annotation::{TypeAnnotation, TypeAnnotationKind},
-        DeclarationId, IdentifierNode,
+        IdentifierNode,
     },
+    compile::interner::TypeId,
     mir::{
+        builders::{Builder, BuilderContext},
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::{CheckedDeclaration, CheckedParam, FnType},
             checked_type::{SpannedType, StructKind, Type},
             ordered_float::{OrderedF32, OrderedF64},
         },
-        utils::{layout::pack_struct, scope::Scope},
+        utils::layout::pack_struct,
     },
 };
 
-pub struct TypeCheckerContext<'a> {
-    pub scope: Scope,
-    pub declarations: &'a HashMap<DeclarationId, CheckedDeclaration>,
-    pub errors: &'a mut Vec<SemanticError>,
-}
-
-pub fn check_params(ctx: &mut TypeCheckerContext, params: &[Param]) -> Vec<CheckedParam> {
-    params
-        .iter()
-        .map(|p| CheckedParam {
-            ty: check_type_annotation(ctx, &p.constraint),
-            identifier: p.identifier.clone(),
-        })
-        .collect()
-}
-
-pub fn check_type_identifier_annotation(
-    ctx: &mut TypeCheckerContext,
-    id: IdentifierNode,
-) -> Type {
-    ctx.scope
-        .lookup(id.name)
-        .map(|entry| {
-            match ctx.declarations.get(&entry).unwrap_or_else(|| {
-                panic!(
-                    "INTERNAL COMPILER ERROR: Expected declarations to contain \
-                     DeclarationId({}) key",
-                    entry.0
-                )
-            }) {
-                CheckedDeclaration::TypeAlias(decl) => decl.value.kind.clone(),
-                CheckedDeclaration::Function(_) => {
-                    ctx.errors.push(SemanticError {
-                        kind: SemanticErrorKind::CannotUseFunctionDeclarationAsType,
-                        span: id.span.clone(),
-                    });
-
-                    Type::Unknown
-                }
-                CheckedDeclaration::Var(_) => {
-                    ctx.errors.push(SemanticError {
-                        kind: SemanticErrorKind::CannotUseVariableDeclarationAsType,
-                        span: id.span.clone(),
-                    });
-
-                    Type::Unknown
-                }
-            }
-        })
-        .unwrap_or_else(|| {
-            ctx.errors.push(SemanticError {
-                span: id.span.clone(),
-                kind: SemanticErrorKind::UndeclaredType(id),
-            });
-
-            Type::Unknown
-        })
-}
-
-pub fn check_type_annotation(
-    ctx: &mut TypeCheckerContext,
-    annotation: &TypeAnnotation,
-) -> SpannedType {
-    let kind = match &annotation.kind {
-        TypeAnnotationKind::Void => Type::Void,
-        TypeAnnotationKind::Null => Type::Null,
-        TypeAnnotationKind::Bool(lit) => Type::Bool(*lit),
-        TypeAnnotationKind::U8(lit) => Type::U8(*lit),
-        TypeAnnotationKind::U16(lit) => Type::U16(*lit),
-        TypeAnnotationKind::U32(lit) => Type::U32(*lit),
-        TypeAnnotationKind::U64(lit) => Type::U64(*lit),
-        TypeAnnotationKind::USize(lit) => Type::USize(*lit),
-        TypeAnnotationKind::I8(lit) => Type::I8(*lit),
-        TypeAnnotationKind::I16(lit) => Type::I16(*lit),
-        TypeAnnotationKind::I32(lit) => Type::I32(*lit),
-        TypeAnnotationKind::I64(lit) => Type::I64(*lit),
-        TypeAnnotationKind::ISize(lit) => Type::ISize(*lit),
-        TypeAnnotationKind::F32(lit) => Type::F32(lit.map(OrderedF32)),
-        TypeAnnotationKind::F64(lit) => Type::F64(lit.map(OrderedF64)),
-        TypeAnnotationKind::String(lit) => {
-            let inner = Type::Struct(StructKind::StringHeader(*lit));
-            Type::Pointer(Box::new(inner))
-        }
-        TypeAnnotationKind::Identifier(id) => {
-            check_type_identifier_annotation(ctx, id.clone())
-        }
-        TypeAnnotationKind::FnType {
-            params,
-            return_type,
-        } => {
-            let checked_params = check_params(ctx, params);
-            let checked_return_type = check_type_annotation(ctx, return_type);
-
-            Type::Fn(FnType::Indirect {
-                params: checked_params,
-                return_type: Box::new(checked_return_type),
+impl<'a, C: BuilderContext> Builder<'a, C> {
+    pub fn check_params(&mut self, params: &[Param]) -> Vec<CheckedParam> {
+        params
+            .iter()
+            .map(|p| CheckedParam {
+                ty: self.check_type_annotation(&p.constraint),
+                identifier: p.identifier.clone(),
             })
-        }
-        TypeAnnotationKind::Union(variants) => {
-            let mut checked_variants = Vec::new();
+            .collect()
+    }
 
-            for v in variants {
-                checked_variants.push(check_type_annotation(ctx, v).kind);
+    pub fn check_type_identifier_annotation(&mut self, id: IdentifierNode) -> TypeId {
+        self.current_scope
+            .lookup(id.name)
+            .map(|entry| {
+                match self.program.declarations.get(&entry).unwrap_or_else(|| {
+                    panic!(
+                        "INTERNAL COMPILER ERROR: Expected declarations to contain \
+                     DeclarationId({}) key",
+                        entry.0
+                    )
+                }) {
+                    CheckedDeclaration::TypeAlias(decl) => decl.value.id,
+                    CheckedDeclaration::Function(_) => {
+                        self.errors.push(SemanticError {
+                            kind: SemanticErrorKind::CannotUseFunctionDeclarationAsType,
+                            span: id.span.clone(),
+                        });
+
+                        self.types.unknown()
+                    }
+                    CheckedDeclaration::Var(_) => {
+                        self.errors.push(SemanticError {
+                            kind: SemanticErrorKind::CannotUseVariableDeclarationAsType,
+                            span: id.span.clone(),
+                        });
+
+                        self.types.unknown()
+                    }
+                }
+            })
+            .unwrap_or_else(|| {
+                self.errors.push(SemanticError {
+                    span: id.span.clone(),
+                    kind: SemanticErrorKind::UndeclaredType(id),
+                });
+
+                self.types.unknown()
+            })
+    }
+
+    pub fn check_type_annotation(&mut self, annotation: &TypeAnnotation) -> SpannedType {
+        let id = match &annotation.kind {
+            TypeAnnotationKind::Void => self.types.void(),
+            TypeAnnotationKind::Null => self.types.null(),
+            TypeAnnotationKind::Bool(lit) => self.types.bool(*lit),
+            TypeAnnotationKind::U8(lit) => self.types.u8(*lit),
+            TypeAnnotationKind::U16(lit) => self.types.u16(*lit),
+            TypeAnnotationKind::U32(lit) => self.types.u32(*lit),
+            TypeAnnotationKind::U64(lit) => self.types.u64(*lit),
+            TypeAnnotationKind::USize(lit) => self.types.usize(*lit),
+            TypeAnnotationKind::I8(lit) => self.types.i8(*lit),
+            TypeAnnotationKind::I16(lit) => self.types.i16(*lit),
+            TypeAnnotationKind::I32(lit) => self.types.i32(*lit),
+            TypeAnnotationKind::I64(lit) => self.types.i64(*lit),
+            TypeAnnotationKind::ISize(lit) => self.types.isize(*lit),
+            TypeAnnotationKind::F32(lit) => self.types.f32(lit.map(OrderedF32)),
+            TypeAnnotationKind::F64(lit) => self.types.f64(lit.map(OrderedF64)),
+            TypeAnnotationKind::String(lit) => {
+                let inner = self
+                    .types
+                    .intern(&Type::Struct(StructKind::StringHeader(*lit)));
+
+                self.types.ptr(inner)
             }
+            TypeAnnotationKind::Identifier(id) => {
+                self.check_type_identifier_annotation(id.clone())
+            }
+            TypeAnnotationKind::FnType {
+                params,
+                return_type,
+            } => {
+                let checked_params = self.check_params(params);
+                let checked_return_type = self.check_type_annotation(return_type);
 
-            Type::make_union(checked_variants)
-        }
-        TypeAnnotationKind::List(item_type) => {
-            let checked_item_type = check_type_annotation(ctx, item_type);
-            let inner = Box::new(Type::Struct(StructKind::ListHeader(Box::new(
-                checked_item_type.kind,
-            ))));
-            Type::Pointer(inner)
-        }
-        TypeAnnotationKind::Struct(items) => {
-            let checked_field_types = check_params(ctx, items);
-            let packed = pack_struct(StructKind::UserDefined(checked_field_types));
-            let inner = Box::new(Type::Struct(packed));
-            Type::Pointer(inner)
-        }
-    };
+                self.types.intern(&Type::Fn(FnType::Indirect {
+                    params: checked_params,
+                    return_type: checked_return_type,
+                }))
+            }
+            TypeAnnotationKind::Union(variants) => {
+                let mut checked_variants = Vec::new();
 
-    SpannedType {
-        kind,
-        span: annotation.span.clone(),
+                for v in variants {
+                    checked_variants.push(self.check_type_annotation(v).id);
+                }
+
+                self.types.make_union(checked_variants)
+            }
+            TypeAnnotationKind::List(item_type) => {
+                let checked_item_type = self.check_type_annotation(item_type);
+                let inner = self
+                    .types
+                    .intern(&Type::Struct(StructKind::ListHeader(checked_item_type.id)));
+
+                self.types.ptr(inner)
+            }
+            TypeAnnotationKind::Struct(items) => {
+                let checked_field_types = self.check_params(items);
+                let packed = pack_struct(StructKind::UserDefined(checked_field_types));
+                let inner = self.types.intern(&Type::Struct(packed));
+                self.types.ptr(inner)
+            }
+        };
+
+        SpannedType {
+            id,
+            span: annotation.span.clone(),
+        }
     }
 }

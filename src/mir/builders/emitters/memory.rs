@@ -74,12 +74,12 @@ impl<'a> Builder<'a, InBlock> {
         let ptr_ty = self.get_value_type(base_ptr).clone();
         let index_ty = self.get_value_type(index);
 
-        if !matches!(index_ty, &Type::USize(_)) {
+        if !matches!(self.types.resolve(index_ty), Type::USize(_)) {
             panic!("INTERNAL COMPILER ERROR: ptr_offset requires the index to be of type usize");
         }
 
-        if let Type::Pointer(to) = ptr_ty {
-            let dest_ty = Type::Pointer(to);
+        if let Type::Pointer(to) = self.types.resolve(ptr_ty) {
+            let dest_ty = self.types.ptr(to);
             let dest = self.new_value_id(dest_ty);
 
             self.push_instruction(Instruction::Memory(MemoryInstr::PtrOffset {
@@ -102,28 +102,24 @@ impl<'a> Builder<'a, InBlock> {
         field: &IdentifierNode,
         is_internal_access: bool,
     ) -> Result<ValueId, SemanticError> {
-        let current_ty = self.get_value_type(base_ptr);
+        let ptr_ty = self.get_value_type(base_ptr);
+        let pointee_ty = self.types.unwrap_ptr(ptr_ty);
 
-        let struct_kind = match current_ty {
-            Type::Pointer(to) => match &**to {
-                Type::Struct(s) => {
-                    if is_internal_access {
-                        s
-                    } else if let StructKind::UserDefined(_) = s {
-                        s
-                    } else {
-                        panic!("INTERNAL COMPILER ERROR: Compiler allowed the user to attempt access to non-user space struct field")
-                    }
+        let struct_kind = match self.types.resolve(pointee_ty) {
+            Type::Struct(s) => {
+                if is_internal_access {
+                    s
+                } else if let StructKind::UserDefined(_) = s {
+                    s
+                } else {
+                    panic!("INTERNAL COMPILER ERROR: Compiler allowed the user to attempt access to non-user space struct field")
                 }
-                _ => panic!("Expected pointer to struct, found {:?}", current_ty),
-            },
-            _ => {
-                panic!("Expected pointer, found {:?}", current_ty);
             }
+            _ => panic!("Expected pointer to struct, found {:?}", pointee_ty),
         };
 
         let (field_index, field_type) =
-            if let Some(v) = struct_kind.get_field(&field.name) {
+            if let Some(v) = struct_kind.get_field(self.types, &field.name) {
                 v
             } else {
                 return Err(SemanticError {
@@ -164,9 +160,10 @@ impl<'a> Builder<'a, InBlock> {
     pub fn get_list_buffer_ptr(&mut self, list_header_ptr: ValueId) -> ValueId {
         let list_ptr_type = self.get_value_type(list_header_ptr);
 
-        let is_valid = if let Type::Pointer(inner) = &list_ptr_type {
+        let is_valid = if let Type::Pointer(inner) = self.types.resolve(list_ptr_type) {
+            let inner_ty = self.types.resolve(inner);
             matches!(
-                &**inner,
+                inner_ty,
                 Type::Struct(StructKind::ListHeader(_))
                     | Type::Struct(StructKind::StringHeader(_))
             )

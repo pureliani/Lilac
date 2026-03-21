@@ -1,6 +1,6 @@
 use crate::{
     ast::Span,
-    compile::interner::{StringId, TypeId},
+    compile::interner::{StringId, TypeId, TypeInterner},
     globals::COMMON_IDENTIFIERS,
     mir::types::{
         checked_declaration::{CheckedParam, FnType},
@@ -25,7 +25,7 @@ pub enum StructKind {
 }
 
 impl StructKind {
-    pub fn fields(&self) -> Vec<(StringId, TypeId)> {
+    pub fn fields(&self, t: &TypeInterner) -> Vec<(StringId, TypeId)> {
         match self {
             StructKind::UserDefined(params) => params
                 .iter()
@@ -33,44 +33,22 @@ impl StructKind {
                 .collect(),
 
             StructKind::ListHeader(elem_ty_id) => vec![
-                (
-                    COMMON_IDENTIFIERS.len,
-                    TYPE_INTERNER.intern(&Type::USize(None)), // NOTE: type interner is here used to be available but it has since been moved and is no longer global variable
-                ),
-                (
-                    COMMON_IDENTIFIERS.cap,
-                    TYPE_INTERNER.intern(&Type::USize(None)),
-                ),
-                (
-                    COMMON_IDENTIFIERS.ptr,
-                    TYPE_INTERNER.intern(&Type::Pointer(*elem_ty_id)),
-                ),
+                (COMMON_IDENTIFIERS.len, t.usize(None)),
+                (COMMON_IDENTIFIERS.cap, t.usize(None)),
+                (COMMON_IDENTIFIERS.ptr, t.ptr(*elem_ty_id)),
             ],
 
             StructKind::StringHeader(_) => vec![
-                (
-                    COMMON_IDENTIFIERS.len,
-                    TYPE_INTERNER.intern(&Type::USize(None)),
-                ),
-                (
-                    COMMON_IDENTIFIERS.cap,
-                    TYPE_INTERNER.intern(&Type::USize(None)),
-                ),
-                (
-                    COMMON_IDENTIFIERS.ptr,
-                    TYPE_INTERNER
-                        .intern(&Type::Pointer(TYPE_INTERNER.intern(&Type::U8(None)))),
-                ),
+                (COMMON_IDENTIFIERS.len, t.usize(None)),
+                (COMMON_IDENTIFIERS.cap, t.usize(None)),
+                (COMMON_IDENTIFIERS.ptr, t.ptr(t.u8(None))),
             ],
             StructKind::TaggedUnion(variants) => {
                 vec![
-                    (
-                        COMMON_IDENTIFIERS.id,
-                        TYPE_INTERNER.intern(&Type::U32(None)),
-                    ),
+                    (COMMON_IDENTIFIERS.id, t.u32(None)),
                     (
                         COMMON_IDENTIFIERS.val,
-                        TYPE_INTERNER.intern(&Type::TaglessUnion(variants.clone())),
+                        t.intern(&Type::TaglessUnion(variants.clone())),
                     ),
                 ]
             }
@@ -78,8 +56,12 @@ impl StructKind {
     }
 
     /// Maps a field name -> (Index, TypeId)
-    pub fn get_field(&self, name: &StringId) -> Option<(usize, TypeId)> {
-        self.fields()
+    pub fn get_field(
+        &self,
+        t: &TypeInterner,
+        name: &StringId,
+    ) -> Option<(usize, TypeId)> {
+        self.fields(t)
             .into_iter()
             .enumerate()
             .find(|(_, (field_name, _))| field_name == name)

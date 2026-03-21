@@ -2,7 +2,7 @@ use crate::{
     ast::expr::Expr,
     mir::{
         builders::{Builder, InBlock, ValueId},
-        types::checked_type::{SpannedType, Type},
+        types::checked_type::SpannedType,
     },
 };
 
@@ -14,13 +14,14 @@ impl<'a> Builder<'a, InBlock> {
         expected_type: Option<&SpannedType>,
     ) -> ValueId {
         let span = left.span.clone();
+        let bool_type = self.types.bool(None);
         let expected_left = SpannedType {
-            id: Type::Bool(None).id(),
+            id: bool_type,
             span: left.span.clone(),
         };
 
         let expected_right = SpannedType {
-            id: Type::Bool(None).id(),
+            id: bool_type,
             span: right.span.clone(),
         };
 

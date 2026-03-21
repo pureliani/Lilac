@@ -3,7 +3,6 @@ use crate::{
     mir::{
         builders::{Builder, InBlock, ValueId},
         types::checked_type::{SpannedType, Type},
-        utils::adjustment::compute_type_adjustment,
     },
 };
 
@@ -18,7 +17,7 @@ impl<'a> Builder<'a, InBlock> {
         let mut element_types = Vec::with_capacity(items.len());
 
         let expected_element_type = if let Some(SpannedType {
-            kind: Type::List(elem_type),
+            id: Type::List(elem_type),
             span: _,
         }) = expected_type
         {
@@ -36,20 +35,20 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         let element_type = SpannedType {
-            kind: Type::make_union(element_types),
+            id: self.types.make_union(element_types),
             span: expr_span.clone(),
         };
 
         let mut adjusted_items = Vec::with_capacity(item_values.len());
         for val_id in item_values {
             let val_ty = self.get_value_type(val_id).clone();
-            if val_ty == element_type.kind {
+            if val_ty == element_type.id {
                 adjusted_items.push(val_id);
             } else {
-                match compute_type_adjustment(&val_ty, &element_type.kind, false) {
+                match self.compute_type_adjustment(val_ty, element_type.id, false) {
                     Ok(adj) => {
                         let adjusted =
-                            self.apply_adjustment(val_id, adj, element_type.kind.clone());
+                            self.apply_adjustment(val_id, adj, element_type.id);
                         adjusted_items.push(adjusted);
                     }
                     Err(_) => {

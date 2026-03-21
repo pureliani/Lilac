@@ -11,10 +11,7 @@ use crate::{
     ast::{ModulePath, Span},
     compile::{Compiler, CompilerErrorKind},
     globals::STRING_INTERNER,
-    mir::{
-        errors::SemanticErrorKind,
-        utils::type_to_string::{token_kind_to_string, type_to_string},
-    },
+    mir::errors::SemanticErrorKind,
     parse::ParsingErrorKind,
     tokenize::TokenizationErrorKind,
 };

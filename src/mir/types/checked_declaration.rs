@@ -39,7 +39,7 @@ pub enum FnType {
     Direct(DeclarationId),
     Indirect {
         params: Vec<CheckedParam>,
-        return_type: Box<SpannedType>,
+        return_type: SpannedType,
     },
 }
 
