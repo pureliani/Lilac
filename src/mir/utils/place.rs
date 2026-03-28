@@ -1,4 +1,3 @@
-// src/mir/utils/place.rs
 use std::collections::HashMap;
 
 use crate::{
@@ -16,6 +15,7 @@ use crate::{
         },
         utils::facts::{narrowed_type::NarrowedTypeFact, FactSet},
     },
+    tokenize::NumberKind,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -40,7 +40,6 @@ impl Place {
         let mut path = Vec::new();
         let mut current = self;
 
-        // Traverse up, skipping Derefs, to build the field path
         loop {
             match current {
                 Place::Field(base, field) => {
@@ -90,7 +89,7 @@ impl<'a> Builder<'a, InBlock> {
                     match decl {
                         CheckedDeclaration::Var(_) => Ok(Place::Var(decl_id)),
                         _ => Err(SemanticError {
-                            kind: SemanticErrorKind::InvalidLValue, // Functions/Types are not L-values!
+                            kind: SemanticErrorKind::InvalidLValue,
                             span,
                         }),
                     }
@@ -104,15 +103,12 @@ impl<'a> Builder<'a, InBlock> {
                 let base_place = self.resolve_place(*left)?;
                 let base_ty = self.type_of_place(&base_place);
 
-                // If the base is a pointer (e.g. ptr<Struct>), we MUST dereference it
-                // to access its fields.
                 let derefed_place = if self.types.is_pointer(base_ty) {
                     Place::Deref(Box::new(base_place))
                 } else {
                     base_place
                 };
 
-                // Validate field access against the underlying Struct type
                 let struct_ty = self.type_of_place(&derefed_place);
                 self.validate_field_access(struct_ty, &field)?;
 
@@ -155,18 +151,12 @@ impl<'a> Builder<'a, InBlock> {
                     }
                 }
             }
-            Place::Deref(base) => {
-                // The memory address of `*base` is simply the value of `base`!
-                self.read_place(base, span)
-            }
+            Place::Deref(base) => self.read_place(base, span),
             Place::Field(base, field) => {
                 let base_ptr = self.get_place_ptr(base, span.clone());
                 self.get_field_ptr(base_ptr, *field)
             }
             Place::Temporary(val_id) => {
-                // A temporary is an R-value. It has no memory address inherently.
-                // If we are asked for its address (e.g., to access a field like `get_struct().a`),
-                // we MUST spill it to the stack to give it a physical memory address.
                 let ty = self.get_value_type(*val_id);
                 let ptr = self.emit_stack_alloc(ty, 1);
                 self.emit_store(ptr, *val_id);
@@ -175,9 +165,57 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
+    pub fn is_zst(&self, ty_id: TypeId) -> bool {
+        let ty = self.types.resolve(ty_id);
+        crate::mir::utils::layout::get_layout_of(&ty, self.types).size == 0
+    }
+
+    pub fn materialize_zst(&mut self, ty_id: TypeId) -> ValueId {
+        let ty = self.types.resolve(ty_id);
+        match ty {
+            Type::Null => self.emit_null(),
+            Type::Void => self.emit_void(),
+            Type::Bool(Some(b)) => self.emit_bool(b),
+            Type::I8(Some(v)) => self.emit_number(NumberKind::I8(v)),
+            Type::I16(Some(v)) => self.emit_number(NumberKind::I16(v)),
+            Type::I32(Some(v)) => self.emit_number(NumberKind::I32(v)),
+            Type::I64(Some(v)) => self.emit_number(NumberKind::I64(v)),
+            Type::ISize(Some(v)) => self.emit_number(NumberKind::ISize(v)),
+            Type::U8(Some(v)) => self.emit_number(NumberKind::U8(v)),
+            Type::U16(Some(v)) => self.emit_number(NumberKind::U16(v)),
+            Type::U32(Some(v)) => self.emit_number(NumberKind::U32(v)),
+            Type::U64(Some(v)) => self.emit_number(NumberKind::U64(v)),
+            Type::USize(Some(v)) => self.emit_number(NumberKind::USize(v)),
+            Type::F32(Some(v)) => self.emit_number(NumberKind::F32(v.0)),
+            Type::F64(Some(v)) => self.emit_number(NumberKind::F64(v.0)),
+            Type::Struct(StructKind::StringHeader(Some(id))) => self.emit_string(id),
+            _ => self.new_value_id(ty_id),
+        }
+    }
+
     pub fn read_place(&mut self, place: &Place, span: Span) -> ValueId {
         if let Place::Temporary(val_id) = place {
             return *val_id;
+        }
+
+        let ty_id = self.type_of_place(place);
+
+        if self.is_zst(ty_id) {
+            return self.materialize_zst(ty_id);
+        }
+
+        if let Place::Field(base, field_name) = place {
+            let base_ty_id = self.type_of_place(base);
+            if let Type::Struct(StructKind::StringHeader(Some(str_id))) =
+                self.types.resolve(base_ty_id)
+            {
+                if *field_name == crate::globals::COMMON_IDENTIFIERS.len
+                    || *field_name == crate::globals::COMMON_IDENTIFIERS.cap
+                {
+                    let len = crate::globals::STRING_INTERNER.resolve(str_id).len();
+                    return self.emit_number(crate::tokenize::NumberKind::USize(len));
+                }
+            }
         }
 
         let ptr = self.get_place_ptr(place, span.clone());
@@ -210,6 +248,12 @@ impl<'a> Builder<'a, InBlock> {
     pub fn write_place(&mut self, place: &Place, value: ValueId, span: Span) {
         if let Place::Temporary(_) = place {
             panic!("INTERNAL COMPILER ERROR: Cannot write to a temporary r-value");
+        }
+
+        let ty_id = self.type_of_place(place);
+        if self.is_zst(ty_id) {
+            self.write_fact(self.context.block_id, place, FactSet::new());
+            return;
         }
 
         let ptr = self.get_place_ptr(place, span);
@@ -250,13 +294,12 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     fn type_of_field(&self, struct_ty: TypeId, field: StringId) -> Option<TypeId> {
-        // Because of Deref, struct_ty is now guaranteed to be the Struct itself, not a pointer.
         let struct_kind = match self.types.resolve(struct_ty) {
             Type::Struct(s) => s,
             _ => return None,
         };
 
-        struct_kind.get_field(self.types, &field).map(|f| f.ty)
+        struct_kind.get_field(self.types, &field).map(|f| f.1)
     }
 
     pub fn read_fact_from_block(

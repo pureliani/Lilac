@@ -113,7 +113,7 @@ impl<'a> Builder<'a, InBlock> {
                 self.build_string_literal(string_node, expected_type)
             }
             ExprKind::Struct(fields) => {
-                self.build_struct_init_expr(span, fields, expected_type)
+                self.build_struct_init_expr(span, fields, expected_type, false)
             }
             ExprKind::List(items) => {
                 self.build_list_literal_expr(span, items, expected_type)

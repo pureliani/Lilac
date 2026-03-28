@@ -6,8 +6,13 @@ use crate::{
     mir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_type::SpannedType,
+        types::{
+            checked_declaration::CheckedParam,
+            checked_type::{SpannedType, StructKind, Type},
+        },
+        utils::layout::{get_layout_of, pack_struct},
     },
+    tokenize::NumberKind,
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -16,10 +21,11 @@ impl<'a> Builder<'a, InBlock> {
         span: Span,
         fields: Vec<(IdentifierNode, Expr)>,
         expected_type: Option<&SpannedType>,
+        by_value: bool,
     ) -> ValueId {
-        let mut field_values: Vec<(IdentifierNode, ValueId)> =
-            Vec::with_capacity(fields.len());
         let mut seen_names: HashSet<StringId> = HashSet::new();
+        let mut evaluated_fields = Vec::with_capacity(fields.len());
+        let mut anonymous_params = Vec::new();
 
         for (field_name, field_expr) in fields {
             if !seen_names.insert(field_name.name) {
@@ -31,14 +37,63 @@ impl<'a> Builder<'a, InBlock> {
                 });
             }
 
-            let expected_field_type = expected_type
-                .and_then(|et| et.kind.get_field(&field_name.name).map(|(_, ty)| ty));
+            let expected_field_type = expected_type.and_then(|et| {
+                let mut ty_id = et.id;
 
-            let val_id = self.build_expr(field_expr, expected_field_type);
-            field_values.push((field_name, val_id));
+                if self.types.is_pointer(ty_id) {
+                    ty_id = self.types.unwrap_ptr(ty_id);
+                }
+
+                if let Type::Struct(sk) = self.types.resolve(ty_id) {
+                    sk.get_field(self.types, &field_name.name)
+                        .map(|(_, t)| SpannedType {
+                            id: t,
+                            span: field_name.span.clone(),
+                        })
+                } else {
+                    None
+                }
+            });
+
+            let val_id = self.build_expr(field_expr, expected_field_type.as_ref());
+            let val_ty = self.get_value_type(val_id);
+
+            evaluated_fields.push((field_name.clone(), val_id));
+
+            anonymous_params.push(CheckedParam {
+                identifier: field_name,
+                ty: SpannedType {
+                    id: val_ty,
+                    span: Span::default(),
+                },
+            });
         }
 
-        let result = self.emit_struct_init(field_values);
+        let struct_kind =
+            pack_struct(StructKind::UserDefined(anonymous_params), self.types);
+
+        let struct_ty_id = self.types.intern(&Type::Struct(struct_kind.clone()));
+
+        let base_ptr = if !by_value {
+            let layout = get_layout_of(&Type::Struct(struct_kind.clone()), self.types);
+            let count: usize = if layout.size == 0 { 0 } else { 1 };
+            let count_val = self.emit_number(NumberKind::USize(count));
+            self.emit_heap_alloc(struct_ty_id, count_val)
+        } else {
+            self.emit_stack_alloc(struct_ty_id, 1)
+        };
+
+        for (field_name, val_id) in evaluated_fields {
+            let dest = self.get_field_ptr(base_ptr, field_name.name);
+            self.emit_store(dest, val_id);
+        }
+
+        let result = if !by_value {
+            base_ptr
+        } else {
+            self.emit_load(base_ptr)
+        };
+
         self.check_expected(result, span, expected_type)
     }
 }
