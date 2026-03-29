@@ -24,7 +24,7 @@ pub enum Adjustment {
     ZExt,
     BitCast,
 
-    WrapInUnion(usize),
+    WrapInUnion,
     UnwrapUnion,
 
     CoerceStruct {
@@ -126,7 +126,7 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             self.types.get_union_variants(source),
             self.types.get_union_variants(target),
         ) {
-            for (old_idx, sv) in source_variants.iter().enumerate() {
+            for (_old_idx, sv) in source_variants.iter().enumerate() {
                 if let None = target_variants.iter().position(|tv| tv == sv) {
                     return Err(AdjustmentError::Incompatible);
                 }
@@ -134,8 +134,8 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
         }
 
         if let Some(target_variants) = self.types.get_union_variants(target) {
-            if let Some(idx) = target_variants.iter().position(|v| *v == source) {
-                return Ok(Adjustment::WrapInUnion(idx));
+            if target_variants.contains(&source) {
+                return Ok(Adjustment::WrapInUnion);
             }
         }
 
@@ -293,12 +293,13 @@ impl<'a> Builder<'a, InBlock> {
             Adjustment::FToUI => self.emit_ftoui(source, target_type),
             Adjustment::BitCast => self.emit_bitcast(source, target_type),
 
-            Adjustment::WrapInUnion(tag_idx) => {
-                self.wrap_in_union(source, tag_idx, target_type)
+            Adjustment::WrapInUnion => {
+                let target_variants = self.types.get_union_variants(target_type).unwrap();
+                self.emit_wrap_in_union(source, &target_variants)
             }
-            Adjustment::UnwrapUnion => self.unwrap_from_union(source, target_type, span),
+            Adjustment::UnwrapUnion => self.emit_unwrap_from_union(source, target_type),
             Adjustment::CoerceStruct { field_adjustments } => {
-                self.apply_struct_coercion(source, target_type, field_adjustments, span)
+                todo!()
             }
         }
     }

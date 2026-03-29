@@ -1,11 +1,10 @@
-use std::collections::HashSet;
-
 use crate::{
     ast::Span,
     compile::interner::TypeId,
     mir::{
-        builders::{BasicBlockId, Builder, InBlock, PhiSource, TypePredicate, ValueId},
+        builders::{BasicBlockId, Builder, ConditionFact, InBlock, ValueId},
         instructions::{CallInstr, Instruction, Terminator},
+        utils::facts::FactSet,
     },
 };
 
@@ -78,144 +77,132 @@ impl<'a> Builder<'a, InBlock> {
     pub fn emit_logical_or<F>(
         &mut self,
         left: ValueId,
-        left_span: Span,
+        _left_span: Span,
         produce_right: F,
     ) -> ValueId
     where
         F: FnOnce(&mut Self) -> ValueId,
     {
-        let left_preds = self.type_predicates.get(&left).cloned().unwrap_or_default();
+        let left_facts = self.condition_facts.get(&left).cloned().unwrap_or_default();
 
-        let left_block = self.context.block_id;
         let right_entry_block = self.as_fn().new_bb();
         let merge_block = self.as_fn().new_bb();
 
+        let bool_ty = self.types.bool(None);
+        let result_ptr = self.emit_stack_alloc(bool_ty, 1);
+
         let const_true = self.emit_bool(true);
+        self.emit_store(result_ptr, const_true);
 
         self.emit_cond_jmp(left, merge_block, right_entry_block);
 
         self.seal_block(right_entry_block);
         self.use_basic_block(right_entry_block);
 
-        self.apply_predicate_list(&left_preds, false, &left_span);
+        for fact in &left_facts {
+            if !fact.on_false.facts.is_empty() {
+                self.write_fact(right_entry_block, &fact.place, fact.on_false.clone());
+            }
+        }
 
         let right = produce_right(self);
-        let right_block = self.context.block_id;
 
-        let right_preds = self
-            .type_predicates
+        let right_facts = self
+            .condition_facts
             .get(&right)
             .cloned()
             .unwrap_or_default();
 
+        self.emit_store(result_ptr, right);
         self.emit_jmp(merge_block);
 
         self.seal_block(merge_block);
         self.use_basic_block(merge_block);
 
-        let bool_ty = self.types.bool(None);
-        let phi_id = self.new_value_id(bool_ty);
-        let phi_sources = HashSet::from([
-            PhiSource {
-                from: left_block,
-                value: const_true,
-            },
-            PhiSource {
-                from: right_block,
-                value: right,
-            },
-        ]);
+        let result_val = self.emit_load(result_ptr);
 
-        self.insert_phi(self.context.block_id, phi_id, phi_sources);
-
-        let combined = Self::combine_predicates(&left_preds, &right_preds, false);
+        let combined = Self::combine_condition_facts(&left_facts, &right_facts, false);
         if !combined.is_empty() {
-            self.type_predicates.insert(phi_id, combined);
+            self.condition_facts.insert(result_val, combined);
         }
 
-        phi_id
+        result_val
     }
 
     pub fn emit_logical_and<F>(
         &mut self,
         left: ValueId,
-        left_span: Span,
+        _left_span: Span,
         produce_right: F,
     ) -> ValueId
     where
         F: FnOnce(&mut Self) -> ValueId,
     {
-        let left_preds = self.type_predicates.get(&left).cloned().unwrap_or_default();
+        let left_facts = self.condition_facts.get(&left).cloned().unwrap_or_default();
 
-        let left_block = self.context.block_id;
         let right_entry_block = self.as_fn().new_bb();
         let merge_block = self.as_fn().new_bb();
 
+        let bool_ty = self.types.bool(None);
+        let result_ptr = self.emit_stack_alloc(bool_ty, 1);
+
         let const_false = self.emit_bool(false);
+        self.emit_store(result_ptr, const_false);
 
         self.emit_cond_jmp(left, right_entry_block, merge_block);
 
         self.seal_block(right_entry_block);
         self.use_basic_block(right_entry_block);
 
-        self.apply_predicate_list(&left_preds, true, &left_span);
+        for fact in &left_facts {
+            if !fact.on_true.facts.is_empty() {
+                self.write_fact(right_entry_block, &fact.place, fact.on_true.clone());
+            }
+        }
 
         let right = produce_right(self);
-        let right_block = self.context.block_id;
 
-        let right_preds = self
-            .type_predicates
+        let right_facts = self
+            .condition_facts
             .get(&right)
             .cloned()
             .unwrap_or_default();
 
+        self.emit_store(result_ptr, right);
         self.emit_jmp(merge_block);
 
         self.seal_block(merge_block);
         self.use_basic_block(merge_block);
 
-        let bool_ty = self.types.bool(None);
-        let phi_id = self.new_value_id(bool_ty);
-        let phi_sources = HashSet::from([
-            PhiSource {
-                from: left_block,
-                value: const_false,
-            },
-            PhiSource {
-                from: right_block,
-                value: right,
-            },
-        ]);
+        let result_val = self.emit_load(result_ptr);
 
-        self.insert_phi(self.context.block_id, phi_id, phi_sources);
-
-        let combined = Self::combine_predicates(&left_preds, &right_preds, true);
+        let combined = Self::combine_condition_facts(&left_facts, &right_facts, true);
         if !combined.is_empty() {
-            self.type_predicates.insert(phi_id, combined);
+            self.condition_facts.insert(result_val, combined);
         }
 
-        phi_id
+        result_val
     }
 
-    fn combine_predicates(
-        left_preds: &[TypePredicate],
-        right_preds: &[TypePredicate],
+    fn combine_condition_facts(
+        left_facts: &[ConditionFact],
+        right_facts: &[ConditionFact],
         keep_true_side: bool,
-    ) -> Vec<TypePredicate> {
+    ) -> Vec<ConditionFact> {
         let mut combined = Vec::new();
 
-        for pred in left_preds.iter().chain(right_preds.iter()) {
+        for fact in left_facts.iter().chain(right_facts.iter()) {
             let (on_true, on_false) = if keep_true_side {
-                (pred.on_true_type.clone(), None)
+                (fact.on_true.clone(), FactSet::new())
             } else {
-                (None, pred.on_false_type.clone())
+                (FactSet::new(), fact.on_false.clone())
             };
 
-            if on_true.is_some() || on_false.is_some() {
-                combined.push(TypePredicate {
-                    decl_id: pred.decl_id,
-                    on_true_type: on_true,
-                    on_false_type: on_false,
+            if !on_true.facts.is_empty() || !on_false.facts.is_empty() {
+                combined.push(ConditionFact {
+                    place: fact.place.clone(),
+                    on_true,
+                    on_false,
                 });
             }
         }

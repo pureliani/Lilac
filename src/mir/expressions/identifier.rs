@@ -36,7 +36,7 @@ impl<'a> Builder<'a, InBlock> {
                     .cloned()
                     .unwrap_or(Place::Var(decl_id));
 
-                self.read_place(&place, identifier.span)
+                self.read_place(&place)
             }
             CheckedDeclaration::TypeAlias(_) => {
                 self.report_error_and_get_poison(SemanticError {

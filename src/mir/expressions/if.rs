@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::{
     ast::{
         expr::{BlockContents, Expr},
@@ -7,8 +5,9 @@ use crate::{
     },
     compile::interner::TypeId,
     mir::{
-        builders::{BasicBlockId, Builder, InBlock, PhiSource, TypePredicate, ValueId},
+        builders::{BasicBlockId, Builder, ExpectBody, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
+        instructions::{Instruction, MemoryInstr},
         types::checked_type::{SpannedType, Type},
     },
 };
@@ -47,15 +46,15 @@ impl<'a> Builder<'a, InBlock> {
 
             let condition_span = condition.span.clone();
             let expected_condition_type = Some(SpannedType {
-                id: Type::Bool(None).id(),
+                id: self.types.bool(None),
                 span: condition_span.clone(),
             });
 
             let cond_id = self.build_expr(*condition, expected_condition_type.as_ref());
             let cond_ty = self.get_value_type(cond_id);
 
-            if cond_ty == Type::Unknown.id() {
-                return self.new_value_id(Type::Unknown.id());
+            if cond_ty == self.types.unknown() {
+                return self.new_value_id(self.types.unknown());
             }
 
             let then_block_id = self.as_fn().new_bb();
@@ -66,8 +65,12 @@ impl<'a> Builder<'a, InBlock> {
             self.seal_block(then_block_id);
             self.use_basic_block(then_block_id);
 
-            if let Some(preds) = self.type_predicates.get(&cond_id).cloned() {
-                self.apply_predicate_list(&preds, true, &condition_span);
+            if let Some(facts) = self.condition_facts.get(&cond_id).cloned() {
+                for fact in &facts {
+                    if !fact.on_true.facts.is_empty() {
+                        self.write_fact(then_block_id, &fact.place, fact.on_true.clone());
+                    }
+                }
             }
 
             let (then_val, then_val_span) =
@@ -75,13 +78,20 @@ impl<'a> Builder<'a, InBlock> {
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, then_val, then_val_span));
-                self.emit_jmp(merge_block_id);
             }
 
             self.use_basic_block(next_cond_block_id);
 
-            if let Some(preds) = self.type_predicates.get(&cond_id).cloned() {
-                self.apply_predicate_list(&preds, false, &condition_span);
+            if let Some(facts) = self.condition_facts.get(&cond_id).cloned() {
+                for fact in &facts {
+                    if !fact.on_false.facts.is_empty() {
+                        self.write_fact(
+                            next_cond_block_id,
+                            &fact.place,
+                            fact.on_false.clone(),
+                        );
+                    }
+                }
             }
 
             current_cond_block_id = next_cond_block_id;
@@ -95,93 +105,76 @@ impl<'a> Builder<'a, InBlock> {
 
             if self.bb().terminator.is_none() {
                 branch_results.push((self.context.block_id, else_val, else_val_span));
-                self.emit_jmp(merge_block_id);
             }
         } else {
-            self.emit_jmp(merge_block_id);
+            if self.bb().terminator.is_none() {
+                branch_results.push((
+                    self.context.block_id,
+                    self.emit_void(),
+                    expr_span.clone(),
+                ));
+            }
         }
-
-        self.seal_block(current_cond_block_id);
-
-        self.seal_block(merge_block_id);
-        self.use_basic_block(merge_block_id);
 
         let result = if context == IfContext::Expression {
             if branch_results.is_empty() {
-                return self.new_value_id(Type::Never);
+                self.seal_block(merge_block_id);
+                self.use_basic_block(merge_block_id);
+                return self.new_value_id(self.types.intern(&Type::Never));
             }
 
-            let type_entries: Vec<Type> = branch_results
+            let type_entries: Vec<TypeId> = branch_results
                 .iter()
                 .map(|(_, val, _)| self.get_value_type(*val).clone())
                 .collect();
 
-            let result_type = Type::make_union(type_entries);
+            let result_type = self.types.make_union(type_entries);
 
-            let phi_id = self.new_value_id(result_type.clone());
-            let mut phi_sources: HashSet<PhiSource> = HashSet::new();
+            let ptr_ty = self.types.ptr(result_type);
+            let result_ptr = self.new_value_id(ptr_ty);
+            let entry_block = self.get_fn().expect_body().entry_block;
 
-            for (block, value, span) in branch_results {
-                let adjusted_val =
-                    self.adjust_phi_source_value(block, value, result_type.clone(), span);
-                phi_sources.insert(PhiSource {
-                    from: block,
-                    value: adjusted_val,
-                });
+            self.get_fn()
+                .expect_body()
+                .value_definitions
+                .insert(result_ptr, entry_block);
+
+            self.get_bb_mut(entry_block).instructions.insert(
+                0,
+                Instruction::Memory(MemoryInstr::StackAlloc {
+                    dest: result_ptr,
+                    count: 1,
+                }),
+            );
+
+            for (block, value, _span) in branch_results {
+                self.use_basic_block(block);
+
+                let adjusted_val = if self.get_value_type(value) != result_type {
+                    self.coerce_to_union(value, result_type)
+                } else {
+                    value
+                };
+
+                self.emit_store(result_ptr, adjusted_val);
+                self.emit_jmp(merge_block_id);
             }
 
-            self.insert_phi(merge_block_id, phi_id, phi_sources);
-            phi_id
+            self.seal_block(merge_block_id);
+            self.use_basic_block(merge_block_id);
+
+            self.emit_load(result_ptr)
         } else {
+            for (block, _, _) in branch_results {
+                self.use_basic_block(block);
+                self.emit_jmp(merge_block_id);
+            }
+
+            self.seal_block(merge_block_id);
+            self.use_basic_block(merge_block_id);
             self.emit_void()
         };
 
         self.check_expected(result, expr_span, expected_type)
-    }
-
-    pub fn apply_type_predicate(
-        &mut self,
-        pred: &TypePredicate,
-        new_type: TypeId,
-        span: Span,
-    ) {
-        let current_val = self.read_variable(pred.decl_id, self.context.block_id, span);
-        let current_ty = self.get_value_type(current_val).clone();
-
-        if current_ty == new_type {
-            return;
-        }
-
-        let narrowed_val = if current_ty.get_narrowed_variants().is_some() {
-            if new_type.get_narrowed_variants().is_some() {
-                self.emit_narrow_union(current_val, &new_type)
-            } else {
-                self.emit_unwrap_from_union(current_val, &new_type)
-            }
-        } else {
-            // Type predicates cannot be applied to non union types
-            return;
-        };
-
-        self.write_variable(pred.decl_id, self.context.block_id, narrowed_val);
-    }
-
-    pub fn apply_predicate_list(
-        &mut self,
-        preds: &[TypePredicate],
-        use_true_side: bool,
-        span: &Span,
-    ) {
-        for pred in preds {
-            let ty = if use_true_side {
-                &pred.on_true_type
-            } else {
-                &pred.on_false_type
-            };
-
-            if let Some(ty) = ty {
-                self.apply_type_predicate(pred, ty.clone(), span.clone());
-            }
-        }
     }
 }

@@ -235,15 +235,23 @@ impl<'a> Builder<'a, InBlock> {
         if let Some(source_variants) = self.types.get_union_variants(val_type) {
             let source_is_subset = source_variants
                 .iter()
-                .all(|sv| target_variants.iter().any(|tv| sv == tv));
+                .all(|sv| target_variants.contains(sv));
 
             if source_is_subset {
-                self.widen_union(val, source_variants, target_variants)
+                let target_ptr = self.emit_stack_alloc(target_union, 1);
+                let casted_target_ptr =
+                    self.emit_bitcast_unsafe(target_ptr, self.types.ptr(val_type));
+                self.emit_store(casted_target_ptr, val);
+                self.emit_load(target_ptr)
             } else {
-                self.narrow_union(val, source_variants, target_variants)
+                let src_ptr = self.emit_stack_alloc(val_type, 1);
+                self.emit_store(src_ptr, val);
+                let casted_src_ptr =
+                    self.emit_bitcast_unsafe(src_ptr, self.types.ptr(target_union));
+                self.emit_load(casted_src_ptr)
             }
         } else {
-            self.wrap_in_union(val, target_variants)
+            self.emit_wrap_in_union(val, &target_variants)
         }
     }
 

@@ -1,5 +1,5 @@
 use crate::mir::{
-    builders::{Builder, InBlock, TypePredicate, ValueId},
+    builders::{Builder, ConditionFact, InBlock, ValueId},
     instructions::{Instruction, UnaryInstr},
 };
 
@@ -18,6 +18,7 @@ impl<'a> Builder<'a, InBlock> {
         dest
     }
 }
+
 impl<'a> Builder<'a, InBlock> {
     pub fn neg(&mut self, value: ValueId) -> ValueId {
         let value_type = self.get_value_type(value);
@@ -41,17 +42,17 @@ impl<'a> Builder<'a, InBlock> {
         let bool_type = self.types.bool(None);
         let dest = self.new_value_id(bool_type);
 
-        if let Some(preds) = self.condition_facts.get(&src).cloned() {
-            let flipped: Vec<TypePredicate> = preds
+        if let Some(facts) = self.condition_facts.get(&src).cloned() {
+            let flipped: Vec<ConditionFact> = facts
                 .into_iter()
-                .map(|pred| TypePredicate {
-                    decl_id: pred.decl_id,
-                    on_true_type: pred.on_false_type,
-                    on_false_type: pred.on_true_type,
+                .map(|fact| ConditionFact {
+                    place: fact.place,
+                    on_true: fact.on_false,
+                    on_false: fact.on_true,
                 })
                 .collect();
 
-            self.type_predicates.insert(dest, flipped);
+            self.condition_facts.insert(dest, flipped);
         }
 
         self.push_instruction(Instruction::Unary(UnaryInstr::BNot { dest, src }));

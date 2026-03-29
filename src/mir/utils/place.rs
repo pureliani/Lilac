@@ -232,7 +232,7 @@ impl<'a> Builder<'a, InBlock> {
             if narrowed.variants.len() == 1 {
                 let target_ty = *narrowed.variants.iter().next().unwrap();
                 if current_ty != target_ty {
-                    return self.unwrap_from_union(val, target_ty);
+                    return self.emit_unwrap_from_union(val, target_ty);
                 }
             } else if narrowed.variants.len()
                 < self
