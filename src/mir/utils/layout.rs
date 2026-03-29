@@ -1,4 +1,3 @@
-// src/mir/utils/layout.rs
 use crate::{
     compile::interner::TypeInterner,
     globals::STRING_INTERNER,

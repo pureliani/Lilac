@@ -6,6 +6,7 @@ use crate::{
         DeclarationId, IdentifierNode, Span,
     },
     compile::interner::{StringId, TypeId},
+    globals::{COMMON_IDENTIFIERS, STRING_INTERNER},
     mir::{
         builders::{BasicBlockId, Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
@@ -13,7 +14,10 @@ use crate::{
             checked_declaration::{CheckedDeclaration, FnType},
             checked_type::{StructKind, Type},
         },
-        utils::facts::{narrowed_type::NarrowedTypeFact, FactSet},
+        utils::{
+            facts::{narrowed_type::NarrowedTypeFact, FactSet},
+            layout::get_layout_of,
+        },
     },
     tokenize::NumberKind,
 };
@@ -167,7 +171,7 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn is_zst(&self, ty_id: TypeId) -> bool {
         let ty = self.types.resolve(ty_id);
-        crate::mir::utils::layout::get_layout_of(&ty, self.types).size == 0
+        get_layout_of(&ty, self.types).size == 0
     }
 
     pub fn materialize_zst(&mut self, ty_id: TypeId) -> ValueId {
@@ -209,11 +213,11 @@ impl<'a> Builder<'a, InBlock> {
             if let Type::Struct(StructKind::StringHeader(Some(str_id))) =
                 self.types.resolve(base_ty_id)
             {
-                if *field_name == crate::globals::COMMON_IDENTIFIERS.len
-                    || *field_name == crate::globals::COMMON_IDENTIFIERS.cap
+                if *field_name == COMMON_IDENTIFIERS.len
+                    || *field_name == COMMON_IDENTIFIERS.cap
                 {
-                    let len = crate::globals::STRING_INTERNER.resolve(str_id).len();
-                    return self.emit_number(crate::tokenize::NumberKind::USize(len));
+                    let len = STRING_INTERNER.resolve(str_id).len();
+                    return self.emit_number(NumberKind::USize(len));
                 }
             }
         }

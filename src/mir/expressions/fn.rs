@@ -14,12 +14,13 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::Terminator,
         types::{
-            checked_declaration::{
-                CheckedDeclaration, CheckedVarDecl, FunctionEffects, ParamMutation,
-            },
+            checked_declaration::{CheckedDeclaration, FunctionEffects, ParamMutation},
             checked_type::{SpannedType, Type},
         },
-        utils::{points_to::PointsToGraph, scope::ScopeKind},
+        utils::{
+            facts::narrowed_type::NarrowedTypeFact, place::Place,
+            points_to::PointsToGraph, scope::ScopeKind,
+        },
     },
 };
 
@@ -67,8 +68,8 @@ impl<'a> Builder<'a, InModule> {
                 });
             }
 
-            let ret = &func.return_type.kind;
-            if !matches!(ret, Type::Void | Type::I32) {
+            let return_type = self.types.resolve(func.return_type.id);
+            if !matches!(return_type, Type::Void | Type::I32(_)) {
                 return Err(SemanticError {
                     kind: SemanticErrorKind::MainFunctionInvalidReturnType,
                     span: identifier.span.clone(),
@@ -117,9 +118,9 @@ impl<'a> Builder<'a, InModule> {
             instructions: vec![],
             terminator: None,
             predecessors: HashSet::new(),
-            phis: HashMap::new(),
             sealed: true,
         };
+
         fn_builder
             .get_fn()
             .expect_body()
@@ -134,26 +135,17 @@ impl<'a> Builder<'a, InModule> {
                 (p.ty.clone(), p.identifier.clone())
             };
 
-            let val_id = fn_builder.new_value_id(param_ty.kind.clone());
+            let val_id = fn_builder.new_value_id(param_ty.id);
             let var_decl_id = next_declaration_id();
 
-            let decl = CheckedVarDecl {
-                id: var_decl_id,
-                identifier: param_ident.clone(),
-                documentation: None,
-                constraint: param_ty,
-            };
-
-            fn_builder.write_variable(var_decl_id, entry_block_id, val_id);
-
-            fn_builder
-                .program
-                .declarations
-                .insert(var_decl_id, CheckedDeclaration::Var(decl));
-
-            fn_builder
-                .current_scope
-                .map_name_to_decl(param_ident.name, var_decl_id);
+            fn_builder.declare_variable(
+                var_decl_id,
+                param_ident,
+                param_ty.id,
+                val_id,
+                param_ty.span,
+                None,
+            );
 
             let param = &mut fn_builder.get_fn().params[i];
             param.decl_id = Some(var_decl_id);
@@ -217,21 +209,27 @@ impl<'a> Builder<'a, InBlock> {
         let mut mutations = Vec::new();
 
         for (i, param) in params.iter().enumerate() {
-            let declared_type = &param.ty;
+            let declared_type_id = param.ty.id;
 
             let param_decl_id = param.decl_id.expect(
                 "INTERNAL COMPILER ERROR: Param decl_id not set during effect \
                  computation",
             );
 
-            let mut exit_types: Vec<Type> = Vec::new();
+            let mut exit_types = Vec::new();
             let mut any_changed = false;
 
             for &block_id in &return_block_ids {
-                let val = self.read_variable(param_decl_id, block_id, fn_span.clone());
-                let ty = self.get_value_type(val).clone();
+                let place = Place::Var(param_decl_id);
+                let facts = self.read_fact_from_block(block_id, &place);
 
-                if ty != declared_type.kind {
+                let ty = if let Some(narrowed) = facts.get::<NarrowedTypeFact>() {
+                    self.types.make_union(narrowed.variants.iter().copied())
+                } else {
+                    declared_type_id
+                };
+
+                if ty != declared_type_id {
                     any_changed = true;
                 }
 
@@ -239,7 +237,7 @@ impl<'a> Builder<'a, InBlock> {
             }
 
             if any_changed {
-                let exit_type = Type::make_union(exit_types);
+                let exit_type = self.types.make_union(exit_types);
                 mutations.push(ParamMutation {
                     param_index: i,
                     exit_type,
