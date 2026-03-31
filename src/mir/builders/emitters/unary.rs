@@ -28,7 +28,10 @@ impl<'a> Builder<'a, InBlock> {
         } else if self.types.is_signed(value_type) {
             self.emit_ineg(value)
         } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot apply unary negation `-` operator to this type")
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot apply unary negation `-` operator to \
+                 this type"
+            )
         }
     }
 
@@ -36,7 +39,10 @@ impl<'a> Builder<'a, InBlock> {
         let value_type = self.get_value_type(src);
 
         if !self.types.is_bool(value_type) {
-            panic!("INTERNAL COMPILER ERROR: Cannot apply unary not `!` operator to this type")
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot apply unary not `!` operator to this \
+                 type"
+            )
         }
 
         let bool_type = self.types.bool(None);

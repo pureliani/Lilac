@@ -85,11 +85,17 @@ pub fn dump_block(
             Terminator::Return { value } => {
                 writeln!(out, "    ret v{}\n", value.0).unwrap();
             }
-            Terminator::Panic { message } => {
+            Terminator::Panic { message, span } => {
+                let loc = format!(
+                    "{}:{}:{}",
+                    span.path.0.display(),
+                    span.start.line + 1,
+                    span.start.col + 1
+                );
                 if let Some(msg) = message {
-                    writeln!(out, "    panic v{}\n", msg.0).unwrap();
+                    writeln!(out, "    panic v{} at {}\n", msg.0, loc).unwrap();
                 } else {
-                    writeln!(out, "    panic\n").unwrap();
+                    writeln!(out, "    panic at {}\n", loc).unwrap();
                 }
             }
         }

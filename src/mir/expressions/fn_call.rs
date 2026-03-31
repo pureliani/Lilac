@@ -44,7 +44,7 @@ impl<'a> Builder<'a, InBlock> {
                     .next()
                     .map(|arg| self.build_expr(arg, None));
 
-                self.emit_panic(msg_val);
+                self.emit_panic(msg_val, span.clone());
 
                 let never_ty = self.types.intern(&Type::Never);
                 let val = self.new_value_id(never_ty);

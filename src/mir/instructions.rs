@@ -1,4 +1,7 @@
-use crate::mir::builders::{BasicBlockId, ValueId};
+use crate::{
+    ast::Span,
+    mir::builders::{BasicBlockId, ValueId},
+};
 
 #[derive(Clone, Debug)]
 pub enum BinaryInstr {
@@ -247,5 +250,6 @@ pub enum Terminator {
     },
     Panic {
         message: Option<ValueId>,
+        span: Span,
     },
 }

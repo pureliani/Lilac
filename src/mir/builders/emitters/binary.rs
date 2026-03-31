@@ -128,7 +128,10 @@ impl<'a> Builder<'a, InBlock> {
         } else if self.types.is_integer(lhs_ty) {
             self.emit_isub(lhs, rhs)
         } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use subtraction `-` operator on this type")
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot use subtraction `-` operator on this \
+                 type"
+            )
         }
     }
 
@@ -148,7 +151,10 @@ impl<'a> Builder<'a, InBlock> {
         } else if self.types.is_integer(lhs_ty) {
             self.emit_imul(lhs, rhs)
         } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use multiplication `*` operator on this type")
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot use multiplication `*` operator on \
+                 this type"
+            )
         }
     }
 

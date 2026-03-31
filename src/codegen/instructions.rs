@@ -1,8 +1,9 @@
 use inkwell::types::BasicType;
-use inkwell::values::BasicValueEnum;
+use inkwell::values::{BasicValue, BasicValueEnum};
 use inkwell::{FloatPredicate, IntPredicate};
 
 use crate::codegen::CodeGenerator;
+use crate::globals::STRING_INTERNER;
 use crate::mir::builders::ValueId;
 use crate::mir::instructions::{
     BinaryInstr, CallInstr, CastInstr, CompInstr, Instruction, MemoryInstr, SelectInstr,
@@ -21,26 +22,45 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
         let ty = self.type_interner.resolve(ty_id);
 
         match ty {
-            Type::Bool(Some(b)) => self.context.bool_type().const_int(b as u64, false).into(),
+            Type::Bool(Some(b)) => {
+                self.context.bool_type().const_int(b as u64, false).into()
+            }
             Type::U8(Some(v)) => self.context.i8_type().const_int(v as u64, false).into(),
             Type::I8(Some(v)) => self.context.i8_type().const_int(v as u64, true).into(),
-            Type::U16(Some(v)) => self.context.i16_type().const_int(v as u64, false).into(),
-            Type::I16(Some(v)) => self.context.i16_type().const_int(v as u64, true).into(),
-            Type::U32(Some(v)) => self.context.i32_type().const_int(v as u64, false).into(),
-            Type::I32(Some(v)) => self.context.i32_type().const_int(v as u64, true).into(),
-            Type::U64(Some(v)) => self.context.i64_type().const_int(v as u64, false).into(),
-            Type::I64(Some(v)) => self.context.i64_type().const_int(v as u64, true).into(),
+            Type::U16(Some(v)) => {
+                self.context.i16_type().const_int(v as u64, false).into()
+            }
+            Type::I16(Some(v)) => {
+                self.context.i16_type().const_int(v as u64, true).into()
+            }
+            Type::U32(Some(v)) => {
+                self.context.i32_type().const_int(v as u64, false).into()
+            }
+            Type::I32(Some(v)) => {
+                self.context.i32_type().const_int(v as u64, true).into()
+            }
+            Type::U64(Some(v)) => {
+                self.context.i64_type().const_int(v as u64, false).into()
+            }
+            Type::I64(Some(v)) => {
+                self.context.i64_type().const_int(v as u64, true).into()
+            }
             Type::USize(Some(v)) => {
                 let target_data = self.target_machine.get_target_data();
-                self.context.ptr_sized_int_type(&target_data, None).const_int(v as u64, false).into()
+                self.context
+                    .ptr_sized_int_type(&target_data, None)
+                    .const_int(v as u64, false)
+                    .into()
             }
             Type::ISize(Some(v)) => {
                 let target_data = self.target_machine.get_target_data();
-                self.context.ptr_sized_int_type(&target_data, None).const_int(v as u64, true).into()
+                self.context
+                    .ptr_sized_int_type(&target_data, None)
+                    .const_int(v as u64, true)
+                    .into()
             }
             Type::F32(Some(v)) => self.context.f32_type().const_float(v.0 as f64).into(),
             Type::F64(Some(v)) => self.context.f64_type().const_float(v.0).into(),
-            
             Type::Null | Type::Void | Type::Never => {
                 self.context.struct_type(&[], false).const_zero().into()
             }
@@ -50,10 +70,11 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
             Type::Struct(StructKind::StringHeader(Some(_))) => {
                 self.context.struct_type(&[], false).const_zero().into()
             }
-
             _ => panic!(
-                "INTERNAL COMPILER ERROR: ValueId({}) not found in codegen and is not a literal type ({})",
-                id.0, self.type_interner.to_string(ty_id)
+                "INTERNAL COMPILER ERROR: ValueId({}) not found in codegen and is not a \
+                 literal type ({})",
+                id.0,
+                self.type_interner.to_string(ty_id)
             ),
         }
     }
@@ -103,15 +124,8 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                     self.builder.build_return(Some(&ret_val)).unwrap();
                 }
             }
-            Terminator::Panic { message: _ } => {
-                let trap_fn =
-                    self.module.get_function("llvm.trap").unwrap_or_else(|| {
-                        let void_type = self.context.void_type();
-                        let fn_type = void_type.fn_type(&[], false);
-                        self.module.add_function("llvm.trap", fn_type, None)
-                    });
-                self.builder.build_call(trap_fn, &[], "panic_trap").unwrap();
-                self.builder.build_unreachable().unwrap();
+            Terminator::Panic { message, span } => {
+                todo!()
             }
         }
     }
@@ -533,7 +547,6 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
             }) => {
                 let func_ptr = self.get_val(instr.func).into_pointer_value();
 
-                // Construct the FunctionType for the indirect call
                 let ret_ty = self.get_any_type(return_type.id);
                 let mut param_types = Vec::new();
                 for p in params {

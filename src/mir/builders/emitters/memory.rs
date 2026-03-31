@@ -63,7 +63,10 @@ impl<'a> Builder<'a, InBlock> {
         let expected_type = self.types.unwrap_ptr(ptr_ty);
 
         if value_type != expected_type {
-            panic!("INTERNAL COMPILER ERROR: Store instruction expected the provided value to match pointed to type");
+            panic!(
+                "INTERNAL COMPILER ERROR: Store instruction expected the provided value \
+                 to match pointed to type"
+            );
         }
 
         self.push_instruction(Instruction::Memory(MemoryInstr::Store { ptr, value }));
@@ -75,7 +78,10 @@ impl<'a> Builder<'a, InBlock> {
         let index_ty = self.get_value_type(index);
 
         if !matches!(self.types.resolve(index_ty), Type::USize(_)) {
-            panic!("INTERNAL COMPILER ERROR: ptr_offset requires the index to be of type usize");
+            panic!(
+                "INTERNAL COMPILER ERROR: ptr_offset requires the index to be of type \
+                 usize"
+            );
         }
 
         if let Type::Pointer(to) = self.types.resolve(ptr_ty) {
@@ -112,7 +118,10 @@ impl<'a> Builder<'a, InBlock> {
                 } else if let StructKind::UserDefined(_) = s {
                     s
                 } else {
-                    panic!("INTERNAL COMPILER ERROR: Compiler allowed the user to attempt access to non-user space struct field")
+                    panic!(
+                        "INTERNAL COMPILER ERROR: Compiler allowed the user to attempt \
+                         access to non-user space struct field"
+                    )
                 }
             }
             _ => panic!("Expected pointer to struct, found {:?}", pointee_ty),

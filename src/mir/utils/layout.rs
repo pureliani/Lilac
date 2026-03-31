@@ -19,7 +19,7 @@ impl Layout {
 }
 
 /// IMPORTANT: Make sure user-defined structs are packed (via pack_struct)
-/// before calling this function if you want minimized padding.
+/// before calling this function if you want minimized padding
 pub fn get_layout_of(
     ty: &Type,
     interner: &TypeInterner,
@@ -27,34 +27,37 @@ pub fn get_layout_of(
     ptr_align: usize,
 ) -> Layout {
     match ty {
-        Type::Void | Type::Null => Layout::new(0, 1),
-        Type::Bool(lit) => lit.map_or_else(|| Layout::new(1, 1), |_| Layout::new(0, 1)),
-        Type::U8(lit) => lit.map_or_else(|| Layout::new(1, 1), |_| Layout::new(0, 1)),
-        Type::I8(lit) => lit.map_or_else(|| Layout::new(1, 1), |_| Layout::new(0, 1)),
+        Type::Void
+        | Type::Null
+        | Type::Never
+        | Type::Bool(Some(_))
+        | Type::U8(Some(_))
+        | Type::I8(Some(_))
+        | Type::U16(Some(_))
+        | Type::I16(Some(_))
+        | Type::U32(Some(_))
+        | Type::I32(Some(_))
+        | Type::U64(Some(_))
+        | Type::I64(Some(_))
+        | Type::F32(Some(_))
+        | Type::F64(Some(_))
+        | Type::USize(Some(_))
+        | Type::ISize(Some(_))
+        | Type::Fn(FnType::Direct(_))
+        | Type::Struct(StructKind::StringHeader(Some(_))) => Layout::new(0, 1),
 
-        Type::U16(lit) => lit.map_or_else(|| Layout::new(2, 2), |_| Layout::new(0, 1)),
-        Type::I16(lit) => lit.map_or_else(|| Layout::new(2, 2), |_| Layout::new(0, 1)),
+        Type::Bool(None) => Layout::new(1, 1),
+        Type::U8(None) | Type::I8(None) => Layout::new(1, 1),
+        Type::U16(None) | Type::I16(None) => Layout::new(2, 2),
+        Type::U32(None) | Type::I32(None) | Type::F32(None) => Layout::new(4, 4),
+        Type::U64(None) | Type::I64(None) | Type::F64(None) => Layout::new(8, 8),
 
-        Type::U32(lit) => lit.map_or_else(|| Layout::new(4, 4), |_| Layout::new(0, 1)),
-        Type::I32(lit) => lit.map_or_else(|| Layout::new(4, 4), |_| Layout::new(0, 1)),
-        Type::F32(lit) => lit.map_or_else(|| Layout::new(4, 4), |_| Layout::new(0, 1)),
-
-        Type::U64(lit) => lit.map_or_else(|| Layout::new(8, 8), |_| Layout::new(0, 1)),
-        Type::I64(lit) => lit.map_or_else(|| Layout::new(8, 8), |_| Layout::new(0, 1)),
-        Type::F64(lit) => lit.map_or_else(|| Layout::new(8, 8), |_| Layout::new(0, 1)),
-
-        Type::USize(lit) => {
-            lit.map_or_else(|| Layout::new(ptr_size, ptr_align), |_| Layout::new(0, 1))
+        Type::USize(None) | Type::ISize(None) | Type::Pointer(_) => {
+            Layout::new(ptr_size, ptr_align)
         }
-        Type::ISize(lit) => {
-            lit.map_or_else(|| Layout::new(ptr_size, ptr_align), |_| Layout::new(0, 1))
-        }
 
-        Type::Pointer(_) => Layout::new(ptr_size, ptr_align),
-        Type::Fn(fntype) => match fntype {
-            FnType::Direct(_) => Layout::new(0, 1),
-            FnType::Indirect { .. } => Layout::new(ptr_size, ptr_align),
-        },
+        Type::Fn(FnType::Indirect { .. }) => Layout::new(ptr_size, ptr_align),
+
         Type::TaglessUnion(variants) => {
             assert!(variants.len() > 1);
 
@@ -72,24 +75,17 @@ pub fn get_layout_of(
             let padding = (max_align - (max_size % max_align)) % max_align;
             Layout::new(max_size + padding, max_align)
         }
-        Type::Unknown | Type::Never => {
-            panic!("INTERNAL COMPILER ERROR: Cannot get layout of type `unknown` and `never` types")
-        }
 
         Type::Struct(s) => {
-            // String literals are ZSTs
-            if let StructKind::StringHeader(Some(_)) = s {
-                return Layout::new(0, 1);
-            }
-
             let fields = s.fields(interner);
             let types: Vec<Type> = fields
                 .into_iter()
-                .map(|(_, ty_id)| interner.resolve(ty_id))
+                .map(|(_, id)| interner.resolve(id))
                 .collect();
-
             calculate_fields_layout(&types, interner, ptr_size, ptr_align)
         }
+
+        Type::Unknown => panic!("INTERNAL COMPILER ERROR: Cannot get layout of Unknown"),
     }
 }
 

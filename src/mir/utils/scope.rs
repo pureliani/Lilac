@@ -104,7 +104,10 @@ impl Scope {
             return true;
         }
 
-        if matches!(kind, ScopeKind::CodeBlock | ScopeKind::UnsafeBlock | ScopeKind::WhileBody { .. }) {
+        if matches!(
+            kind,
+            ScopeKind::CodeBlock | ScopeKind::UnsafeBlock | ScopeKind::WhileBody { .. }
+        ) {
             return self
                 .parent()
                 .is_some_and(|parent| parent.within_function_body());

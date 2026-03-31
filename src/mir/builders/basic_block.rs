@@ -163,8 +163,8 @@ impl<'a> Builder<'a, InBlock> {
                 }
             }
             _ => panic!(
-                "INTERNAL COMPILER ERROR: retarget_terminator: block has no \
-                 branchable terminator"
+                "INTERNAL COMPILER ERROR: retarget_terminator: block has no branchable \
+                 terminator"
             ),
         }
     }

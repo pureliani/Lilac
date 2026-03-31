@@ -296,8 +296,6 @@ impl TypeInterner {
         }
     }
 
-    /// Helper to strip the literal value, returning the generic type.
-    /// e.g., I32(Some(5)) -> I32(None)
     pub fn widen_literal(&self, ty: TypeId) -> TypeId {
         match self.resolve(ty) {
             Type::I8(_) => self.i8(None),

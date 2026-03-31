@@ -35,7 +35,7 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
                 match self.program.declarations.get(&entry).unwrap_or_else(|| {
                     panic!(
                         "INTERNAL COMPILER ERROR: Expected declarations to contain \
-                     DeclarationId({}) key",
+                         DeclarationId({}) key",
                         entry.0
                     )
                 }) {

@@ -22,14 +22,14 @@ impl<'a> Builder<'a, InBlock> {
 
         assert!(
             self.types.get_union_variants(source_type).is_none(),
-            "INTERNAL COMPILER ERROR: emit_wrap_in_union called with a union source type. \
-             Use coerce_to_union instead."
+            "INTERNAL COMPILER ERROR: emit_wrap_in_union called with a union source \
+             type. Use coerce_to_union instead."
         );
 
         assert!(
             variants.contains(&source_type),
-            "INTERNAL COMPILER ERROR: emit_wrap_in_union - source type is not a \
-             variant of the union"
+            "INTERNAL COMPILER ERROR: emit_wrap_in_union - source type is not a variant \
+             of the union"
         );
 
         let struct_type = self
@@ -62,13 +62,12 @@ impl<'a> Builder<'a, InBlock> {
 
         assert!(
             !self.types.is_pointer(union_ty),
-            "INTERNAL COMPILER ERROR: emit_unwrap_from_union expected union to be passed by value, \
-             but got a pointer"
+            "INTERNAL COMPILER ERROR: emit_unwrap_from_union expected union to be \
+             passed by value, but got a pointer"
         );
 
         let variants = self.types.get_union_variants(union_ty).expect(
-            "INTERNAL COMPILER ERROR: emit_unwrap_from_union - union_val is not \
-                 a union",
+            "INTERNAL COMPILER ERROR: emit_unwrap_from_union - union_val is not a union",
         );
 
         assert!(
@@ -79,8 +78,8 @@ impl<'a> Builder<'a, InBlock> {
 
         assert!(
             self.types.get_union_variants(variant_type).is_none(),
-            "INTERNAL COMPILER ERROR: emit_unwrap_from_union - cannot unwrap to a union type. \
-             Use coerce_to_union instead."
+            "INTERNAL COMPILER ERROR: emit_unwrap_from_union - cannot unwrap to a union \
+             type. Use coerce_to_union instead."
         );
 
         let union_ptr = self.emit_stack_alloc(union_ty, 1);
@@ -102,8 +101,8 @@ impl<'a> Builder<'a, InBlock> {
 
         assert!(
             !self.types.is_pointer(union_ty),
-            "INTERNAL COMPILER ERROR: emit_test_variant expected union to be passed by value, \
-             but got a pointer"
+            "INTERNAL COMPILER ERROR: emit_test_variant expected union to be passed by \
+             value, but got a pointer"
         );
 
         let variants = self

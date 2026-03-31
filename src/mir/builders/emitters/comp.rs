@@ -171,7 +171,10 @@ impl<'a> Builder<'a, InBlock> {
         } else if self.types.is_integer(lhs_ty) {
             self.emit_ieq(lhs, rhs)
         } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use equality `=` comparison operator on this type");
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot use equality `=` comparison operator \
+                 on this type"
+            );
         }
     }
 
@@ -191,7 +194,10 @@ impl<'a> Builder<'a, InBlock> {
         } else if self.types.is_integer(lhs_ty) {
             self.emit_ineq(lhs, rhs)
         } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use inequality `!=` comparison operator on this type");
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot use inequality `!=` comparison \
+                 operator on this type"
+            );
         }
     }
 
@@ -213,7 +219,10 @@ impl<'a> Builder<'a, InBlock> {
         } else if !self.types.is_signed(lhs_ty) {
             self.emit_ult(lhs, rhs)
         } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use less-than `<` comparison operator on this type")
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot use less-than `<` comparison operator \
+                 on this type"
+            )
         }
     }
 
@@ -235,7 +244,10 @@ impl<'a> Builder<'a, InBlock> {
         } else if !self.types.is_signed(lhs_ty) {
             self.emit_ulte(lhs, rhs)
         } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use less-than-or-equal `<=` comparison operator on this type")
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot use less-than-or-equal `<=` comparison \
+                 operator on this type"
+            )
         }
     }
 
@@ -257,7 +269,10 @@ impl<'a> Builder<'a, InBlock> {
         } else if !self.types.is_signed(lhs_ty) {
             self.emit_ugt(lhs, rhs)
         } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use greater-than `>` comparison operator on this type")
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot use greater-than `>` comparison \
+                 operator on this type"
+            )
         }
     }
 
@@ -279,7 +294,10 @@ impl<'a> Builder<'a, InBlock> {
         } else if !self.types.is_signed(lhs_ty) {
             self.emit_ugte(lhs, rhs)
         } else {
-            panic!("INTERNAL COMPILER ERROR: Cannot use greater-than-or-equal `>=` comparison operator on this type")
+            panic!(
+                "INTERNAL COMPILER ERROR: Cannot use greater-than-or-equal `>=` \
+                 comparison operator on this type"
+            )
         }
     }
 }
