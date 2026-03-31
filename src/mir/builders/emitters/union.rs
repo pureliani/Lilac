@@ -42,7 +42,7 @@ impl<'a> Builder<'a, InBlock> {
         self.emit_store(id_ptr, id_val);
 
         let value_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.val);
-        let typed_ptr = self.emit_bitcast_unsafe(value_ptr, self.types.ptr(source_type));
+        let typed_ptr = self.emit_bitcast(value_ptr, self.types.ptr(source_type));
         self.emit_store(typed_ptr, source);
 
         self.emit_load(union_ptr)
@@ -85,7 +85,7 @@ impl<'a> Builder<'a, InBlock> {
         self.emit_store(union_ptr, union_val);
 
         let value_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.val);
-        let typed_ptr = self.emit_bitcast_unsafe(value_ptr, self.types.ptr(variant_type));
+        let typed_ptr = self.emit_bitcast(value_ptr, self.types.ptr(variant_type));
         self.emit_load(typed_ptr)
     }
 

@@ -282,15 +282,7 @@ pub fn dump_instructions(
                 )
                 .unwrap();
             }
-            Instruction::Reinterpret(bitcast_instr) => {
-                let dest_type_str = get_vt(p, &bitcast_instr.dest, interner);
-                writeln!(
-                    out,
-                    "v{}: {} = bitcast v{};",
-                    bitcast_instr.dest.0, dest_type_str, bitcast_instr.src.0,
-                )
-                .unwrap();
-            }
+
             Instruction::Memory(kind) => match kind {
                 MemoryInstr::StackAlloc { dest, count } => {
                     let inner_ty = match interner.resolve(p.value_types[dest]) {

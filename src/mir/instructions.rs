@@ -222,12 +222,6 @@ pub struct SelectInstr {
 }
 
 #[derive(Clone, Debug)]
-pub struct ReinterpretInstr {
-    pub src: ValueId,
-    pub dest: ValueId,
-}
-
-#[derive(Clone, Debug)]
 pub enum Instruction {
     Cast(CastInstr),
     Unary(UnaryInstr),
@@ -236,7 +230,6 @@ pub enum Instruction {
     Memory(MemoryInstr),
     Call(CallInstr),
     Select(SelectInstr),
-    Reinterpret(ReinterpretInstr),
 }
 
 #[derive(Clone, Debug)]

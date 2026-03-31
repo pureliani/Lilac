@@ -44,6 +44,10 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             return Ok(Adjustment::Identity);
         };
 
+        if target == self.types.widen_literal(source) {
+            return Ok(Adjustment::BitCast);
+        }
+
         if self.types.is_integer(source) && self.types.is_integer(target) {
             let s_rank = self.types.get_numeric_type_rank(source).unwrap();
             let t_rank = self.types.get_numeric_type_rank(target).unwrap();
@@ -126,8 +130,8 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             self.types.get_union_variants(source),
             self.types.get_union_variants(target),
         ) {
-            for (_old_idx, sv) in source_variants.iter().enumerate() {
-                if let None = target_variants.iter().position(|tv| tv == sv) {
+            for sv in source_variants.iter() {
+                if !target_variants.contains(sv) {
                     return Err(AdjustmentError::Incompatible);
                 }
             }
@@ -277,7 +281,7 @@ impl<'a> Builder<'a, InBlock> {
         source: ValueId,
         adjustment: Adjustment,
         target_type: TypeId,
-        span: Span,
+        _span: Span,
     ) -> ValueId {
         match adjustment {
             Adjustment::Identity => source,
@@ -298,8 +302,11 @@ impl<'a> Builder<'a, InBlock> {
                 self.emit_wrap_in_union(source, &target_variants)
             }
             Adjustment::UnwrapUnion => self.emit_unwrap_from_union(source, target_type),
-            Adjustment::CoerceStruct { field_adjustments } => {
-                todo!()
+            Adjustment::CoerceStruct {
+                field_adjustments: _,
+            } => {
+                // self.apply_struct_coercion(source, target_type, field_adjustments, span)
+                todo!("Struct coercion")
             }
         }
     }

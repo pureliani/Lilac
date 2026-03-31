@@ -240,14 +240,14 @@ impl<'a> Builder<'a, InBlock> {
             if source_is_subset {
                 let target_ptr = self.emit_stack_alloc(target_union, 1);
                 let casted_target_ptr =
-                    self.emit_bitcast_unsafe(target_ptr, self.types.ptr(val_type));
+                    self.emit_bitcast(target_ptr, self.types.ptr(val_type));
                 self.emit_store(casted_target_ptr, val);
                 self.emit_load(target_ptr)
             } else {
                 let src_ptr = self.emit_stack_alloc(val_type, 1);
                 self.emit_store(src_ptr, val);
                 let casted_src_ptr =
-                    self.emit_bitcast_unsafe(src_ptr, self.types.ptr(target_union));
+                    self.emit_bitcast(src_ptr, self.types.ptr(target_union));
                 self.emit_load(casted_src_ptr)
             }
         } else {
