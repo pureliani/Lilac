@@ -15,10 +15,17 @@ use crate::{
 };
 
 pub mod basic_block;
-pub mod emitters;
+pub mod binary;
+pub mod cast;
+pub mod comp;
+pub mod r#const;
+pub mod control_flow;
 pub mod function;
+pub mod memory;
 pub mod module;
 pub mod program;
+pub mod unary;
+pub mod union;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BasicBlockId(pub usize);
