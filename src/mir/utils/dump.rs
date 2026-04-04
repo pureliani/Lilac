@@ -85,19 +85,6 @@ pub fn dump_block(
             Terminator::Return { value } => {
                 writeln!(out, "    ret v{}\n", value.0).unwrap();
             }
-            Terminator::Panic { message, span } => {
-                let loc = format!(
-                    "{}:{}:{}",
-                    span.path.0.display(),
-                    span.start.line + 1,
-                    span.start.col + 1
-                );
-                if let Some(msg) = message {
-                    writeln!(out, "    panic v{} at {}\n", msg.0, loc).unwrap();
-                } else {
-                    writeln!(out, "    panic at {}\n", loc).unwrap();
-                }
-            }
         }
     }
 }
@@ -374,6 +361,16 @@ pub fn dump_instructions(
                     .unwrap();
                 }
             },
+            Instruction::Materialize(mat) => {
+                writeln!(
+                    out,
+                    "v{}: {} = materialize {};",
+                    mat.dest.0,
+                    get_vt(p, &mat.dest, interner),
+                    interner.to_string(interner.intern(&Type::Literal(mat.literal_type)))
+                )
+                .unwrap();
+            }
         }
     }
 }

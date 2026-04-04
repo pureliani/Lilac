@@ -74,11 +74,6 @@ impl<'a> Builder<'a, InBlock> {
         self.bb_mut().terminator = Some(Terminator::Return { value })
     }
 
-    pub fn emit_panic(&mut self, message: Option<ValueId>, span: Span) {
-        self.check_no_terminator();
-        self.bb_mut().terminator = Some(Terminator::Panic { message, span });
-    }
-
     pub fn emit_logical_or<F>(
         &mut self,
         left: ValueId,

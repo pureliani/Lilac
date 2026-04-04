@@ -1,6 +1,6 @@
-use crate::{
-    ast::Span,
-    mir::builders::{BasicBlockId, ValueId},
+use crate::mir::{
+    builders::{BasicBlockId, ValueId},
+    types::checked_type::LiteralType,
 };
 
 #[derive(Clone, Debug)]
@@ -225,6 +225,12 @@ pub struct SelectInstr {
 }
 
 #[derive(Clone, Debug)]
+pub struct MaterializeInstr {
+    pub dest: ValueId,
+    pub literal_type: LiteralType,
+}
+
+#[derive(Clone, Debug)]
 pub enum Instruction {
     Cast(CastInstr),
     Unary(UnaryInstr),
@@ -233,6 +239,7 @@ pub enum Instruction {
     Memory(MemoryInstr),
     Call(CallInstr),
     Select(SelectInstr),
+    Materialize(MaterializeInstr),
 }
 
 #[derive(Clone, Debug)]
@@ -247,9 +254,5 @@ pub enum Terminator {
     },
     Return {
         value: ValueId,
-    },
-    Panic {
-        message: Option<ValueId>,
-        span: Span,
     },
 }

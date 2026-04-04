@@ -8,7 +8,7 @@ use crate::{
         builders::{BasicBlockId, Builder, ExpectBody, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, MemoryInstr},
-        types::checked_type::{SpannedType, Type},
+        types::checked_type::SpannedType,
     },
 };
 
@@ -124,7 +124,7 @@ impl<'a> Builder<'a, InBlock> {
             if branch_results.is_empty() {
                 self.seal_block(merge_block_id);
                 self.use_basic_block(merge_block_id);
-                return self.new_value_id(self.types.intern(&Type::Never));
+                return self.new_value_id(self.types.never());
             }
 
             let type_entries: Vec<TypeId> = branch_results

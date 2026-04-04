@@ -4,14 +4,16 @@ use inkwell::AddressSpace;
 use crate::codegen::CodeGenerator;
 use crate::compile::interner::TypeId;
 use crate::mir::types::checked_declaration::FnType;
-use crate::mir::types::checked_type::Type;
+use crate::mir::types::checked_type::{LiteralType, Type};
 use crate::mir::utils::layout::get_layout_of;
 
 impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
     pub fn get_any_type(&self, ty_id: TypeId) -> AnyTypeEnum<'ctx> {
         let ty = self.type_interner.resolve(ty_id);
         match ty {
-            Type::Void | Type::Never => self.context.void_type().into(),
+            Type::Literal(LiteralType::Void | LiteralType::Never) => {
+                self.context.void_type().into()
+            }
             _ => self.get_basic_type(ty_id).as_any_type_enum(),
         }
     }
@@ -42,7 +44,7 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
             }
             Type::F32(None) => self.context.f32_type().into(),
             Type::F64(None) => self.context.f64_type().into(),
-            Type::Pointer(_) | Type::Fn(FnType::Indirect { .. }) => {
+            Type::Pointer(_) | Type::IndirectFn(FnType::Indirect { .. }) => {
                 self.context.ptr_type(AddressSpace::default()).into()
             }
             Type::TaglessUnion(_) => {

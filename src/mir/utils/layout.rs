@@ -2,12 +2,12 @@ use crate::{
     compile::interner::TypeInterner,
     globals::STRING_INTERNER,
     mir::types::{
-        checked_declaration::{CheckedParam, FnType},
+        checked_declaration::CheckedParam,
         checked_type::{StructKind, Type},
     },
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Layout {
     pub size: usize,
     pub alignment: usize,
@@ -27,36 +27,17 @@ pub fn get_layout_of(
     ptr_align: usize,
 ) -> Layout {
     match ty {
-        Type::Void
-        | Type::Null
-        | Type::Never
-        | Type::Bool(Some(_))
-        | Type::U8(Some(_))
-        | Type::I8(Some(_))
-        | Type::U16(Some(_))
-        | Type::I16(Some(_))
-        | Type::U32(Some(_))
-        | Type::I32(Some(_))
-        | Type::U64(Some(_))
-        | Type::I64(Some(_))
-        | Type::F32(Some(_))
-        | Type::F64(Some(_))
-        | Type::USize(Some(_))
-        | Type::ISize(Some(_))
-        | Type::Fn(FnType::Direct(_))
-        | Type::Struct(StructKind::StringHeader(Some(_))) => Layout::new(0, 1),
+        Type::Literal(_) => Layout::new(0, 1),
 
-        Type::Bool(None) => Layout::new(1, 1),
-        Type::U8(None) | Type::I8(None) => Layout::new(1, 1),
-        Type::U16(None) | Type::I16(None) => Layout::new(2, 2),
-        Type::U32(None) | Type::I32(None) | Type::F32(None) => Layout::new(4, 4),
-        Type::U64(None) | Type::I64(None) | Type::F64(None) => Layout::new(8, 8),
+        Type::Bool => Layout::new(1, 1),
+        Type::U8 | Type::I8 => Layout::new(1, 1),
+        Type::U16 | Type::I16 => Layout::new(2, 2),
+        Type::U32 | Type::I32 | Type::F32 => Layout::new(4, 4),
+        Type::U64 | Type::I64 | Type::F64 => Layout::new(8, 8),
 
-        Type::USize(None) | Type::ISize(None) | Type::Pointer(_) => {
+        Type::USize | Type::ISize | Type::Pointer(_) | Type::IndirectFn(_) => {
             Layout::new(ptr_size, ptr_align)
         }
-
-        Type::Fn(FnType::Indirect { .. }) => Layout::new(ptr_size, ptr_align),
 
         Type::TaglessUnion(variants) => {
             assert!(variants.len() > 1);
@@ -84,8 +65,6 @@ pub fn get_layout_of(
                 .collect();
             calculate_fields_layout(&types, interner, ptr_size, ptr_align)
         }
-
-        Type::Unknown => panic!("INTERNAL COMPILER ERROR: Cannot get layout of Unknown"),
     }
 }
 

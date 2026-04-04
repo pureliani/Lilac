@@ -1,5 +1,5 @@
 use crate::{
-    ast::Span,
+    ast::{DeclarationId, Span},
     compile::interner::{StringId, TypeId, TypeInterner},
     globals::COMMON_IDENTIFIERS,
     mir::types::{
@@ -21,7 +21,7 @@ pub enum StructKind {
     ListHeader(TypeId),
 
     /// { len: usize, cap: usize, ptr: ptr<u8> }
-    StringHeader(Option<StringId>),
+    StringHeader,
 }
 
 impl StructKind {
@@ -38,7 +38,7 @@ impl StructKind {
                 (COMMON_IDENTIFIERS.ptr, t.ptr(*elem_ty_id)),
             ],
 
-            StructKind::StringHeader(_) => vec![
+            StructKind::StringHeader => vec![
                 (COMMON_IDENTIFIERS.len, t.usize(None)),
                 (COMMON_IDENTIFIERS.cap, t.usize(None)),
                 (COMMON_IDENTIFIERS.ptr, t.ptr(t.u8(None))),
@@ -66,29 +66,49 @@ impl StructKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Type {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum LiteralType {
     Void,
     Never,
     Unknown,
     Null,
-    Bool(Option<bool>),
-    U8(Option<u8>),
-    U16(Option<u16>),
-    U32(Option<u32>),
-    U64(Option<u64>),
-    USize(Option<usize>),
-    ISize(Option<isize>),
-    I8(Option<i8>),
-    I16(Option<i16>),
-    I32(Option<i32>),
-    I64(Option<i64>),
-    F32(Option<OrderedF32>),
-    F64(Option<OrderedF64>),
+    Bool(bool),
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    USize(usize),
+    ISize(isize),
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
+    F32(OrderedF32),
+    F64(OrderedF64),
+    String(StringId),
+    Fn(DeclarationId),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Type {
+    Bool,
+    U8,
+    U16,
+    U32,
+    U64,
+    USize,
+    ISize,
+    I8,
+    I16,
+    I32,
+    I64,
+    F32,
+    F64,
     Pointer(TypeId),
     Struct(StructKind),
     TaglessUnion(BTreeSet<TypeId>),
-    Fn(FnType),
+    IndirectFn(FnType),
+    Literal(LiteralType),
 }
 
 #[derive(Clone, Debug)]

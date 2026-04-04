@@ -2,7 +2,8 @@ use crate::{
     compile::interner::TypeId,
     mir::{
         builders::{Builder, InBlock, ValueId},
-        instructions::{CastInstr, Instruction},
+        instructions::{CastInstr, Instruction, MaterializeInstr},
+        types::checked_type::LiteralType,
     },
 };
 
@@ -64,6 +65,19 @@ impl<'a> Builder<'a, InBlock> {
     pub fn emit_bitcast(&mut self, src: ValueId, target_ty: TypeId) -> ValueId {
         let dest = self.new_value_id(target_ty);
         self.push_instruction(Instruction::Cast(CastInstr::BitCast { dest, src }));
+        dest
+    }
+
+    pub fn emit_materialize(&mut self, literal_type: LiteralType) -> ValueId {
+        let widened_type = self.types.widen_literal(literal_type);
+
+        let dest = self.new_value_id(widened_type);
+
+        self.push_instruction(Instruction::Materialize(MaterializeInstr {
+            dest,
+            literal_type,
+        }));
+
         dest
     }
 }

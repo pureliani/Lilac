@@ -1,16 +1,16 @@
 use inkwell::types::BasicType;
-use inkwell::values::{BasicValue, BasicValueEnum};
+use inkwell::values::BasicValueEnum;
 use inkwell::{FloatPredicate, IntPredicate};
 
 use crate::codegen::CodeGenerator;
-use crate::globals::STRING_INTERNER;
 use crate::mir::builders::ValueId;
 use crate::mir::instructions::{
     BinaryInstr, CallInstr, CastInstr, CompInstr, Instruction, MemoryInstr, SelectInstr,
     Terminator, UnaryInstr,
 };
 use crate::mir::types::checked_declaration::FnType;
-use crate::mir::types::checked_type::{StructKind, Type};
+use crate::mir::types::checked_type::{LiteralType, Type};
+use crate::mir::utils::layout::get_layout_of;
 
 impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
     fn get_val(&self, id: ValueId) -> BasicValueEnum<'ctx> {
@@ -21,62 +21,22 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
         let ty_id = self.program.value_types[&id];
         let ty = self.type_interner.resolve(ty_id);
 
-        match ty {
-            Type::Bool(Some(b)) => {
-                self.context.bool_type().const_int(b as u64, false).into()
-            }
-            Type::U8(Some(v)) => self.context.i8_type().const_int(v as u64, false).into(),
-            Type::I8(Some(v)) => self.context.i8_type().const_int(v as u64, true).into(),
-            Type::U16(Some(v)) => {
-                self.context.i16_type().const_int(v as u64, false).into()
-            }
-            Type::I16(Some(v)) => {
-                self.context.i16_type().const_int(v as u64, true).into()
-            }
-            Type::U32(Some(v)) => {
-                self.context.i32_type().const_int(v as u64, false).into()
-            }
-            Type::I32(Some(v)) => {
-                self.context.i32_type().const_int(v as u64, true).into()
-            }
-            Type::U64(Some(v)) => {
-                self.context.i64_type().const_int(v as u64, false).into()
-            }
-            Type::I64(Some(v)) => {
-                self.context.i64_type().const_int(v as u64, true).into()
-            }
-            Type::USize(Some(v)) => {
-                let target_data = self.target_machine.get_target_data();
-                self.context
-                    .ptr_sized_int_type(&target_data, None)
-                    .const_int(v as u64, false)
-                    .into()
-            }
-            Type::ISize(Some(v)) => {
-                let target_data = self.target_machine.get_target_data();
-                self.context
-                    .ptr_sized_int_type(&target_data, None)
-                    .const_int(v as u64, true)
-                    .into()
-            }
-            Type::F32(Some(v)) => self.context.f32_type().const_float(v.0 as f64).into(),
-            Type::F64(Some(v)) => self.context.f64_type().const_float(v.0).into(),
-            Type::Null | Type::Void | Type::Never => {
-                self.context.struct_type(&[], false).const_zero().into()
-            }
-            Type::Fn(FnType::Direct(_)) => {
-                self.context.struct_type(&[], false).const_zero().into()
-            }
-            Type::Struct(StructKind::StringHeader(Some(_))) => {
-                self.context.struct_type(&[], false).const_zero().into()
-            }
-            _ => panic!(
-                "INTERNAL COMPILER ERROR: ValueId({}) not found in codegen and is not a \
-                 literal type ({})",
-                id.0,
-                self.type_interner.to_string(ty_id)
-            ),
+        let layout = get_layout_of(
+            &ty,
+            self.type_interner,
+            self.program.target_ptr_size,
+            self.program.target_ptr_align,
+        );
+
+        if layout.size == 0 {
+            return self.context.struct_type(&[], false).const_zero().into();
         }
+
+        panic!(
+            "INTERNAL COMPILER ERROR: ValueId({}) not found in codegen and is not a ZST ({})",
+            id.0,
+            self.type_interner.to_string(ty_id)
+        );
     }
 
     fn store_val(&mut self, id: ValueId, val: BasicValueEnum<'ctx>) {
@@ -92,6 +52,7 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
             Instruction::Memory(memory) => self.emit_memory(memory),
             Instruction::Call(call) => self.emit_call(call),
             Instruction::Select(select) => self.emit_select(select),
+            Instruction::Materialize(mat) => todo!(),
         }
     }
 
@@ -117,15 +78,17 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 let val_ty = self.program.value_types[value];
                 let resolved_ty = self.type_interner.resolve(val_ty);
 
-                if matches!(resolved_ty, Type::Void | Type::Never | Type::Null) {
+                if matches!(
+                    resolved_ty,
+                    Type::Literal(
+                        LiteralType::Void | LiteralType::Never | LiteralType::Null
+                    )
+                ) {
                     self.builder.build_return(None).unwrap();
                 } else {
                     let ret_val = self.get_val(*value);
                     self.builder.build_return(Some(&ret_val)).unwrap();
                 }
-            }
-            Terminator::Panic { message, span } => {
-                todo!()
             }
         }
     }
@@ -537,11 +500,11 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
             .collect();
 
         let call_site = match func_ty {
-            Type::Fn(FnType::Direct(decl_id)) => {
+            Type::Literal(LiteralType::Fn(decl_id)) => {
                 let func_val = self.functions[&decl_id];
                 self.builder.build_call(func_val, &args, "call").unwrap()
             }
-            Type::Fn(FnType::Indirect {
+            Type::IndirectFn(FnType {
                 params,
                 return_type,
             }) => {

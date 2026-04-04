@@ -7,7 +7,7 @@ use crate::{
     globals::STRING_INTERNER,
     mir::types::{
         checked_declaration::{CheckedParam, FnType},
-        checked_type::{StructKind, Type},
+        checked_type::{LiteralType, StructKind, Type},
         ordered_float::{OrderedF32, OrderedF64},
     },
     tokenize::{NumberKind, TokenKind},
@@ -127,47 +127,91 @@ impl TypeInterner {
 
 impl TypeInterner {
     pub fn bool(&self, literal: Option<bool>) -> TypeId {
-        self.intern(&Type::Bool(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::Bool(value)))
+        } else {
+            self.intern(&Type::Bool)
+        }
     }
 
     pub fn i8(&self, literal: Option<i8>) -> TypeId {
-        self.intern(&Type::I8(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::I8(value)))
+        } else {
+            self.intern(&Type::I8)
+        }
     }
 
     pub fn i16(&self, literal: Option<i16>) -> TypeId {
-        self.intern(&Type::I16(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::I16(value)))
+        } else {
+            self.intern(&Type::I16)
+        }
     }
 
     pub fn i32(&self, literal: Option<i32>) -> TypeId {
-        self.intern(&Type::I32(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::I32(value)))
+        } else {
+            self.intern(&Type::I32)
+        }
     }
 
     pub fn i64(&self, literal: Option<i64>) -> TypeId {
-        self.intern(&Type::I64(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::I64(value)))
+        } else {
+            self.intern(&Type::I64)
+        }
     }
 
     pub fn isize(&self, literal: Option<isize>) -> TypeId {
-        self.intern(&Type::ISize(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::ISize(value)))
+        } else {
+            self.intern(&Type::ISize)
+        }
     }
 
     pub fn u8(&self, literal: Option<u8>) -> TypeId {
-        self.intern(&Type::U8(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::U8(value)))
+        } else {
+            self.intern(&Type::U8)
+        }
     }
 
     pub fn u16(&self, literal: Option<u16>) -> TypeId {
-        self.intern(&Type::U16(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::U16(value)))
+        } else {
+            self.intern(&Type::U16)
+        }
     }
 
     pub fn u32(&self, literal: Option<u32>) -> TypeId {
-        self.intern(&Type::U32(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::U32(value)))
+        } else {
+            self.intern(&Type::U32)
+        }
     }
 
     pub fn u64(&self, literal: Option<u64>) -> TypeId {
-        self.intern(&Type::U64(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::U64(value)))
+        } else {
+            self.intern(&Type::U64)
+        }
     }
 
     pub fn usize(&self, literal: Option<usize>) -> TypeId {
-        self.intern(&Type::USize(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::USize(value)))
+        } else {
+            self.intern(&Type::USize)
+        }
     }
 
     pub fn ptr(&self, to: TypeId) -> TypeId {
@@ -175,27 +219,44 @@ impl TypeInterner {
     }
 
     pub fn f32(&self, literal: Option<OrderedF32>) -> TypeId {
-        self.intern(&Type::F32(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::F32(value)))
+        } else {
+            self.intern(&Type::F32)
+        }
     }
 
     pub fn f64(&self, literal: Option<OrderedF64>) -> TypeId {
-        self.intern(&Type::F64(literal))
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::F64(value)))
+        } else {
+            self.intern(&Type::F64)
+        }
+    }
+
+    pub fn string(&self, literal: Option<StringId>) -> TypeId {
+        if let Some(value) = literal {
+            self.intern(&Type::Literal(LiteralType::String(value)))
+        } else {
+            let header_ty = self.intern(&Type::Struct(StructKind::StringHeader));
+            self.ptr(header_ty)
+        }
     }
 
     pub fn unknown(&self) -> TypeId {
-        self.intern(&Type::Unknown)
+        self.intern(&Type::Literal(LiteralType::Unknown))
     }
 
     pub fn null(&self) -> TypeId {
-        self.intern(&Type::Null)
+        self.intern(&Type::Literal(LiteralType::Null))
     }
 
     pub fn void(&self) -> TypeId {
-        self.intern(&Type::Void)
+        self.intern(&Type::Literal(LiteralType::Void))
     }
 
     pub fn never(&self) -> TypeId {
-        self.intern(&Type::Never)
+        self.intern(&Type::Literal(LiteralType::Never))
     }
 }
 
@@ -231,7 +292,7 @@ impl TypeInterner {
         for ty_id in types {
             let ty = self.resolve(ty_id);
 
-            if matches!(ty, Type::Never) {
+            if matches!(ty, Type::Literal(LiteralType::Never)) {
                 continue;
             }
 
@@ -243,7 +304,7 @@ impl TypeInterner {
         }
 
         if flat.is_empty() {
-            return self.intern(&Type::Never);
+            return self.intern(&Type::Literal(LiteralType::Never));
         }
 
         if flat.len() == 1 {
@@ -296,74 +357,97 @@ impl TypeInterner {
         }
     }
 
-    pub fn widen_literal(&self, ty: TypeId) -> TypeId {
-        match self.resolve(ty) {
-            Type::I8(_) => self.i8(None),
-            Type::I16(_) => self.i16(None),
-            Type::I32(_) => self.i32(None),
-            Type::I64(_) => self.i64(None),
-            Type::ISize(_) => self.isize(None),
+    pub fn widen_literal(&self, ty: LiteralType) -> TypeId {
+        match ty {
+            LiteralType::I8(_) => self.i8(None),
+            LiteralType::I16(_) => self.i16(None),
+            LiteralType::I32(_) => self.i32(None),
+            LiteralType::I64(_) => self.i64(None),
+            LiteralType::ISize(_) => self.isize(None),
 
-            Type::U8(_) => self.u8(None),
-            Type::U16(_) => self.u16(None),
-            Type::U32(_) => self.u32(None),
-            Type::U64(_) => self.u64(None),
-            Type::USize(_) => self.usize(None),
+            LiteralType::U8(_) => self.u8(None),
+            LiteralType::U16(_) => self.u16(None),
+            LiteralType::U32(_) => self.u32(None),
+            LiteralType::U64(_) => self.u64(None),
+            LiteralType::USize(_) => self.usize(None),
 
-            Type::F32(_) => self.f32(None),
-            Type::F64(_) => self.f64(None),
+            LiteralType::F32(_) => self.f32(None),
+            LiteralType::F64(_) => self.f64(None),
 
-            Type::Bool(_) => self.bool(None),
+            LiteralType::Bool(_) => self.bool(None),
 
-            Type::Struct(StructKind::StringHeader(_)) => {
-                self.intern(&Type::Struct(StructKind::StringHeader(None)))
+            LiteralType::String(_) => {
+                self.intern(&Type::Struct(StructKind::StringHeader))
             }
-
-            _ => ty,
+            LiteralType::Void => self.void(),
+            LiteralType::Never => self.never(),
+            LiteralType::Unknown => self.unknown(),
+            LiteralType::Null => self.null(),
+            LiteralType::Fn(declaration_id) => {
+                self.intern(&Type::Literal(LiteralType::Fn(declaration_id)))
+            }
         }
     }
 
     pub fn get_numeric_type_rank(&self, ty: TypeId) -> Option<i32> {
         use Type::*;
-        match self.resolve(ty) {
-            I8(_) | U8(_) => Some(1),
-            I16(_) | U16(_) => Some(2),
-            I32(_) | U32(_) | ISize(_) | USize(_) => Some(3),
-            I64(_) | U64(_) => Some(4),
-            F32(_) => Some(5),
-            F64(_) => Some(6),
+        let widened = match self.resolve(ty) {
+            Literal(lt) => {
+                let widened_id = self.widen_literal(lt);
+                self.resolve(widened_id)
+            }
+            t => t,
+        };
+
+        match widened {
+            I8 | U8 => Some(1),
+            I16 | U16 => Some(2),
+            I32 | U32 | ISize | USize => Some(3),
+            I64 | U64 => Some(4),
+            F32 => Some(5),
+            F64 => Some(6),
             _ => None,
         }
     }
 
     pub fn is_float(&self, ty: TypeId) -> bool {
         use Type::*;
-        matches!(self.resolve(ty), F32(_) | F64(_))
+        let widened = match self.resolve(ty) {
+            Literal(lt) => {
+                let widened_id = self.widen_literal(lt);
+                self.resolve(widened_id)
+            }
+            t => t,
+        };
+
+        matches!(widened, F32 | F64)
     }
 
     pub fn is_integer(&self, ty: TypeId) -> bool {
         use Type::*;
+        let widened = match self.resolve(ty) {
+            Literal(lt) => {
+                let widened_id = self.widen_literal(lt);
+                self.resolve(widened_id)
+            }
+            t => t,
+        };
         matches!(
-            self.resolve(ty),
-            I8(_)
-                | I16(_)
-                | I32(_)
-                | I64(_)
-                | U8(_)
-                | U16(_)
-                | U32(_)
-                | U64(_)
-                | ISize(_)
-                | USize(_)
+            widened,
+            I8 | I16 | I32 | I64 | U8 | U16 | U32 | U64 | ISize | USize
         )
     }
 
     pub fn is_signed(&self, ty: TypeId) -> bool {
         use Type::*;
-        matches!(
-            self.resolve(ty),
-            I8(_) | I16(_) | I32(_) | I64(_) | ISize(_) | F32(_) | F64(_)
-        )
+        let widened = match self.resolve(ty) {
+            Literal(lt) => {
+                let widened_id = self.widen_literal(lt);
+                self.resolve(widened_id)
+            }
+            t => t,
+        };
+        matches!(widened, I8 | I16 | I32 | I64 | ISize | F32 | F64)
     }
 
     pub fn is_pointer(&self, ty: TypeId) -> bool {
@@ -371,7 +455,14 @@ impl TypeInterner {
     }
 
     pub fn is_bool(&self, ty: TypeId) -> bool {
-        matches!(self.resolve(ty), Type::Bool(_))
+        let widened = match self.resolve(ty) {
+            Type::Literal(lt) => {
+                let widened_id = self.widen_literal(lt);
+                self.resolve(widened_id)
+            }
+            t => t,
+        };
+        matches!(widened, Type::Bool)
     }
 }
 
@@ -391,62 +482,19 @@ impl TypeInterner {
         }
 
         let result = match self.resolve(target) {
-            Type::Void => String::from("void"),
-            Type::Null => String::from("null"),
-            Type::Unknown => String::from("unknown"),
-            Type::Never => String::from("never"),
-            Type::Bool(lit) => {
-                let suffix = String::from("bool");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::U8(lit) => {
-                let suffix = String::from("u8");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::U16(lit) => {
-                let suffix = String::from("u16");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::U32(lit) => {
-                let suffix = String::from("u32");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::U64(lit) => {
-                let suffix = String::from("u64");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::USize(lit) => {
-                let suffix = String::from("usize");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::ISize(lit) => {
-                let suffix = String::from("isize");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::I8(lit) => {
-                let suffix = String::from("i8");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::I16(lit) => {
-                let suffix = String::from("i16");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::I32(lit) => {
-                let suffix = String::from("i32");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::I64(lit) => {
-                let suffix = String::from("i64");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l, suffix))
-            }
-            Type::F32(lit) => {
-                let suffix = String::from("f32");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l.0, suffix))
-            }
-            Type::F64(lit) => {
-                let suffix = String::from("f64");
-                lit.map_or(suffix.clone(), |l| format!("{}{}", l.0, suffix))
-            }
+            Type::Bool => String::from("bool"),
+            Type::U8 => String::from("u8"),
+            Type::U16 => String::from("u16"),
+            Type::U32 => String::from("u32"),
+            Type::U64 => String::from("u64"),
+            Type::USize => String::from("usize"),
+            Type::ISize => String::from("isize"),
+            Type::I8 => String::from("i8"),
+            Type::I16 => String::from("i16"),
+            Type::I32 => String::from("i32"),
+            Type::I64 => String::from("i64"),
+            Type::F32 => String::from("f32"),
+            Type::F64 => String::from("f64"),
             Type::Struct(s) => match s {
                 StructKind::UserDefined(checked_params) => {
                     self.struct_to_string(&checked_params, visited_set)
@@ -457,14 +505,35 @@ impl TypeInterner {
                 StructKind::ListHeader(item_type) => {
                     self.list_to_string(item_type, visited_set)
                 }
-                StructKind::StringHeader(string_id) => {
-                    let string_ty = String::from("string");
-                    string_id.map_or(string_ty.clone(), |id| {
-                        format!("\"{}\"", STRING_INTERNER.resolve(id))
-                    })
-                }
+                StructKind::StringHeader => String::from("string"),
             },
-            Type::Fn(fn_type) => self.fn_signature_to_string(&fn_type, visited_set),
+            Type::Literal(lit) => match lit {
+                LiteralType::Void => String::from("void"),
+                LiteralType::Null => String::from("null"),
+                LiteralType::Unknown => String::from("unknown"),
+                LiteralType::Never => String::from("never"),
+
+                LiteralType::Bool(value) => value.to_string(),
+                LiteralType::U8(value) => value.to_string(),
+                LiteralType::U16(value) => value.to_string(),
+                LiteralType::U32(value) => value.to_string(),
+                LiteralType::U64(value) => value.to_string(),
+                LiteralType::USize(value) => value.to_string(),
+                LiteralType::ISize(value) => value.to_string(),
+                LiteralType::I8(value) => value.to_string(),
+                LiteralType::I16(value) => value.to_string(),
+                LiteralType::I32(value) => value.to_string(),
+                LiteralType::I64(value) => value.to_string(),
+                LiteralType::F32(value) => value.0.to_string(),
+                LiteralType::F64(value) => value.0.to_string(),
+                LiteralType::String(string_id) => {
+                    format!("\"{}\"", STRING_INTERNER.resolve(string_id))
+                }
+                LiteralType::Fn(declaration_id) => format!("fn{}", declaration_id.0),
+            },
+            Type::IndirectFn(fn_type) => {
+                self.fn_signature_to_string(&fn_type, visited_set)
+            }
             Type::Pointer(to) => {
                 format!("ptr<{}>", self.to_string_recursive(to, visited_set))
             }
@@ -535,32 +604,26 @@ impl TypeInterner {
 
     fn fn_signature_to_string(
         &self,
-        fn_type: &FnType,
+        FnType {
+            params,
+            return_type,
+        }: &FnType,
         visited_set: &mut HashSet<TypeId>,
     ) -> String {
-        match fn_type {
-            FnType::Direct(id) => format!("fn_{}", id.0),
-            FnType::Indirect {
-                params,
-                return_type,
-            } => {
-                let params_str = params
-                    .iter()
-                    .map(|p| {
-                        format!(
-                            "{}: {}",
-                            STRING_INTERNER.resolve(p.identifier.name),
-                            self.to_string_recursive(p.ty.id, visited_set)
-                        )
-                    })
-                    .collect::<Vec<String>>()
-                    .join(", ");
+        let params_str = params
+            .iter()
+            .map(|p| {
+                format!(
+                    "{}: {}",
+                    STRING_INTERNER.resolve(p.identifier.name),
+                    self.to_string_recursive(p.ty.id, visited_set)
+                )
+            })
+            .collect::<Vec<String>>()
+            .join(", ");
 
-                let return_type_str =
-                    self.to_string_recursive(return_type.id, visited_set);
+        let return_type_str = self.to_string_recursive(return_type.id, visited_set);
 
-                format!("fn({}): {}", params_str, return_type_str)
-            }
-        }
+        format!("fn({}): {}", params_str, return_type_str)
     }
 }

@@ -77,7 +77,7 @@ impl<'a> Builder<'a, InBlock> {
         let ptr_ty = self.get_value_type(base_ptr);
         let index_ty = self.get_value_type(index);
 
-        if !matches!(self.types.resolve(index_ty), Type::USize(_)) {
+        if !matches!(self.types.resolve(index_ty), Type::USize) {
             panic!(
                 "INTERNAL COMPILER ERROR: ptr_offset requires the index to be of type \
                  usize"
@@ -174,7 +174,7 @@ impl<'a> Builder<'a, InBlock> {
             matches!(
                 inner_ty,
                 Type::Struct(StructKind::ListHeader(_))
-                    | Type::Struct(StructKind::StringHeader(_))
+                    | Type::Struct(StructKind::StringHeader)
             )
         } else {
             false

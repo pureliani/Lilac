@@ -85,13 +85,7 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             TypeAnnotationKind::ISize(lit) => self.types.isize(*lit),
             TypeAnnotationKind::F32(lit) => self.types.f32(lit.map(OrderedF32)),
             TypeAnnotationKind::F64(lit) => self.types.f64(lit.map(OrderedF64)),
-            TypeAnnotationKind::String(lit) => {
-                let inner = self
-                    .types
-                    .intern(&Type::Struct(StructKind::StringHeader(*lit)));
-
-                self.types.ptr(inner)
-            }
+            TypeAnnotationKind::String(lit) => self.types.string(*lit),
             TypeAnnotationKind::Identifier(id) => {
                 self.check_type_identifier_annotation(id.clone())
             }
@@ -102,7 +96,7 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
                 let checked_params = self.check_params(params);
                 let checked_return_type = self.check_type_annotation(return_type);
 
-                self.types.intern(&Type::Fn(FnType::Indirect {
+                self.types.intern(&Type::IndirectFn(FnType {
                     params: checked_params,
                     return_type: checked_return_type,
                 }))

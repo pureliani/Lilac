@@ -4,8 +4,8 @@ use crate::{
     mir::{
         builders::{Builder, InBlock, ValueId},
         types::{
-            checked_declaration::{CheckedDeclaration, FnType},
-            checked_type::{StructKind, Type},
+            checked_declaration::CheckedDeclaration,
+            checked_type::{LiteralType, Type},
         },
     },
     tokenize::NumberKind,
@@ -23,9 +23,7 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn emit_string(&mut self, val: StringId) -> ValueId {
-        let ty = self
-            .types
-            .intern(&Type::Struct(StructKind::StringHeader(Some(val))));
+        let ty = self.types.string(Some(val));
         self.new_value_id(ty)
     }
 
@@ -50,7 +48,7 @@ impl<'a> Builder<'a, InBlock> {
             panic!("INTERNAL COMPILER ERROR: Declaration is not a function");
         }
 
-        let ty = self.types.intern(&Type::Fn(FnType::Direct(decl_id)));
+        let ty = self.types.intern(&Type::Literal(LiteralType::Fn(decl_id)));
 
         self.new_value_id(ty)
     }

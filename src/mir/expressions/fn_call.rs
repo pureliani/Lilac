@@ -6,13 +6,12 @@ use crate::{
         DeclarationId, Span,
     },
     compile::interner::TypeId,
-    globals::STRING_INTERNER,
     mir::{
         builders::{Builder, ExpectBody, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::{CheckedDeclaration, CheckedParam, FnType},
-            checked_type::{SpannedType, Type},
+            checked_type::{LiteralType, SpannedType, Type},
         },
         utils::{facts::narrowed_type::NarrowedTypeFact, place::Place},
     },
@@ -26,32 +25,6 @@ impl<'a> Builder<'a, InBlock> {
         span: Span,
         expected_type: Option<&SpannedType>,
     ) -> ValueId {
-        // Check if panic call
-        if let ExprKind::Identifier(ident) = &left.kind {
-            if STRING_INTERNER.resolve(ident.name) == "panic" {
-                if args.len() > 1 {
-                    return self.report_error_and_get_poison(SemanticError {
-                        kind: SemanticErrorKind::FnArgumentCountMismatch {
-                            expected: 1,
-                            received: args.len(),
-                        },
-                        span: span.clone(),
-                    });
-                }
-
-                let msg_val = args
-                    .into_iter()
-                    .next()
-                    .map(|arg| self.build_expr(arg, None));
-
-                self.emit_panic(msg_val, span.clone());
-
-                let never_ty = self.types.intern(&Type::Never);
-                let val = self.new_value_id(never_ty);
-                return self.check_expected(val, span, expected_type);
-            }
-        }
-
         let callee_decl_id = match &left.kind {
             ExprKind::Identifier(ident) => self.current_scope.lookup(ident.name),
             _ => None,
@@ -61,7 +34,7 @@ impl<'a> Builder<'a, InBlock> {
         let func_type = self.get_value_type(func_id);
 
         let (params, return_type) = match self.types.resolve(func_type) {
-            Type::Fn(FnType::Direct(decl_id)) => {
+            Type::Literal(LiteralType::Fn(decl_id)) => {
                 if let Some(CheckedDeclaration::Function(f)) =
                     self.program.declarations.get(&decl_id)
                 {
@@ -79,11 +52,13 @@ impl<'a> Builder<'a, InBlock> {
                     panic!("INTERNAL COMPILER ERROR: Expected function declaration");
                 }
             }
-            Type::Fn(FnType::Indirect {
+            Type::IndirectFn(FnType {
                 params,
                 return_type,
             }) => (params.clone(), return_type.clone()),
-            Type::Unknown => return self.new_value_id(self.types.unknown()),
+            Type::Literal(LiteralType::Unknown) => {
+                return self.new_value_id(self.types.unknown())
+            }
             _ => {
                 return self.report_error_and_get_poison(SemanticError {
                     kind: SemanticErrorKind::CannotCall(func_type),

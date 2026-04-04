@@ -15,7 +15,7 @@ use crate::{
         instructions::Terminator,
         types::{
             checked_declaration::{CheckedDeclaration, FunctionEffects, ParamMutation},
-            checked_type::{SpannedType, Type},
+            checked_type::{LiteralType, SpannedType, Type},
         },
         utils::{
             facts::narrowed_type::NarrowedTypeFact, place::Place,
@@ -69,7 +69,10 @@ impl<'a> Builder<'a, InModule> {
             }
 
             let return_type = self.types.resolve(func.return_type.id);
-            if !matches!(return_type, Type::Void | Type::I32(_)) {
+            if !matches!(
+                return_type,
+                Type::Literal(LiteralType::Void | LiteralType::I32(_)) | Type::I32
+            ) {
                 return Err(SemanticError {
                     kind: SemanticErrorKind::MainFunctionInvalidReturnType,
                     span: identifier.span.clone(),

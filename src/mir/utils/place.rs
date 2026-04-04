@@ -6,20 +6,15 @@ use crate::{
         DeclarationId, IdentifierNode,
     },
     compile::interner::{StringId, TypeId},
-    globals::{COMMON_IDENTIFIERS, STRING_INTERNER},
     mir::{
         builders::{BasicBlockId, Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::{
-            checked_declaration::{CheckedDeclaration, FnType},
-            checked_type::{StructKind, Type},
+            checked_declaration::CheckedDeclaration,
+            checked_type::{LiteralType, StructKind, Type},
         },
-        utils::{
-            facts::{narrowed_type::NarrowedTypeFact, FactSet},
-            layout::get_layout_of,
-        },
+        utils::facts::{narrowed_type::NarrowedTypeFact, FactSet},
     },
-    tokenize::NumberKind,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -169,64 +164,9 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn is_zst(&self, ty_id: TypeId) -> bool {
-        let ty = self.types.resolve(ty_id);
-        get_layout_of(
-            &ty,
-            self.types,
-            self.program.target_ptr_size,
-            self.program.target_ptr_align,
-        )
-        .size
-            == 0
-    }
-
-    pub fn materialize_zst(&mut self, ty_id: TypeId) -> ValueId {
-        let ty = self.types.resolve(ty_id);
-        match ty {
-            Type::Null => self.emit_null(),
-            Type::Void => self.emit_void(),
-            Type::Bool(Some(b)) => self.emit_bool(b),
-            Type::I8(Some(v)) => self.emit_number(NumberKind::I8(v)),
-            Type::I16(Some(v)) => self.emit_number(NumberKind::I16(v)),
-            Type::I32(Some(v)) => self.emit_number(NumberKind::I32(v)),
-            Type::I64(Some(v)) => self.emit_number(NumberKind::I64(v)),
-            Type::ISize(Some(v)) => self.emit_number(NumberKind::ISize(v)),
-            Type::U8(Some(v)) => self.emit_number(NumberKind::U8(v)),
-            Type::U16(Some(v)) => self.emit_number(NumberKind::U16(v)),
-            Type::U32(Some(v)) => self.emit_number(NumberKind::U32(v)),
-            Type::U64(Some(v)) => self.emit_number(NumberKind::U64(v)),
-            Type::USize(Some(v)) => self.emit_number(NumberKind::USize(v)),
-            Type::F32(Some(v)) => self.emit_number(NumberKind::F32(v.0)),
-            Type::F64(Some(v)) => self.emit_number(NumberKind::F64(v.0)),
-            Type::Struct(StructKind::StringHeader(Some(id))) => self.emit_string(id),
-            _ => self.new_value_id(ty_id),
-        }
-    }
-
     pub fn read_place(&mut self, place: &Place) -> ValueId {
         if let Place::Temporary(val_id) = place {
             return *val_id;
-        }
-
-        let ty_id = self.type_of_place(place);
-
-        if self.is_zst(ty_id) {
-            return self.materialize_zst(ty_id);
-        }
-
-        if let Place::Field(base, field_name) = place {
-            let base_ty_id = self.type_of_place(base);
-            if let Type::Struct(StructKind::StringHeader(Some(str_id))) =
-                self.types.resolve(base_ty_id)
-            {
-                if *field_name == COMMON_IDENTIFIERS.len
-                    || *field_name == COMMON_IDENTIFIERS.cap
-                {
-                    let len = STRING_INTERNER.resolve(str_id).len();
-                    return self.emit_number(NumberKind::USize(len));
-                }
-            }
         }
 
         let ptr = self.get_place_ptr(place);
@@ -261,12 +201,6 @@ impl<'a> Builder<'a, InBlock> {
             panic!("INTERNAL COMPILER ERROR: Cannot write to a temporary r-value");
         }
 
-        let ty_id = self.type_of_place(place);
-        if self.is_zst(ty_id) {
-            self.write_fact(self.context.block_id, place, FactSet::new());
-            return;
-        }
-
         let ptr = self.get_place_ptr(place);
         self.emit_store(ptr, value);
 
@@ -283,7 +217,7 @@ impl<'a> Builder<'a, InBlock> {
                         self.types.unwrap_ptr(ptr_ty)
                     }
                     CheckedDeclaration::Function(f) => {
-                        self.types.intern(&Type::Fn(FnType::Direct(f.id)))
+                        self.types.intern(&Type::Literal(LiteralType::Fn(f.id)))
                     }
                     _ => panic!("Invalid local place"),
                 }

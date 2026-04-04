@@ -12,6 +12,7 @@ pub enum AdjustmentError {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Adjustment {
     Identity,
+    Materialize,
 
     SIToF,
     UIToF,
@@ -44,8 +45,10 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             return Ok(Adjustment::Identity);
         };
 
-        if target == self.types.widen_literal(source) {
-            return Ok(Adjustment::BitCast);
+        if let Type::Literal(lt) = self.types.resolve(source) {
+            if target == self.types.widen_literal(lt) {
+                return Ok(Adjustment::Materialize);
+            }
         }
 
         if self.types.is_integer(source) && self.types.is_integer(target) {
@@ -307,6 +310,10 @@ impl<'a> Builder<'a, InBlock> {
             } => {
                 // self.apply_struct_coercion(source, target_type, field_adjustments, span)
                 todo!("Struct coercion")
+            }
+            Adjustment::Materialize => {
+                let literal_type = self.get_value_type(source);
+                self.emit_materialize(literal_type)
             }
         }
     }
