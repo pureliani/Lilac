@@ -15,6 +15,7 @@ pub mod or;
 pub mod static_access;
 pub mod string;
 pub mod struct_init;
+pub mod template;
 pub mod typecast;
 pub mod unary_op;
 
@@ -155,6 +156,9 @@ impl<'a> Builder<'a, InBlock> {
                 self.build_is_type_expr(*left, ty, expected_type)
             }
             ExprKind::Null => self.build_null_expr(span, expected_type),
+            ExprKind::TemplateString(parts) => {
+                self.build_template_expr(parts, span, expected_type)
+            }
         };
 
         self.check_expected(result, expr.span, expected_type)

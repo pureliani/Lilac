@@ -97,6 +97,7 @@ pub enum ExprKind {
     BoolLiteral(bool),
     Number(NumberKind),
     String(StringNode),
+    TemplateString(Vec<Expr>),
     Identifier(IdentifierNode),
     Fn(Box<FnDecl>),
     If {

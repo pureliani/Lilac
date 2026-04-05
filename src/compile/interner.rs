@@ -556,6 +556,7 @@ impl TypeInterner {
             TokenKind::String(value) => value.to_owned(),
             TokenKind::Number(number_kind) => number_kind.to_string(),
             TokenKind::Doc(value) => format!("---\n{}\n---", value),
+            TokenKind::TemplateString(value) => value.to_owned(),
         }
     }
 

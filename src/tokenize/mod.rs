@@ -76,6 +76,8 @@ pub enum PunctuationKind {
     Dollar,
     Question,
     Hash,
+    Backtick,
+    DollarLBrace,
 }
 
 impl PunctuationKind {
@@ -112,6 +114,8 @@ impl PunctuationKind {
             PunctuationKind::Dollar => "$",
             PunctuationKind::Question => "?",
             PunctuationKind::Hash => "#",
+            PunctuationKind::Backtick => "`",
+            PunctuationKind::DollarLBrace => "${",
         })
     }
 }
@@ -239,6 +243,7 @@ pub enum TokenKind {
     Punctuation(PunctuationKind),
     Keyword(KeywordKind),
     String(String),
+    TemplateString(String),
     Number(NumberKind),
     Doc(String),
 }
@@ -254,11 +259,13 @@ impl Display for TokenKind {
             }
             TokenKind::Keyword(keyword_kind) => write!(f, "{}", keyword_kind.to_string()),
             TokenKind::String(value) => write!(f, "\"{}\"", value),
+            TokenKind::TemplateString(value) => write!(f, "{}", value),
             TokenKind::Number(number_kind) => write!(f, "{}", number_kind.to_string()),
             TokenKind::Doc(documentation) => write!(f, "---\n{}\n---", documentation),
         }
     }
 }
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub span: Span,
@@ -273,6 +280,10 @@ pub struct Tokenizer<'a> {
     line: usize,
     col: usize,
     path: ModulePath,
+
+    brace_depth: usize,
+    template_brace_depths: Vec<usize>,
+    in_template: bool,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -371,12 +382,21 @@ impl<'a> Tokenizer<'a> {
             line: 1,
             col: 1,
             path: path.clone(),
+            brace_depth: 0,
+            template_brace_depths: Vec::new(),
+            in_template: false,
         };
         let mut tokens: Vec<Token> = vec![];
         let mut errors: Vec<TokenizationError> = vec![];
 
         loop {
-            state.skip_ignored();
+            if !state.in_template {
+                state.skip_ignored();
+            }
+
+            if state.current().is_none() {
+                break;
+            }
 
             let start_pos = Position {
                 line: state.line,
@@ -384,7 +404,144 @@ impl<'a> Tokenizer<'a> {
                 byte_offset: state.byte_offset,
             };
 
+            if state.in_template {
+                match state.current() {
+                    Some("`") => {
+                        state.consume();
+                        state.in_template = false;
+                        let end_pos = Position {
+                            line: state.line,
+                            col: state.col,
+                            byte_offset: state.byte_offset,
+                        };
+                        tokens.push(Token {
+                            kind: TokenKind::Punctuation(PunctuationKind::Backtick),
+                            span: Span {
+                                start: start_pos,
+                                end: end_pos,
+                                path: state.path.clone(),
+                            },
+                        });
+                    }
+                    Some("$") if state.peek(1) == Some("{") => {
+                        state.consume();
+                        state.consume();
+                        state.template_brace_depths.push(state.brace_depth);
+                        state.brace_depth += 1;
+                        state.in_template = false;
+                        let end_pos = Position {
+                            line: state.line,
+                            col: state.col,
+                            byte_offset: state.byte_offset,
+                        };
+                        tokens.push(Token {
+                            kind: TokenKind::Punctuation(PunctuationKind::DollarLBrace),
+                            span: Span {
+                                start: start_pos,
+                                end: end_pos,
+                                path: state.path.clone(),
+                            },
+                        });
+                    }
+                    Some(_) => match state.tokenize_template_string_part() {
+                        Ok(value) => {
+                            let end_pos = Position {
+                                line: state.line,
+                                col: state.col,
+                                byte_offset: state.byte_offset,
+                            };
+                            tokens.push(Token {
+                                kind: TokenKind::TemplateString(value.to_string()),
+                                span: Span {
+                                    start: start_pos,
+                                    end: end_pos,
+                                    path: state.path.clone(),
+                                },
+                            });
+                        }
+                        Err(kind) => {
+                            let end_pos = Position {
+                                line: state.line,
+                                col: state.col,
+                                byte_offset: state.byte_offset,
+                            };
+                            errors.push(TokenizationError {
+                                kind,
+                                span: Span {
+                                    start: start_pos,
+                                    end: end_pos,
+                                    path: state.path.clone(),
+                                },
+                            });
+                            state.synchronize();
+                        }
+                    },
+                    None => break,
+                }
+                continue;
+            }
+
             match state.current() {
+                Some("`") => {
+                    state.consume();
+                    state.in_template = true;
+                    let end_pos = Position {
+                        line: state.line,
+                        col: state.col,
+                        byte_offset: state.byte_offset,
+                    };
+                    tokens.push(Token {
+                        kind: TokenKind::Punctuation(PunctuationKind::Backtick),
+                        span: Span {
+                            start: start_pos,
+                            end: end_pos,
+                            path: state.path.clone(),
+                        },
+                    });
+                }
+                Some("{") => {
+                    state.consume();
+                    state.brace_depth += 1;
+                    let end_pos = Position {
+                        line: state.line,
+                        col: state.col,
+                        byte_offset: state.byte_offset,
+                    };
+                    tokens.push(Token {
+                        kind: TokenKind::Punctuation(PunctuationKind::LBrace),
+                        span: Span {
+                            start: start_pos,
+                            end: end_pos,
+                            path: state.path.clone(),
+                        },
+                    });
+                }
+                Some("}") => {
+                    state.consume();
+                    if state.brace_depth > 0 {
+                        state.brace_depth -= 1;
+                    }
+                    let end_pos = Position {
+                        line: state.line,
+                        col: state.col,
+                        byte_offset: state.byte_offset,
+                    };
+                    tokens.push(Token {
+                        kind: TokenKind::Punctuation(PunctuationKind::RBrace),
+                        span: Span {
+                            start: start_pos,
+                            end: end_pos,
+                            path: state.path.clone(),
+                        },
+                    });
+
+                    if let Some(&depth) = state.template_brace_depths.last() {
+                        if state.brace_depth == depth {
+                            state.template_brace_depths.pop();
+                            state.in_template = true;
+                        }
+                    }
+                }
                 Some(letter) if is_letter(letter) => {
                     let identifier = state.tokenize_identifier();
                     let keyword = is_keyword(identifier);

@@ -180,7 +180,7 @@ impl<'a> Builder<'a, InBlock> {
         self.check_expected(result, span, expected_type)
     }
 
-    fn compute_effects(&mut self, fn_span: &Span) -> FunctionEffects {
+    fn compute_effects(&mut self, _fn_span: &Span) -> FunctionEffects {
         let func = self.get_fn();
 
         let return_block_ids: Vec<_> = func

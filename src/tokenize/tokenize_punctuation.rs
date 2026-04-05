@@ -104,14 +104,6 @@ impl<'a> Tokenizer<'a> {
                 self.consume();
                 Some(PunctuationKind::RBracket)
             }
-            "{" => {
-                self.consume();
-                Some(PunctuationKind::LBrace)
-            }
-            "}" => {
-                self.consume();
-                Some(PunctuationKind::RBrace)
-            }
             "+" => {
                 self.consume();
                 Some(PunctuationKind::Plus)

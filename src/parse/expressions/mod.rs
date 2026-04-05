@@ -5,6 +5,7 @@ pub mod parse_if_expr;
 pub mod parse_list_literal_expr;
 pub mod parse_parenthesized_expr;
 pub mod parse_struct_init_expr;
+pub mod parse_template_expr;
 
 use crate::{
     ast::{
@@ -76,6 +77,7 @@ pub fn is_start_of_expr(token_kind: &TokenKind) -> bool {
         | TokenKind::Punctuation(PunctuationKind::LBracket) // List literal
         | TokenKind::Punctuation(PunctuationKind::Minus)    // Negation
         | TokenKind::Punctuation(PunctuationKind::Not)      // Logical NOT
+        | TokenKind::Punctuation(PunctuationKind::Backtick) // Template
           => true,
         _ => false,
     }
@@ -199,6 +201,9 @@ impl Parser {
                     span: value.span.clone(),
                     kind: ExprKind::String(value),
                 }
+            }
+            TokenKind::Punctuation(PunctuationKind::Backtick) => {
+                self.parse_template_expr()?
             }
             _ => {
                 return Err(ParsingError {

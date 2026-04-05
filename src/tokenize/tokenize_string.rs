@@ -33,4 +33,31 @@ impl<'a> Tokenizer<'a> {
 
         Err(TokenizationErrorKind::UnterminatedString)
     }
+
+    pub fn tokenize_template_string_part(
+        &mut self,
+    ) -> Result<&'a str, TokenizationErrorKind> {
+        let start = self.grapheme_offset;
+
+        while let Some(c) = self.current() {
+            if c == "`" {
+                break;
+            }
+            if c == "$" && self.peek(1) == Some("{") {
+                break;
+            }
+            if c == "\\" {
+                self.consume();
+                if self.current().is_some() {
+                    self.consume();
+                } else {
+                    return Err(TokenizationErrorKind::UnterminatedString);
+                }
+            } else {
+                self.consume();
+            }
+        }
+
+        Ok(self.slice(start, self.grapheme_offset))
+    }
 }
