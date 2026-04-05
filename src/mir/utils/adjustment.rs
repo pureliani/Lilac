@@ -2,7 +2,8 @@ use crate::ast::Span;
 use crate::compile::interner::{StringId, TypeId};
 use crate::mir::builders::{Builder, BuilderContext, InBlock, ValueId};
 use crate::mir::errors::{SemanticError, SemanticErrorKind};
-use crate::mir::types::checked_type::{StructKind, Type};
+use crate::mir::types::checked_declaration::CheckedDeclaration;
+use crate::mir::types::checked_type::{LiteralType, StructKind, Type};
 
 pub enum AdjustmentError {
     Incompatible,
@@ -51,6 +52,28 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             }
         }
 
+        if let Type::Literal(LiteralType::Fn(decl_id)) = self.types.resolve(source) {
+            if let Type::IndirectFn(target_sig) = self.types.resolve(target) {
+                let source_decl = self.program.declarations.get(&decl_id).unwrap();
+                if let CheckedDeclaration::Function(f) = source_decl {
+                    if f.return_type.id == target_sig.return_type.id
+                        && f.params.len() == target_sig.params.len()
+                    {
+                        let mut params_match = true;
+                        for (sp, tp) in f.params.iter().zip(target_sig.params.iter()) {
+                            if sp.ty.id != tp.ty.id {
+                                params_match = false;
+                                break;
+                            }
+                        }
+                        if params_match {
+                            return Ok(Adjustment::Materialize);
+                        }
+                    }
+                }
+            }
+        }
+
         if self.types.is_integer(source) && self.types.is_integer(target) {
             let s_rank = self.types.get_numeric_type_rank(source).unwrap();
             let t_rank = self.types.get_numeric_type_rank(target).unwrap();
@@ -82,33 +105,14 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
         }
 
         if self.types.is_integer(source) && self.types.is_float(target) {
-            let widened_target = self.types.widen_literal(target);
-            let is_lossless = match (
-                self.types.resolve(source),
-                self.types.resolve(widened_target),
-            ) {
-                (Type::I32(Some(v)), Type::F32(_)) => (v as f32) as i32 == v,
-                (Type::U32(Some(v)), Type::F32(_)) => (v as f32) as u32 == v,
-                (Type::I64(Some(v)), Type::F32(_)) => (v as f32) as i64 == v,
-                (Type::U64(Some(v)), Type::F32(_)) => (v as f32) as u64 == v,
-                (Type::I64(Some(v)), Type::F64(_)) => (v as f64) as i64 == v,
-                (Type::U64(Some(v)), Type::F64(_)) => (v as f64) as u64 == v,
-                (Type::ISize(Some(v)), Type::F32(_)) => (v as f32) as isize == v,
-                (Type::USize(Some(v)), Type::F32(_)) => (v as f32) as usize == v,
-                (Type::ISize(Some(v)), Type::F64(_)) => (v as f64) as isize == v,
-                (Type::USize(Some(v)), Type::F64(_)) => (v as f64) as usize == v,
-
-                (src, tgt) => match (src, tgt) {
-                    (
-                        Type::I8(_) | Type::U8(_) | Type::I16(_) | Type::U16(_),
-                        Type::F32(_) | Type::F64(_),
-                    ) => true,
-
-                    (Type::I32(_) | Type::U32(_), Type::F64(_)) => true,
-
-                    _ => false,
-                },
-            };
+            let (src, tgt) = (self.types.resolve(source), self.types.resolve(target));
+            let is_lossless = matches!(
+                (src, tgt),
+                (
+                    Type::I8 | Type::U8 | Type::I16 | Type::U16,
+                    Type::F32 | Type::F64
+                ) | (Type::I32 | Type::U32, Type::F64)
+            );
 
             if is_lossless || is_explicit {
                 return if self.types.is_signed(source) {
@@ -312,8 +316,12 @@ impl<'a> Builder<'a, InBlock> {
                 todo!("Struct coercion")
             }
             Adjustment::Materialize => {
-                let literal_type = self.get_value_type(source);
-                self.emit_materialize(literal_type)
+                let source_ty = self.get_value_type(source);
+                if let Type::Literal(lit_ty) = self.types.resolve(source_ty) {
+                    self.emit_materialize(lit_ty)
+                } else {
+                    panic!("INTERNAL COMPILER ERROR: Materialize adjustment applied to non-literal type");
+                }
             }
         }
     }

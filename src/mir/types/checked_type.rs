@@ -20,8 +20,7 @@ pub enum StructKind {
     /// { len: usize, cap: usize, ptr: ptr<T> }
     ListHeader(TypeId),
 
-    /// { len: usize, cap: usize, ptr: ptr<u8> }
-    StringHeader,
+    String,
 }
 
 impl StructKind {
@@ -38,11 +37,7 @@ impl StructKind {
                 (COMMON_IDENTIFIERS.ptr, t.ptr(*elem_ty_id)),
             ],
 
-            StructKind::StringHeader => vec![
-                (COMMON_IDENTIFIERS.len, t.usize(None)),
-                (COMMON_IDENTIFIERS.cap, t.usize(None)),
-                (COMMON_IDENTIFIERS.ptr, t.ptr(t.u8(None))),
-            ],
+            StructKind::String => vec![(COMMON_IDENTIFIERS.len, t.usize(None))],
             StructKind::TaggedUnion(variants) => vec![
                 (COMMON_IDENTIFIERS.id, t.u32(None)),
                 (

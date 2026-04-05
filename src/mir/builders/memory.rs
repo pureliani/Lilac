@@ -171,11 +171,7 @@ impl<'a> Builder<'a, InBlock> {
 
         let is_valid = if let Type::Pointer(inner) = self.types.resolve(list_ptr_type) {
             let inner_ty = self.types.resolve(inner);
-            matches!(
-                inner_ty,
-                Type::Struct(StructKind::ListHeader(_))
-                    | Type::Struct(StructKind::StringHeader)
-            )
+            matches!(inner_ty, Type::Struct(StructKind::ListHeader(_)))
         } else {
             false
         };

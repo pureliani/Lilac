@@ -3,8 +3,7 @@ use inkwell::AddressSpace;
 
 use crate::codegen::CodeGenerator;
 use crate::compile::interner::TypeId;
-use crate::mir::types::checked_declaration::FnType;
-use crate::mir::types::checked_type::{LiteralType, Type};
+use crate::mir::types::checked_type::{LiteralType, StructKind, Type};
 use crate::mir::utils::layout::get_layout_of;
 
 impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
@@ -33,18 +32,18 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
         }
 
         match ty {
-            Type::Bool(None) => self.context.bool_type().into(),
-            Type::U8(None) | Type::I8(None) => self.context.i8_type().into(),
-            Type::U16(None) | Type::I16(None) => self.context.i16_type().into(),
-            Type::U32(None) | Type::I32(None) => self.context.i32_type().into(),
-            Type::U64(None) | Type::I64(None) => self.context.i64_type().into(),
-            Type::USize(None) | Type::ISize(None) => {
+            Type::Bool => self.context.bool_type().into(),
+            Type::U8 | Type::I8 => self.context.i8_type().into(),
+            Type::U16 | Type::I16 => self.context.i16_type().into(),
+            Type::U32 | Type::I32 => self.context.i32_type().into(),
+            Type::U64 | Type::I64 => self.context.i64_type().into(),
+            Type::USize | Type::ISize => {
                 let target_data = self.target_machine.get_target_data();
                 self.context.ptr_sized_int_type(&target_data, None).into()
             }
-            Type::F32(None) => self.context.f32_type().into(),
-            Type::F64(None) => self.context.f64_type().into(),
-            Type::Pointer(_) | Type::IndirectFn(FnType::Indirect { .. }) => {
+            Type::F32 => self.context.f32_type().into(),
+            Type::F64 => self.context.f64_type().into(),
+            Type::Pointer(_) | Type::IndirectFn(_) => {
                 self.context.ptr_type(AddressSpace::default()).into()
             }
             Type::TaglessUnion(_) => {
@@ -52,6 +51,17 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 i8_ty.array_type(layout.size as u32).into()
             }
             Type::Struct(s) => {
+                if let StructKind::String = s {
+                    let target_data = self.target_machine.get_target_data();
+                    let usize_ty = self.context.ptr_sized_int_type(&target_data, None);
+                    let flexible_array_ty = self.context.i8_type().array_type(0);
+
+                    return self
+                        .context
+                        .struct_type(&[usize_ty.into(), flexible_array_ty.into()], false)
+                        .into();
+                }
+
                 let fields = s.fields(self.type_interner);
                 let mut field_types = Vec::new();
                 for (_, f_id) in fields {

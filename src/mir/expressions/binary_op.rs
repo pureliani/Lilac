@@ -3,7 +3,7 @@ use crate::{
     mir::{
         builders::{Builder, InBlock, ValueId},
         errors::SemanticError,
-        types::checked_type::SpannedType,
+        types::checked_type::{SpannedType, Type},
     },
 };
 
@@ -32,7 +32,13 @@ impl<'a> Builder<'a, InBlock> {
             right_type,
             right_span.clone(),
         ) {
-            Ok(ty) => self.types.widen_literal(ty),
+            Ok(ty) => {
+                if let Type::Literal(li) = self.types.resolve(ty) {
+                    self.types.widen_literal(li)
+                } else {
+                    ty
+                }
+            }
             Err(e) => return self.report_error_and_get_poison(e),
         };
 

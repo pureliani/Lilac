@@ -69,6 +69,19 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     pub fn emit_materialize(&mut self, literal_type: LiteralType) -> ValueId {
+        match literal_type {
+            LiteralType::Void
+            | LiteralType::Never
+            | LiteralType::Unknown
+            | LiteralType::Null => {
+                panic!(
+                    "INTERNAL COMPILER ERROR: Cannot materialize literal type {:?}",
+                    literal_type
+                );
+            }
+            _ => {}
+        }
+
         let widened_type = self.types.widen_literal(literal_type);
 
         let dest = self.new_value_id(widened_type);

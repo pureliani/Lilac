@@ -3,10 +3,11 @@ use inkwell::values::BasicValueEnum;
 use inkwell::{FloatPredicate, IntPredicate};
 
 use crate::codegen::CodeGenerator;
+use crate::globals::STRING_INTERNER;
 use crate::mir::builders::ValueId;
 use crate::mir::instructions::{
-    BinaryInstr, CallInstr, CastInstr, CompInstr, Instruction, MemoryInstr, SelectInstr,
-    Terminator, UnaryInstr,
+    BinaryInstr, CallInstr, CastInstr, CompInstr, Instruction, MaterializeInstr,
+    MemoryInstr, SelectInstr, Terminator, UnaryInstr,
 };
 use crate::mir::types::checked_declaration::FnType;
 use crate::mir::types::checked_type::{LiteralType, Type};
@@ -52,8 +53,105 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
             Instruction::Memory(memory) => self.emit_memory(memory),
             Instruction::Call(call) => self.emit_call(call),
             Instruction::Select(select) => self.emit_select(select),
-            Instruction::Materialize(mat) => todo!(),
+            Instruction::Materialize(mat) => self.emit_materialize(mat),
         }
+    }
+
+    fn emit_materialize(&mut self, mat: &MaterializeInstr) {
+        let val: BasicValueEnum<'ctx> = match mat.literal_type {
+            LiteralType::Bool(b) => {
+                self.context.bool_type().const_int(b as u64, false).into()
+            }
+            LiteralType::U8(v) => {
+                self.context.i8_type().const_int(v as u64, false).into()
+            }
+            LiteralType::U16(v) => {
+                self.context.i16_type().const_int(v as u64, false).into()
+            }
+            LiteralType::U32(v) => {
+                self.context.i32_type().const_int(v as u64, false).into()
+            }
+            LiteralType::U64(v) => self.context.i64_type().const_int(v, false).into(),
+            LiteralType::USize(v) => {
+                let target_data = self.target_machine.get_target_data();
+                self.context
+                    .ptr_sized_int_type(&target_data, None)
+                    .const_int(v as u64, false)
+                    .into()
+            }
+            LiteralType::I8(v) => self.context.i8_type().const_int(v as u64, true).into(),
+            LiteralType::I16(v) => {
+                self.context.i16_type().const_int(v as u64, true).into()
+            }
+            LiteralType::I32(v) => {
+                self.context.i32_type().const_int(v as u64, true).into()
+            }
+            LiteralType::I64(v) => {
+                self.context.i64_type().const_int(v as u64, true).into()
+            }
+            LiteralType::ISize(v) => {
+                let target_data = self.target_machine.get_target_data();
+                self.context
+                    .ptr_sized_int_type(&target_data, None)
+                    .const_int(v as u64, true)
+                    .into()
+            }
+            LiteralType::F32(v) => self.context.f32_type().const_float(v.0 as f64).into(),
+            LiteralType::F64(v) => self.context.f64_type().const_float(v.0).into(),
+            LiteralType::Fn(decl_id) => {
+                let func_val = self.functions[&decl_id];
+                func_val.as_global_value().as_pointer_value().into()
+            }
+            LiteralType::String(str_id) => {
+                let string_val = STRING_INTERNER.resolve(str_id);
+                let len = string_val.len() as u64;
+
+                // 1. Create the usize length value
+                let target_data = self.target_machine.get_target_data();
+                let usize_ty = self.context.ptr_sized_int_type(&target_data, None);
+                let len_val = usize_ty.const_int(len, false);
+
+                // 2. Create the inline byte array [N x i8]
+                let i8_ty = self.context.i8_type();
+                let mut chars = Vec::with_capacity(string_val.len());
+                for &b in string_val.as_bytes() {
+                    chars.push(i8_ty.const_int(b as u64, false));
+                }
+                let array_val = i8_ty.const_array(&chars);
+
+                let const_struct = self
+                    .context
+                    .const_struct(&[len_val.into(), array_val.into()], false);
+
+                let global_str =
+                    self.module
+                        .add_global(const_struct.get_type(), None, "str_lit");
+                global_str.set_initializer(&const_struct);
+                global_str.set_constant(true);
+
+                let dest_ty_id = self.program.value_types[&mat.dest];
+                let dest_ty = self.get_basic_type(dest_ty_id);
+
+                self.builder
+                    .build_pointer_cast(
+                        global_str.as_pointer_value(),
+                        dest_ty.into_pointer_type(),
+                        "str_cast",
+                    )
+                    .unwrap()
+                    .into()
+            }
+
+            LiteralType::Void
+            | LiteralType::Never
+            | LiteralType::Unknown
+            | LiteralType::Null => panic!(
+                "INTERNAL COMPILER ERROR: Cannot materialize literal type {:?}",
+                mat.literal_type
+            ),
+        };
+
+        self.store_val(mat.dest, val);
     }
 
     pub fn emit_terminator(&mut self, terminator: &Terminator) {

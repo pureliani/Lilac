@@ -238,7 +238,7 @@ impl TypeInterner {
         if let Some(value) = literal {
             self.intern(&Type::Literal(LiteralType::String(value)))
         } else {
-            let header_ty = self.intern(&Type::Struct(StructKind::StringHeader));
+            let header_ty = self.intern(&Type::Struct(StructKind::String));
             self.ptr(header_ty)
         }
     }
@@ -377,7 +377,8 @@ impl TypeInterner {
             LiteralType::Bool(_) => self.bool(None),
 
             LiteralType::String(_) => {
-                self.intern(&Type::Struct(StructKind::StringHeader))
+                let target = self.intern(&Type::Struct(StructKind::String));
+                self.ptr(target)
             }
             LiteralType::Void => self.void(),
             LiteralType::Never => self.never(),
@@ -505,7 +506,7 @@ impl TypeInterner {
                 StructKind::ListHeader(item_type) => {
                     self.list_to_string(item_type, visited_set)
                 }
-                StructKind::StringHeader => String::from("string"),
+                StructKind::String => String::from("string"),
             },
             Type::Literal(lit) => match lit {
                 LiteralType::Void => String::from("void"),
