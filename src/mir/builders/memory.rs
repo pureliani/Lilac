@@ -62,7 +62,10 @@ impl<'a> Builder<'a, InBlock> {
         let value_type = self.get_value_type(value);
         let expected_type = self.types.unwrap_ptr(ptr_ty);
 
-        if value_type != expected_type {
+        if value_type != expected_type
+            && value_type != self.types.unknown()
+            && expected_type != self.types.unknown()
+        {
             panic!(
                 "INTERNAL COMPILER ERROR: Store instruction expected the provided value \
                  to match pointed to type"

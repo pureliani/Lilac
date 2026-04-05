@@ -3,6 +3,9 @@ from "./runtime.c" {
 }
 
 fn main() {
-    let msg = "Hello from Willow!";
-    print(msg);
+    let i = 0;
+    while i < 5 {
+        print("hello\n");
+        i = i+1;
+    }
 }

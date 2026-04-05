@@ -82,6 +82,32 @@ pub struct DocAnnotation {
     span: Span,
 }
 
+fn unescape_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('r') => out.push('\r'),
+                Some('t') => out.push('\t'),
+                Some('\\') => out.push('\\'),
+                Some('"') => out.push('"'),
+                Some('0') => out.push('\0'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 impl Parser {
     fn match_token(&self, index: usize, kind: TokenKind) -> bool {
         if let Some(token) = self.tokens.get(self.offset + index) {
@@ -163,8 +189,8 @@ impl Parser {
             let span = t.span.clone();
             match &t.kind {
                 TokenKind::String(value) => {
-                    let len = value.graphemes(true).count();
-                    let owned_value = value.to_string();
+                    let owned_value = unescape_string(value);
+                    let len = owned_value.graphemes(true).count();
                     self.advance();
 
                     Ok(StringNode {

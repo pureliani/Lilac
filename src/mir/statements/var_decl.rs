@@ -6,7 +6,10 @@ use crate::{
     mir::{
         builders::{Builder, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
-        types::checked_declaration::{CheckedDeclaration, CheckedVarDecl},
+        types::{
+            checked_declaration::{CheckedDeclaration, CheckedVarDecl},
+            checked_type::Type,
+        },
         utils::{
             facts::{narrowed_type::NarrowedTypeFact, FactSet},
             place::Place,
@@ -75,8 +78,18 @@ impl<'a> Builder<'a, InBlock> {
             .as_ref()
             .map(|c| self.check_type_annotation(c));
 
-        let value = self.build_expr(var_decl.value, constraint.as_ref());
-        let value_type = self.get_value_type(value);
+        let mut value = self.build_expr(var_decl.value, constraint.as_ref());
+        let mut value_type = self.get_value_type(value);
+
+        if constraint.is_none() {
+            if let Type::Literal(lit) = self.types.resolve(value_type) {
+                let widened_ty = self.types.widen_literal(lit);
+                if widened_ty != value_type {
+                    value = self.emit_materialize(lit);
+                    value_type = widened_ty;
+                }
+            }
+        }
 
         let var_ty = constraint.as_ref().map(|c| c.id).unwrap_or(value_type);
         let constraint_span = constraint
