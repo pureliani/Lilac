@@ -7,7 +7,7 @@ use crate::{
     },
     compile::interner::TypeId,
     mir::{
-        builders::{Builder, ExpectBody, InBlock, ValueId},
+        builders::{Builder, FunctionBodyKind, InBlock, ValueId},
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::{CheckedDeclaration, CheckedParam, FnType},
@@ -137,7 +137,11 @@ impl<'a> Builder<'a, InBlock> {
         _evaluated: &[(ValueId, Span)],
     ) {
         let effects = match self.program.declarations.get(&callee_decl_id) {
-            Some(CheckedDeclaration::Function(f)) => f.expect_body().effects.clone(),
+            Some(CheckedDeclaration::Function(f)) => match &f.body {
+                FunctionBodyKind::Internal(cfg) => cfg.effects.clone(),
+                FunctionBodyKind::External => return,
+                FunctionBodyKind::NotBuilt => return,
+            },
             _ => return,
         };
 

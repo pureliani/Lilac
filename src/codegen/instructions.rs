@@ -106,12 +106,10 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 let string_val = STRING_INTERNER.resolve(str_id);
                 let len = string_val.len() as u64;
 
-                // 1. Create the usize length value
                 let target_data = self.target_machine.get_target_data();
                 let usize_ty = self.context.ptr_sized_int_type(&target_data, None);
                 let len_val = usize_ty.const_int(len, false);
 
-                // 2. Create the inline byte array [N x i8]
                 let i8_ty = self.context.i8_type();
                 let mut chars = Vec::with_capacity(string_val.len());
                 for &b in string_val.as_bytes() {

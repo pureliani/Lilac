@@ -42,13 +42,20 @@ impl<'a> Builder<'a, InBlock> {
 
         if let Some(et) = expected_type {
             if value_type != self.types.unknown() && et.id != value_type {
-                return self.report_error_and_get_poison(SemanticError {
-                    kind: SemanticErrorKind::TypeMismatch {
-                        expected: et.id,
-                        received: value_type,
-                    },
-                    span: value_span,
-                });
+                match self.compute_type_adjustment(value_type, et.id, false) {
+                    Ok(adj) => {
+                        return self.apply_adjustment(value, adj, et.id, value_span);
+                    }
+                    Err(_) => {
+                        return self.report_error_and_get_poison(SemanticError {
+                            kind: SemanticErrorKind::TypeMismatch {
+                                expected: et.id,
+                                received: value_type,
+                            },
+                            span: value_span,
+                        });
+                    }
+                }
             }
         }
 

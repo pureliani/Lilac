@@ -26,7 +26,9 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                         .fn_type(&param_types, false)
                 };
 
-                let linkage = if f.is_exported || name == "main" {
+                let is_external = matches!(f.body, FunctionBodyKind::External);
+
+                let linkage = if f.is_exported || name == "main" || is_external {
                     Some(Linkage::External)
                 } else {
                     Some(Linkage::Private)

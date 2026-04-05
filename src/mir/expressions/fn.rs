@@ -1,10 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::{
-    ast::{
-        decl::{FnDecl, FnDeclBody},
-        Span,
-    },
+    ast::{decl::FnDecl, Span},
     globals::{next_block_id, next_declaration_id, STRING_INTERNER},
     mir::{
         builders::{
@@ -36,14 +33,9 @@ impl<'a> Builder<'a, InModule> {
         let FnDecl {
             id: decl_id,
             identifier,
-            body: body_variant,
+            body,
             ..
         } = fn_decl;
-
-        let body = match body_variant {
-            FnDeclBody::External => return Ok(()),
-            FnDeclBody::Internal(block) => block,
-        };
 
         let raw_name = STRING_INTERNER.resolve(identifier.name);
         if raw_name == "main" {

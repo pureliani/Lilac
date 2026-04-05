@@ -12,19 +12,13 @@ pub struct Param {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum FnDeclBody {
-    Internal(BlockContents),
-    External,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct FnDecl {
     pub id: DeclarationId,
     pub documentation: Option<DocAnnotation>,
     pub identifier: IdentifierNode,
     pub params: Vec<Param>,
     pub return_type: TypeAnnotation,
-    pub body: FnDeclBody,
+    pub body: BlockContents,
     pub is_exported: bool,
 }
 
