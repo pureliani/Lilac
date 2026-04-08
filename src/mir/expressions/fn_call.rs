@@ -92,10 +92,6 @@ impl<'a> Builder<'a, InBlock> {
             evaluated_args.push((val_id, arg_span));
         }
 
-        if let Err(e) = self.check_argument_aliasing(&evaluated_args) {
-            return self.report_error_and_get_poison(e);
-        }
-
         let result = self.emit_call(
             func_id,
             evaluated_args.iter().map(|a| a.0).collect(),
@@ -107,27 +103,6 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         self.check_expected(result, span, expected_type)
-    }
-
-    fn check_argument_aliasing(
-        &self,
-        args: &[(ValueId, Span)],
-    ) -> Result<(), SemanticError> {
-        let val_ids: Vec<ValueId> = args.iter().map(|(v, _)| *v).collect();
-
-        if let Some(conflict) = self.ptg.check_aliasing(&val_ids) {
-            return Err(SemanticError {
-                kind: SemanticErrorKind::ArgumentAliasing {
-                    passed_arg_span: args[conflict.arg_i].1.clone(),
-                    passed_path: conflict.path_i,
-                    aliased_arg_span: args[conflict.arg_j].1.clone(),
-                    aliased_path: conflict.path_j,
-                },
-                span: args[conflict.arg_i].1.clone(),
-            });
-        }
-
-        Ok(())
     }
 
     fn apply_callee_effects(

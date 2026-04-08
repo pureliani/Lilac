@@ -10,7 +10,6 @@ impl<'a> Builder<'a, InModule> {
             condition_facts: self.condition_facts,
             current_facts: self.current_facts,
             incomplete_fact_merges: self.incomplete_fact_merges,
-            ptg: self.ptg,
             aliases: self.aliases,
             types: self.types,
         }

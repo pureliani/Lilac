@@ -3,17 +3,11 @@ use std::collections::HashSet;
 use crate::{
     ast::{IdentifierNode, ModulePath, Span},
     compile::interner::{StringId, TypeId},
-    mir::{types::checked_type::Type, utils::points_to::PathSegment},
+    mir::types::checked_type::Type,
 };
 
 #[derive(Debug, Clone)]
 pub enum SemanticErrorKind {
-    ArgumentAliasing {
-        passed_arg_span: Span,
-        passed_path: Vec<PathSegment>,
-        aliased_arg_span: Span,
-        aliased_path: Vec<PathSegment>,
-    },
     UnsupportedUnionNarrowing,
     MainFunctionCannotHaveParameters,
     MainFunctionInvalidReturnType,
@@ -164,7 +158,6 @@ impl SemanticErrorKind {
                 SemanticErrorSeverity::Error
             }
             SemanticErrorKind::CannotGetLen { .. } => SemanticErrorSeverity::Error,
-            SemanticErrorKind::ArgumentAliasing { .. } => SemanticErrorSeverity::Error,
             SemanticErrorKind::TryExplicitCast => SemanticErrorSeverity::Error,
             SemanticErrorKind::MainFunctionCannotHaveParameters => {
                 SemanticErrorSeverity::Error
@@ -220,7 +213,6 @@ impl SemanticErrorKind {
             SemanticErrorKind::UnsupportedUnionNarrowing => 38,
             SemanticErrorKind::ExpectedASignedNumericOperand => 39,
             SemanticErrorKind::CannotGetLen { .. } => 40,
-            SemanticErrorKind::ArgumentAliasing { .. } => 41,
             SemanticErrorKind::TryExplicitCast => 42,
             SemanticErrorKind::MainFunctionInvalidReturnType => 43,
             SemanticErrorKind::MainFunctionMustBeInEntryFile => 44,

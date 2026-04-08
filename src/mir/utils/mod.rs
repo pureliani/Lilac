@@ -5,6 +5,5 @@ pub mod facts;
 pub mod get_poison;
 pub mod layout;
 pub mod place;
-pub mod points_to;
 pub mod scope;
 pub mod union;

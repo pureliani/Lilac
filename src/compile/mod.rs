@@ -14,7 +14,6 @@ use crate::{
         errors::SemanticError,
         utils::{
             dump::dump_program,
-            points_to::PointsToGraph,
             scope::{Scope, ScopeKind},
         },
     },
@@ -236,7 +235,6 @@ impl Compiler {
         };
 
         let global_scope = Scope::new_root(ScopeKind::Global, Span::default());
-        let mut global_ptg = PointsToGraph::new();
 
         let mut program_builder = Builder {
             context: InGlobal,
@@ -246,7 +244,6 @@ impl Compiler {
             current_facts: &mut current_facts,
             incomplete_fact_merges: &mut incomplete_fact_merges,
             condition_facts: &mut condition_facts,
-            ptg: &mut global_ptg,
             aliases: &mut aliases,
             types: &self.types,
         };

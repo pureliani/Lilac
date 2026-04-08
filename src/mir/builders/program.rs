@@ -8,8 +8,8 @@ use crate::{
     compile::ParallelParseResult,
     mir::{
         builders::{
-            Builder, CheckedFunctionDecl, FunctionBodyKind, FunctionParam, InGlobal, InModule,
-            Module,
+            Builder, CheckedFunctionDecl, FunctionBodyKind, FunctionParam, InGlobal,
+            InModule, Module,
         },
         types::checked_declaration::CheckedDeclaration,
         utils::scope::ScopeKind,
@@ -81,7 +81,6 @@ impl<'a> Builder<'a, InGlobal> {
             condition_facts: self.condition_facts,
             current_facts: self.current_facts,
             incomplete_fact_merges: self.incomplete_fact_merges,
-            ptg: self.ptg,
             aliases: self.aliases,
             types: self.types,
         }

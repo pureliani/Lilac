@@ -14,10 +14,7 @@ use crate::{
             checked_declaration::{CheckedDeclaration, FunctionEffects, ParamMutation},
             checked_type::{LiteralType, SpannedType, Type},
         },
-        utils::{
-            facts::narrowed_type::NarrowedTypeFact, place::Place,
-            points_to::PointsToGraph, scope::ScopeKind,
-        },
+        utils::{facts::narrowed_type::NarrowedTypeFact, place::Place, scope::ScopeKind},
     },
 };
 
@@ -81,7 +78,6 @@ impl<'a> Builder<'a, InModule> {
                 entry_block: entry_block_id,
                 blocks: BTreeMap::new(),
                 value_definitions: BTreeMap::new(),
-                ptg: PointsToGraph::new(),
                 effects: FunctionEffects::default(),
             };
             func.body = FunctionBodyKind::Internal(cfg);
@@ -103,7 +99,6 @@ impl<'a> Builder<'a, InModule> {
             condition_facts: self.condition_facts,
             current_facts: self.current_facts,
             incomplete_fact_merges: self.incomplete_fact_merges,
-            ptg: self.ptg,
             aliases: self.aliases,
             types: self.types,
         };

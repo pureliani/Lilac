@@ -13,7 +13,7 @@ use crate::{
             checked_declaration::{CheckedDeclaration, FunctionEffects},
             checked_type::SpannedType,
         },
-        utils::{facts::FactSet, place::Place, points_to::PointsToGraph, scope::Scope},
+        utils::{facts::FactSet, place::Place, scope::Scope},
     },
 };
 
@@ -74,7 +74,6 @@ pub struct FunctionCFG {
     pub blocks: BTreeMap<BasicBlockId, BasicBlock>,
 
     pub value_definitions: BTreeMap<ValueId, BasicBlockId>,
-    pub ptg: PointsToGraph,
     pub effects: FunctionEffects,
 }
 
@@ -156,7 +155,6 @@ pub struct Builder<'a, C: BuilderContext> {
     pub condition_facts: &'a mut HashMap<ValueId, Vec<ConditionFact>>,
 
     pub aliases: &'a mut HashMap<DeclarationId, Place>,
-    pub ptg: &'a mut PointsToGraph,
 }
 
 pub struct InGlobal;

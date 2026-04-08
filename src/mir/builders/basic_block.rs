@@ -3,8 +3,8 @@ use crate::{
     globals::next_value_id,
     mir::{
         builders::{
-            BasicBlock, BasicBlockId, Builder, ExpectBody, CheckedFunctionDecl, InBlock, InFunction,
-            InGlobal, InModule, ValueId,
+            BasicBlock, BasicBlockId, Builder, CheckedFunctionDecl, ExpectBody, InBlock,
+            InFunction, InGlobal, InModule, ValueId,
         },
         instructions::Terminator,
         types::checked_declaration::CheckedDeclaration,
@@ -22,7 +22,6 @@ impl<'a> Builder<'a, InBlock> {
             condition_facts: self.condition_facts,
             incomplete_fact_merges: self.incomplete_fact_merges,
             aliases: self.aliases,
-            ptg: self.ptg,
             types: self.types,
         }
     }
@@ -39,7 +38,6 @@ impl<'a> Builder<'a, InBlock> {
             condition_facts: self.condition_facts,
             incomplete_fact_merges: self.incomplete_fact_merges,
             aliases: self.aliases,
-            ptg: self.ptg,
             types: self.types,
         }
     }
@@ -57,7 +55,6 @@ impl<'a> Builder<'a, InBlock> {
             condition_facts: self.condition_facts,
             incomplete_fact_merges: self.incomplete_fact_merges,
             aliases: self.aliases,
-            ptg: self.ptg,
             types: self.types,
         }
     }
