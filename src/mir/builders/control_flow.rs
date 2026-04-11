@@ -4,6 +4,7 @@ use crate::{
     mir::{
         builders::{BasicBlockId, Builder, ConditionFact, InBlock, ValueId},
         instructions::{CallInstr, Instruction, Terminator},
+        types::checked_type::LiteralType,
         utils::facts::FactSet,
     },
 };
@@ -91,7 +92,7 @@ impl<'a> Builder<'a, InBlock> {
         let bool_ty = self.types.bool(None);
         let result_ptr = self.emit_stack_alloc(bool_ty, 1);
 
-        let const_true = self.emit_bool(true);
+        let const_true = self.emit_materialize(LiteralType::Bool(true));
         self.emit_store(result_ptr, const_true);
 
         self.emit_cond_jmp(left, merge_block, right_entry_block);
@@ -146,7 +147,7 @@ impl<'a> Builder<'a, InBlock> {
         let bool_ty = self.types.bool(None);
         let result_ptr = self.emit_stack_alloc(bool_ty, 1);
 
-        let const_false = self.emit_bool(false);
+        let const_false = self.emit_materialize(LiteralType::Bool(false)); // FIX
         self.emit_store(result_ptr, const_false);
 
         self.emit_cond_jmp(left, right_entry_block, merge_block);

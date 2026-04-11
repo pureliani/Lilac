@@ -8,11 +8,10 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         types::{
             checked_declaration::CheckedParam,
-            checked_type::{SpannedType, StructKind, Type},
+            checked_type::{LiteralType, SpannedType, StructKind, Type},
         },
         utils::layout::{get_layout_of, pack_struct},
     },
-    tokenize::NumberKind,
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -88,7 +87,7 @@ impl<'a> Builder<'a, InBlock> {
                 self.program.target_ptr_align,
             );
             let count: usize = if layout.size == 0 { 0 } else { 1 };
-            let count_val = self.emit_number(NumberKind::USize(count));
+            let count_val = self.emit_materialize(LiteralType::USize(count));
             self.emit_heap_alloc(struct_ty_id, count_val)
         } else {
             self.emit_stack_alloc(struct_ty_id, 1)

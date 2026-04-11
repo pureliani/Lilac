@@ -5,9 +5,8 @@ use crate::{
     globals::COMMON_IDENTIFIERS,
     mir::{
         builders::{Builder, InBlock, ValueId},
-        types::checked_type::{StructKind, Type},
+        types::checked_type::{LiteralType, StructKind, Type},
     },
-    tokenize::NumberKind,
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -38,10 +37,8 @@ impl<'a> Builder<'a, InBlock> {
         let union_ptr = self.emit_stack_alloc(struct_type, 1);
 
         let id_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.id);
-        let id_val = self.emit_number(NumberKind::U32(source_type.0));
-        let wide_u32 = self.types.u32(None);
-        let id_val_wide = self.emit_bitcast(id_val, wide_u32);
-        self.emit_store(id_ptr, id_val_wide);
+        let id_val = self.emit_materialize(LiteralType::U32(source_type.0));
+        self.emit_store(id_ptr, id_val);
 
         let value_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.val);
         let typed_ptr = self.emit_bitcast(value_ptr, self.types.ptr(source_type));
@@ -125,10 +122,8 @@ impl<'a> Builder<'a, InBlock> {
 
         let id_ptr = self.get_field_ptr(union_ptr, COMMON_IDENTIFIERS.id);
         let id_val = self.emit_load(id_ptr);
-        let expected = self.emit_number(NumberKind::U32(variant_type.0));
-        let wide_u32 = self.types.u32(None);
-        let expected_wide = self.emit_bitcast(expected, wide_u32);
+        let expected_id = self.emit_materialize(LiteralType::U32(variant_type.0));
 
-        self.eq(id_val, expected_wide)
+        self.eq(id_val, expected_id)
     }
 }

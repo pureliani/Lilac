@@ -7,6 +7,7 @@ use crate::{
         errors::{SemanticError, SemanticErrorKind},
         instructions::{Instruction, MemoryInstr},
         types::checked_type::{StructKind, Type},
+        utils::layout::get_layout_of,
     },
 };
 
@@ -36,7 +37,19 @@ impl<'a> Builder<'a, InBlock> {
         let dest_ty = self.types.unwrap_ptr(ptr_ty);
 
         let dest = self.new_value_id(dest_ty);
-        self.push_instruction(Instruction::Memory(MemoryInstr::Load { dest, ptr }));
+
+        let dest_type_resolved = self.types.resolve(dest_ty);
+        let layout = get_layout_of(
+            &dest_type_resolved,
+            self.types,
+            self.program.target_ptr_size,
+            self.program.target_ptr_align,
+        );
+
+        if layout.size > 0 {
+            self.push_instruction(Instruction::Memory(MemoryInstr::Load { dest, ptr }));
+        }
+
         dest
     }
 
@@ -54,7 +67,20 @@ impl<'a> Builder<'a, InBlock> {
             );
         }
 
-        self.push_instruction(Instruction::Memory(MemoryInstr::MemCopy { dest, src }));
+        let src_type_resolved = self.types.resolve(src_ty);
+        let layout = get_layout_of(
+            &src_type_resolved,
+            self.types,
+            self.program.target_ptr_size,
+            self.program.target_ptr_align,
+        );
+
+        if layout.size > 0 {
+            self.push_instruction(Instruction::Memory(MemoryInstr::MemCopy {
+                dest,
+                src,
+            }));
+        }
     }
 
     pub fn emit_store(&mut self, ptr: ValueId, value: ValueId) {
@@ -72,7 +98,17 @@ impl<'a> Builder<'a, InBlock> {
             );
         }
 
-        self.push_instruction(Instruction::Memory(MemoryInstr::Store { ptr, value }));
+        let value_type_resolved = self.types.resolve(value_type);
+        let layout = get_layout_of(
+            &value_type_resolved,
+            self.types,
+            self.program.target_ptr_size,
+            self.program.target_ptr_align,
+        );
+
+        if layout.size > 0 {
+            self.push_instruction(Instruction::Memory(MemoryInstr::Store { ptr, value }));
+        }
     }
 
     /// offset = ptr<T> + index * sizeof(T)
@@ -88,6 +124,18 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         if let Type::Pointer(to) = self.types.resolve(ptr_ty) {
+            let to_resolved = self.types.resolve(to);
+            let layout = get_layout_of(
+                &to_resolved,
+                self.types,
+                self.program.target_ptr_size,
+                self.program.target_ptr_align,
+            );
+
+            if layout.size == 0 {
+                panic!("INTERNAL COMPILER ERROR: Cannot perform pointer offset on a Zero-Sized Type");
+            }
+
             let dest_ty = self.types.ptr(to);
             let dest = self.new_value_id(dest_ty);
 

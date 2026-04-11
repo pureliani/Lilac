@@ -4,9 +4,8 @@ use crate::{
     globals::COMMON_IDENTIFIERS,
     mir::{
         builders::{Builder, InBlock, ValueId},
-        types::checked_type::{SpannedType, StructKind, Type},
+        types::checked_type::{LiteralType, SpannedType, StructKind, Type},
     },
-    tokenize::NumberKind,
 };
 
 impl<'a> Builder<'a, InBlock> {
@@ -84,11 +83,11 @@ impl<'a> Builder<'a, InBlock> {
             }
         }
 
-        let len_val = self.emit_number(NumberKind::USize(adjusted_items.len()));
+        let len_val = self.emit_materialize(LiteralType::USize(adjusted_items.len()));
         let buffer_ptr = self.emit_heap_alloc(element_type_id, len_val);
 
         for (i, item_val) in adjusted_items.into_iter().enumerate() {
-            let idx_val = self.emit_number(NumberKind::USize(i));
+            let idx_val = self.emit_materialize(LiteralType::USize(i));
             let item_ptr = self.ptr_offset(buffer_ptr, idx_val);
             self.emit_store(item_ptr, item_val);
         }
@@ -96,7 +95,7 @@ impl<'a> Builder<'a, InBlock> {
         let header_struct_kind = StructKind::ListHeader(element_type_id);
         let header_ty_id = self.types.intern(&Type::Struct(header_struct_kind));
 
-        let count_val = self.emit_number(NumberKind::USize(1));
+        let count_val = self.emit_materialize(LiteralType::USize(1));
         let header_ptr = self.emit_heap_alloc(header_ty_id, count_val);
 
         let len_ptr = self.get_field_ptr(header_ptr, COMMON_IDENTIFIERS.len);
