@@ -46,6 +46,9 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 if let FunctionBodyKind::Internal(cfg) = &f.body {
                     let fn_val = self.functions[decl_id];
 
+                    self.values.clear();
+                    self.blocks.clear();
+
                     for &block_id in cfg.blocks.keys() {
                         let block_name = format!("block_{}", block_id.0);
                         let llvm_block =
@@ -70,11 +73,11 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                         self.builder.position_at_end(llvm_block);
 
                         for instr in &bb.instructions {
-                            self.emit_instruction(instr);
+                            self.emit_instruction(cfg, instr);
                         }
 
                         if let Some(terminator) = &bb.terminator {
-                            self.emit_terminator(terminator);
+                            self.emit_terminator(cfg, terminator);
                         }
                     }
                 }

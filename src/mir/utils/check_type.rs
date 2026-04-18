@@ -23,6 +23,112 @@ use crate::{
 };
 
 impl<'a, C: BuilderContext> Builder<'a, C> {
+    pub fn satisfies_extends_bound(&self, source: TypeId, target: TypeId) -> bool {
+        if source == target {
+            return true;
+        }
+
+        if let Some(src_variants) = self.types.get_union_variants(source) {
+            for &variant in &src_variants {
+                if !self.satisfies_extends_bound(variant, target) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        if let Some(tgt_variants) = self.types.get_union_variants(target) {
+            for &variant in &tgt_variants {
+                if self.satisfies_extends_bound(source, variant) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        let src_res = self.types.resolve(source);
+        let tgt_res = self.types.resolve(target);
+
+        if let Type::Literal(lit) = src_res {
+            let widened = self.types.widen_literal(lit);
+            if widened != source && self.satisfies_extends_bound(widened, target) {
+                return true;
+            }
+        }
+
+        if let Type::GenericParam {
+            extends: Some(c), ..
+        } = src_res
+        {
+            if self.satisfies_extends_bound(c, target) {
+                return true;
+            }
+        }
+        if let Type::GenericParam {
+            extends: Some(c), ..
+        } = tgt_res
+        {
+            if self.satisfies_extends_bound(source, c) {
+                return true;
+            }
+        }
+
+        if let (
+            Type::Struct(StructKind::UserDefined(src_fields)),
+            Type::Struct(StructKind::UserDefined(tgt_fields)),
+        ) = (&src_res, &tgt_res)
+        {
+            for tgt_f in tgt_fields {
+                let src_f = src_fields
+                    .iter()
+                    .find(|f| f.identifier.name == tgt_f.identifier.name);
+                if let Some(src_f) = src_f {
+                    if !self.satisfies_extends_bound(src_f.ty.id, tgt_f.ty.id) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        if let (
+            Type::Struct(StructKind::ListHeader(src_inner)),
+            Type::Struct(StructKind::ListHeader(tgt_inner)),
+        ) = (&src_res, &tgt_res)
+        {
+            return self.satisfies_extends_bound(*src_inner, *tgt_inner);
+        }
+
+        if let (Type::Pointer(src_inner), Type::Pointer(tgt_inner)) = (&src_res, &tgt_res)
+        {
+            return self.satisfies_extends_bound(*src_inner, *tgt_inner);
+        }
+
+        if let (Type::IndirectFn(src_fn), Type::IndirectFn(tgt_fn)) = (&src_res, &tgt_res)
+        {
+            if src_fn.params.len() != tgt_fn.params.len() {
+                return false;
+            }
+
+            for (s_param, t_param) in src_fn.params.iter().zip(tgt_fn.params.iter()) {
+                if !self.satisfies_extends_bound(t_param.ty.id, s_param.ty.id) {
+                    return false;
+                }
+            }
+
+            if !self.satisfies_extends_bound(src_fn.return_type.id, tgt_fn.return_type.id)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        false
+    }
+
     pub fn check_params(
         &mut self,
         params: &[Param],
@@ -139,65 +245,78 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
                                 .clone();
 
                             match generic_decl {
-                                GenericDeclaration::TypeAlias { decl, decl_scope } => {
-                                    let expected_arg_count = decl.generic_params.len();
-                                    let received_arg_count = args.len();
-
-                                    if expected_arg_count != received_arg_count {
-                                        self.errors.push(SemanticError {
-                                            span: annotation.span.clone(),
-                                            kind: SemanticErrorKind::GenericArgumentCountMismatch {
-                                                expected: expected_arg_count,
-                                                received: received_arg_count,
-                                            },
-                                        });
+                                GenericDeclaration::TypeAlias {
+                                    decl,
+                                    decl_scope,
+                                    has_errors,
+                                } => {
+                                    if has_errors {
                                         self.types.unknown()
                                     } else {
-                                        let mut evaluated_args = Vec::new();
-                                        for arg in args {
-                                            evaluated_args.push(
-                                                self.check_type_annotation(
-                                                    arg,
-                                                    substitutions,
-                                                )
-                                                .id,
-                                            );
-                                        }
+                                        let expected_arg_count =
+                                            decl.generic_params.len();
+                                        let received_arg_count = args.len();
 
-                                        let mut inner_substitutions = HashMap::new();
-                                        for (param, arg_ty) in
-                                            decl.generic_params.iter().zip(evaluated_args)
-                                        {
-                                            inner_substitutions
-                                                .insert(param.identifier.name, arg_ty);
-                                        }
+                                        if expected_arg_count != received_arg_count {
+                                            self.errors.push(SemanticError {
+                                                span: annotation.span.clone(),
+                                                kind: SemanticErrorKind::GenericArgumentCountMismatch {
+                                                    expected: expected_arg_count,
+                                                    received: received_arg_count,
+                                                },
+                                            });
+                                            self.types.unknown()
+                                        } else {
+                                            let mut evaluated_args = Vec::new();
+                                            for arg in args {
+                                                evaluated_args.push(
+                                                    self.check_type_annotation(
+                                                        arg,
+                                                        substitutions,
+                                                    )
+                                                    .id,
+                                                );
+                                            }
 
-                                        let caller_scope = self.current_scope.clone();
-
-                                        self.current_scope = decl_scope.enter(
-                                            ScopeKind::GenericParams,
-                                            annotation.span.start,
-                                        );
-
-                                        for param in &decl.generic_params {
-                                            self.current_scope.map_name_to_symbol(
-                                                param.identifier.name,
-                                                SymbolId::GenericParameter(
+                                            let mut inner_substitutions = HashMap::new();
+                                            for (param, arg_ty) in decl
+                                                .generic_params
+                                                .iter()
+                                                .zip(evaluated_args)
+                                            {
+                                                inner_substitutions.insert(
                                                     param.identifier.name,
-                                                ),
+                                                    arg_ty,
+                                                );
+                                            }
+
+                                            let caller_scope = self.current_scope.clone();
+
+                                            self.current_scope = decl_scope.enter(
+                                                ScopeKind::GenericParams,
+                                                annotation.span.start,
                                             );
+
+                                            for param in &decl.generic_params {
+                                                self.current_scope.map_name_to_symbol(
+                                                    param.identifier.name,
+                                                    SymbolId::GenericParameter(
+                                                        param.identifier.name,
+                                                    ),
+                                                );
+                                            }
+
+                                            let result_id = self
+                                                .check_type_annotation(
+                                                    &decl.value,
+                                                    &inner_substitutions,
+                                                )
+                                                .id;
+
+                                            self.current_scope = caller_scope;
+
+                                            result_id
                                         }
-
-                                        let result_id = self
-                                            .check_type_annotation(
-                                                &decl.value,
-                                                &inner_substitutions,
-                                            )
-                                            .id;
-
-                                        self.current_scope = caller_scope;
-
-                                        result_id
                                     }
                                 }
                                 GenericDeclaration::Function { .. } => {

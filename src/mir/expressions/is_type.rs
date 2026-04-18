@@ -87,17 +87,16 @@ impl<'a> Builder<'a, InBlock> {
         let current_val = self.build_expr(left, None, substitutions);
         let current_ty = self.get_value_type(current_val);
 
+        let target_type = self.check_type_annotation(&ty, substitutions);
+
         let source_variants = match self.types.get_union_variants(current_ty) {
             Some(v) => v,
             None => {
-                return self.report_error_and_get_poison(SemanticError {
-                    span: span.clone(),
-                    kind: SemanticErrorKind::CannotNarrowNonUnion(current_ty),
-                });
+                let is_match = current_ty == target_type.id;
+                let bool_val = self.emit_bool(is_match);
+                return self.check_expected(bool_val, span, expected_type);
             }
         };
-
-        let target_type = self.check_type_annotation(&ty, substitutions);
 
         if self.types.get_union_variants(target_type.id).is_some() {
             return self.report_error_and_get_poison(SemanticError {

@@ -36,6 +36,7 @@ impl<'a> Builder<'a, InModule> {
                 GenericDeclaration::TypeAlias {
                     decl: type_alias_decl,
                     decl_scope: self.current_scope.clone(),
+                    has_errors: false,
                 },
             );
 
@@ -62,6 +63,8 @@ impl<'a> Builder<'a, InModule> {
             decl_id,
             CheckedDeclaration::TypeAlias(checked_type_alias_decl),
         );
+
+        self.own_declarations.insert(decl_id);
 
         self.current_scope
             .map_name_to_symbol(decl_name, SymbolId::Concrete(decl_id));

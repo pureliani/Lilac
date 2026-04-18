@@ -1,10 +1,9 @@
 use crate::{
     compile::interner::TypeId,
-    globals::next_value_id,
     mir::{
         builders::{
             BasicBlock, BasicBlockId, Builder, CheckedFunctionDecl, ExpectBody, InBlock,
-            InFunction, InGlobal, InModule, ValueId,
+            InFunction, InGlobal, InModule, ValueDefinition, ValueId,
         },
         instructions::Terminator,
         types::checked_declaration::CheckedDeclaration,
@@ -23,6 +22,7 @@ impl<'a> Builder<'a, InBlock> {
             incomplete_fact_merges: self.incomplete_fact_merges,
             aliases: self.aliases,
             types: self.types,
+            own_declarations: self.own_declarations,
         }
     }
 
@@ -39,6 +39,7 @@ impl<'a> Builder<'a, InBlock> {
             incomplete_fact_merges: self.incomplete_fact_merges,
             aliases: self.aliases,
             types: self.types,
+            own_declarations: self.own_declarations,
         }
     }
 
@@ -56,7 +57,38 @@ impl<'a> Builder<'a, InBlock> {
             incomplete_fact_merges: self.incomplete_fact_merges,
             aliases: self.aliases,
             types: self.types,
+            own_declarations: self.own_declarations,
         }
+    }
+
+    pub fn new_value_id(&mut self, ty: TypeId) -> ValueId {
+        let this_block_id = self.context.block_id;
+        let func = self.get_fn_mut().expect_body();
+
+        let id_num = func.next_value_id;
+        func.next_value_id += 1;
+        let value_id = ValueId(id_num);
+
+        func.values.insert(
+            value_id,
+            ValueDefinition {
+                defined_in: this_block_id,
+                ty,
+            },
+        );
+
+        value_id
+    }
+
+    pub fn get_value_type(&self, id: ValueId) -> TypeId {
+        let func = self.get_fn().expect_body();
+
+        func.values.get(&id).map(|def| def.ty).unwrap_or_else(|| {
+            panic!(
+                "INTERNAL COMPILER ERROR: ValueId({}) not found in function",
+                id.0
+            )
+        })
     }
 
     pub fn bb_mut(&mut self) -> &mut BasicBlock {
@@ -105,7 +137,16 @@ impl<'a> Builder<'a, InBlock> {
         self.get_bb(self.context.block_id)
     }
 
-    pub fn get_fn(&mut self) -> &mut CheckedFunctionDecl {
+    pub fn get_fn(&self) -> &CheckedFunctionDecl {
+        let func_id = self.context.func_id;
+
+        match self.program.declarations.get(&func_id).unwrap() {
+            CheckedDeclaration::Function(f) => f,
+            _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
+        }
+    }
+
+    pub fn get_fn_mut(&mut self) -> &mut CheckedFunctionDecl {
         let func_id = self.context.func_id;
 
         match self.program.declarations.get_mut(&func_id).unwrap() {
@@ -114,24 +155,19 @@ impl<'a> Builder<'a, InBlock> {
         }
     }
 
-    pub fn get_value_type(&self, id: ValueId) -> TypeId {
-        *self.program.value_types.get(&id).unwrap_or_else(|| {
-            panic!("INTERNAL COMPILER ERROR: ValueId({}) has no type", id.0)
-        })
-    }
-
     fn successor_count(&self, block_id: BasicBlockId) -> usize {
         let bb = self.get_bb(block_id);
         match &bb.terminator {
             Some(Terminator::CondJump { .. }) => 2,
             Some(Terminator::Jump { .. }) => 1,
             Some(Terminator::Return { .. }) => 0,
+            Some(Terminator::Unreachable) => 0,
             None => 0,
         }
     }
 
     /// Replaces occurrences of `old_target` with `new_target` in the
-    /// terminator of `block_id`.
+    /// terminator of `block_id`
     fn retarget_terminator(
         &mut self,
         block_id: BasicBlockId,
@@ -167,7 +203,7 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     /// Splits a critical edge from `pred_block` to `target_block` by inserting
-    /// a new block in between.
+    /// a new block in between
     fn split_critical_edge(
         &mut self,
         pred_block: BasicBlockId,
@@ -250,20 +286,6 @@ impl<'a> Builder<'a, InBlock> {
         } else {
             self.emit_wrap_in_union(val, &target_variants)
         }
-    }
-
-    pub fn new_value_id(&mut self, ty: TypeId) -> ValueId {
-        let value_id = next_value_id();
-        let this_block_id = self.context.block_id;
-
-        self.get_fn()
-            .expect_body()
-            .value_definitions
-            .insert(value_id, this_block_id);
-
-        self.program.value_types.insert(value_id, ty);
-
-        value_id
     }
 
     pub fn use_basic_block(&mut self, block_id: BasicBlockId) {

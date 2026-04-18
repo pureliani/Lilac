@@ -4,7 +4,7 @@ use inkwell::{FloatPredicate, IntPredicate};
 
 use crate::codegen::CodeGenerator;
 use crate::globals::STRING_INTERNER;
-use crate::mir::builders::ValueId;
+use crate::mir::builders::{FunctionCFG, ValueId};
 use crate::mir::instructions::{
     BinaryInstr, CallInstr, CastInstr, CompInstr, Instruction, MaterializeInstr,
     MemoryInstr, SelectInstr, Terminator, UnaryInstr,
@@ -14,12 +14,12 @@ use crate::mir::types::checked_type::{LiteralType, Type};
 use crate::mir::utils::layout::get_layout_of;
 
 impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
-    fn get_val(&self, id: ValueId) -> BasicValueEnum<'ctx> {
+    fn get_val(&self, cfg: &FunctionCFG, id: ValueId) -> BasicValueEnum<'ctx> {
         if let Some(val) = self.values.get(&id) {
             return *val;
         }
 
-        let ty_id = self.program.value_types[&id];
+        let ty_id = cfg.values[&id].ty;
         let ty = self.type_interner.resolve(ty_id);
 
         let layout = get_layout_of(
@@ -44,20 +44,20 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
         self.values.insert(id, val);
     }
 
-    pub fn emit_instruction(&mut self, instr: &Instruction) {
+    pub fn emit_instruction(&mut self, cfg: &FunctionCFG, instr: &Instruction) {
         match instr {
-            Instruction::Unary(unary) => self.emit_unary(unary),
-            Instruction::Binary(binary) => self.emit_binary(binary),
-            Instruction::Comp(comp) => self.emit_comp(comp),
-            Instruction::Cast(cast) => self.emit_cast(cast),
-            Instruction::Memory(memory) => self.emit_memory(memory),
-            Instruction::Call(call) => self.emit_call(call),
-            Instruction::Select(select) => self.emit_select(select),
-            Instruction::Materialize(mat) => self.emit_materialize(mat),
+            Instruction::Unary(unary) => self.emit_unary(cfg, unary),
+            Instruction::Binary(binary) => self.emit_binary(cfg, binary),
+            Instruction::Comp(comp) => self.emit_comp(cfg, comp),
+            Instruction::Cast(cast) => self.emit_cast(cfg, cast),
+            Instruction::Memory(memory) => self.emit_memory(cfg, memory),
+            Instruction::Call(call) => self.emit_call(cfg, call),
+            Instruction::Select(select) => self.emit_select(cfg, select),
+            Instruction::Materialize(mat) => self.emit_materialize(cfg, mat),
         }
     }
 
-    fn emit_materialize(&mut self, mat: &MaterializeInstr) {
+    fn emit_materialize(&mut self, cfg: &FunctionCFG, mat: &MaterializeInstr) {
         let val: BasicValueEnum<'ctx> = match mat.literal_type {
             LiteralType::Bool(b) => {
                 self.context.bool_type().const_int(b as u64, false).into()
@@ -127,7 +127,7 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 global_str.set_initializer(&const_struct);
                 global_str.set_constant(true);
 
-                let dest_ty_id = self.program.value_types[&mat.dest];
+                let dest_ty_id = cfg.values[&mat.dest].ty;
                 let dest_ty = self.get_basic_type(dest_ty_id);
 
                 self.builder
@@ -152,7 +152,7 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
         self.store_val(mat.dest, val);
     }
 
-    pub fn emit_terminator(&mut self, terminator: &Terminator) {
+    pub fn emit_terminator(&mut self, cfg: &FunctionCFG, terminator: &Terminator) {
         match terminator {
             Terminator::Jump { target } => {
                 let llvm_block = self.blocks[target];
@@ -163,7 +163,7 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 true_target,
                 false_target,
             } => {
-                let cond_val = self.get_val(*condition).into_int_value();
+                let cond_val = self.get_val(cfg, *condition).into_int_value();
                 let true_block = self.blocks[true_target];
                 let false_block = self.blocks[false_target];
                 self.builder
@@ -171,7 +171,7 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                     .unwrap();
             }
             Terminator::Return { value } => {
-                let val_ty = self.program.value_types[value];
+                let val_ty = cfg.values[value].ty;
                 let resolved_ty = self.type_interner.resolve(val_ty);
 
                 if matches!(
@@ -182,46 +182,49 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 ) {
                     self.builder.build_return(None).unwrap();
                 } else {
-                    let ret_val = self.get_val(*value);
+                    let ret_val = self.get_val(cfg, *value);
                     self.builder.build_return(Some(&ret_val)).unwrap();
                 }
+            }
+            Terminator::Unreachable => {
+                self.builder.build_unreachable().unwrap();
             }
         }
     }
 
-    fn emit_unary(&mut self, instr: &UnaryInstr) {
+    fn emit_unary(&mut self, cfg: &FunctionCFG, instr: &UnaryInstr) {
         match instr {
             UnaryInstr::INeg { dest, src } => {
-                let val = self.get_val(*src).into_int_value();
+                let val = self.get_val(cfg, *src).into_int_value();
                 let res = self.builder.build_int_neg(val, "ineg").unwrap();
                 self.store_val(*dest, res.into());
             }
             UnaryInstr::FNeg { dest, src } => {
-                let val = self.get_val(*src).into_float_value();
+                let val = self.get_val(cfg, *src).into_float_value();
                 let res = self.builder.build_float_neg(val, "fneg").unwrap();
                 self.store_val(*dest, res.into());
             }
             UnaryInstr::BNot { dest, src } => {
-                let val = self.get_val(*src).into_int_value();
+                let val = self.get_val(cfg, *src).into_int_value();
                 let res = self.builder.build_not(val, "bnot").unwrap();
                 self.store_val(*dest, res.into());
             }
         }
     }
 
-    fn emit_binary(&mut self, instr: &BinaryInstr) {
+    fn emit_binary(&mut self, cfg: &FunctionCFG, instr: &BinaryInstr) {
         macro_rules! int_binop {
             ($dest:expr, $lhs:expr, $rhs:expr, $builder_method:ident, $name:expr) => {{
-                let l = self.get_val(*$lhs).into_int_value();
-                let r = self.get_val(*$rhs).into_int_value();
+                let l = self.get_val(cfg, *$lhs).into_int_value();
+                let r = self.get_val(cfg, *$rhs).into_int_value();
                 let res = self.builder.$builder_method(l, r, $name).unwrap();
                 self.store_val(*$dest, res.into());
             }};
         }
         macro_rules! float_binop {
             ($dest:expr, $lhs:expr, $rhs:expr, $builder_method:ident, $name:expr) => {{
-                let l = self.get_val(*$lhs).into_float_value();
-                let r = self.get_val(*$rhs).into_float_value();
+                let l = self.get_val(cfg, *$lhs).into_float_value();
+                let r = self.get_val(cfg, *$rhs).into_float_value();
                 let res = self.builder.$builder_method(l, r, $name).unwrap();
                 self.store_val(*$dest, res.into());
             }};
@@ -267,19 +270,19 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
         }
     }
 
-    fn emit_comp(&mut self, instr: &CompInstr) {
+    fn emit_comp(&mut self, cfg: &FunctionCFG, instr: &CompInstr) {
         macro_rules! int_comp {
             ($dest:expr, $lhs:expr, $rhs:expr, $pred:expr, $name:expr) => {{
-                let l = self.get_val(*$lhs).into_int_value();
-                let r = self.get_val(*$rhs).into_int_value();
+                let l = self.get_val(cfg, *$lhs).into_int_value();
+                let r = self.get_val(cfg, *$rhs).into_int_value();
                 let res = self.builder.build_int_compare($pred, l, r, $name).unwrap();
                 self.store_val(*$dest, res.into());
             }};
         }
         macro_rules! float_comp {
             ($dest:expr, $lhs:expr, $rhs:expr, $pred:expr, $name:expr) => {{
-                let l = self.get_val(*$lhs).into_float_value();
-                let r = self.get_val(*$rhs).into_float_value();
+                let l = self.get_val(cfg, *$lhs).into_float_value();
+                let r = self.get_val(cfg, *$rhs).into_float_value();
                 let res = self
                     .builder
                     .build_float_compare($pred, l, r, $name)
@@ -340,13 +343,11 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
         }
     }
 
-    fn emit_cast(&mut self, instr: &CastInstr) {
+    fn emit_cast(&mut self, cfg: &FunctionCFG, instr: &CastInstr) {
         match instr {
             CastInstr::SIToF { dest, src } => {
-                let val = self.get_val(*src).into_int_value();
-                let dest_ty = self
-                    .get_basic_type(self.program.value_types[dest])
-                    .into_float_type();
+                let val = self.get_val(cfg, *src).into_int_value();
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty).into_float_type();
                 let res = self
                     .builder
                     .build_signed_int_to_float(val, dest_ty, "sitof")
@@ -354,10 +355,8 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, res.into());
             }
             CastInstr::UIToF { dest, src } => {
-                let val = self.get_val(*src).into_int_value();
-                let dest_ty = self
-                    .get_basic_type(self.program.value_types[dest])
-                    .into_float_type();
+                let val = self.get_val(cfg, *src).into_int_value();
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty).into_float_type();
                 let res = self
                     .builder
                     .build_unsigned_int_to_float(val, dest_ty, "uitof")
@@ -365,10 +364,8 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, res.into());
             }
             CastInstr::FToSI { dest, src } => {
-                let val = self.get_val(*src).into_float_value();
-                let dest_ty = self
-                    .get_basic_type(self.program.value_types[dest])
-                    .into_int_type();
+                let val = self.get_val(cfg, *src).into_float_value();
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty).into_int_type();
                 let res = self
                     .builder
                     .build_float_to_signed_int(val, dest_ty, "ftosi")
@@ -376,10 +373,8 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, res.into());
             }
             CastInstr::FToUI { dest, src } => {
-                let val = self.get_val(*src).into_float_value();
-                let dest_ty = self
-                    .get_basic_type(self.program.value_types[dest])
-                    .into_int_type();
+                let val = self.get_val(cfg, *src).into_float_value();
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty).into_int_type();
                 let res = self
                     .builder
                     .build_float_to_unsigned_int(val, dest_ty, "ftoui")
@@ -387,18 +382,14 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, res.into());
             }
             CastInstr::FExt { dest, src } => {
-                let val = self.get_val(*src).into_float_value();
-                let dest_ty = self
-                    .get_basic_type(self.program.value_types[dest])
-                    .into_float_type();
+                let val = self.get_val(cfg, *src).into_float_value();
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty).into_float_type();
                 let res = self.builder.build_float_ext(val, dest_ty, "fext").unwrap();
                 self.store_val(*dest, res.into());
             }
             CastInstr::FTrunc { dest, src } => {
-                let val = self.get_val(*src).into_float_value();
-                let dest_ty = self
-                    .get_basic_type(self.program.value_types[dest])
-                    .into_float_type();
+                let val = self.get_val(cfg, *src).into_float_value();
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty).into_float_type();
                 let res = self
                     .builder
                     .build_float_trunc(val, dest_ty, "ftrunc")
@@ -406,10 +397,8 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, res.into());
             }
             CastInstr::Trunc { dest, src } => {
-                let val = self.get_val(*src).into_int_value();
-                let dest_ty = self
-                    .get_basic_type(self.program.value_types[dest])
-                    .into_int_type();
+                let val = self.get_val(cfg, *src).into_int_value();
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty).into_int_type();
                 let res = self
                     .builder
                     .build_int_truncate(val, dest_ty, "trunc")
@@ -417,10 +406,8 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, res.into());
             }
             CastInstr::SExt { dest, src } => {
-                let val = self.get_val(*src).into_int_value();
-                let dest_ty = self
-                    .get_basic_type(self.program.value_types[dest])
-                    .into_int_type();
+                let val = self.get_val(cfg, *src).into_int_value();
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty).into_int_type();
                 let res = self
                     .builder
                     .build_int_s_extend(val, dest_ty, "sext")
@@ -428,10 +415,8 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, res.into());
             }
             CastInstr::ZExt { dest, src } => {
-                let val = self.get_val(*src).into_int_value();
-                let dest_ty = self
-                    .get_basic_type(self.program.value_types[dest])
-                    .into_int_type();
+                let val = self.get_val(cfg, *src).into_int_value();
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty).into_int_type();
                 let res = self
                     .builder
                     .build_int_z_extend(val, dest_ty, "zext")
@@ -439,21 +424,26 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, res.into());
             }
             CastInstr::BitCast { dest, src } => {
-                let val = self.get_val(*src);
-                let dest_ty = self.get_basic_type(self.program.value_types[dest]);
-                let res = self
-                    .builder
-                    .build_bit_cast(val, dest_ty, "bitcast")
-                    .unwrap();
-                self.store_val(*dest, res);
+                let val = self.get_val(cfg, *src);
+                let dest_ty = self.get_basic_type(cfg.values[dest].ty);
+
+                if val.get_type() == dest_ty {
+                    self.store_val(*dest, val);
+                } else {
+                    let res = self
+                        .builder
+                        .build_bit_cast(val, dest_ty, "bitcast")
+                        .unwrap();
+                    self.store_val(*dest, res);
+                }
             }
         }
     }
 
-    fn emit_memory(&mut self, instr: &MemoryInstr) {
+    fn emit_memory(&mut self, cfg: &FunctionCFG, instr: &MemoryInstr) {
         match instr {
             MemoryInstr::StackAlloc { dest, count } => {
-                let dest_ty_id = self.program.value_types[dest];
+                let dest_ty_id = cfg.values[dest].ty;
                 let inner_ty_id = self.type_interner.unwrap_ptr(dest_ty_id);
                 let inner_ty = self.get_basic_type(inner_ty_id);
 
@@ -465,11 +455,11 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, ptr.into());
             }
             MemoryInstr::HeapAlloc { dest, count } => {
-                let dest_ty_id = self.program.value_types[dest];
+                let dest_ty_id = cfg.values[dest].ty;
                 let inner_ty_id = self.type_interner.unwrap_ptr(dest_ty_id);
                 let inner_ty = self.get_basic_type(inner_ty_id);
 
-                let count_val = self.get_val(*count).into_int_value();
+                let count_val = self.get_val(cfg, *count).into_int_value();
 
                 let size_of = inner_ty.size_of().unwrap();
                 let total_size = self
@@ -496,7 +486,7 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 self.store_val(*dest, raw_ptr);
             }
             MemoryInstr::HeapFree { ptr } => {
-                let ptr_val = self.get_val(*ptr).into_pointer_value();
+                let ptr_val = self.get_val(cfg, *ptr).into_pointer_value();
 
                 let free_fn = self.module.get_function("free").unwrap_or_else(|| {
                     let void_type = self.context.void_type();
@@ -511,23 +501,23 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                     .unwrap();
             }
             MemoryInstr::Store { ptr, value } => {
-                let ptr_val = self.get_val(*ptr).into_pointer_value();
-                let val = self.get_val(*value);
+                let ptr_val = self.get_val(cfg, *ptr).into_pointer_value();
+                let val = self.get_val(cfg, *value);
                 self.builder.build_store(ptr_val, val).unwrap();
             }
             MemoryInstr::Load { dest, ptr } => {
-                let ptr_val = self.get_val(*ptr).into_pointer_value();
-                let dest_ty_id = self.program.value_types[dest];
+                let ptr_val = self.get_val(cfg, *ptr).into_pointer_value();
+                let dest_ty_id = cfg.values[dest].ty;
                 let dest_ty = self.get_basic_type(dest_ty_id);
 
                 let res = self.builder.build_load(dest_ty, ptr_val, "load").unwrap();
                 self.store_val(*dest, res);
             }
             MemoryInstr::MemCopy { dest, src } => {
-                let dest_ptr = self.get_val(*dest).into_pointer_value();
-                let src_ptr = self.get_val(*src).into_pointer_value();
+                let dest_ptr = self.get_val(cfg, *dest).into_pointer_value();
+                let src_ptr = self.get_val(cfg, *src).into_pointer_value();
 
-                let dest_ty_id = self.program.value_types[dest];
+                let dest_ty_id = cfg.values[dest].ty;
                 let inner_ty_id = self.type_interner.unwrap_ptr(dest_ty_id);
                 let inner_ty = self.get_basic_type(inner_ty_id);
 
@@ -546,9 +536,9 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 base_ptr,
                 field_index,
             } => {
-                let base_ptr_val = self.get_val(*base_ptr).into_pointer_value();
+                let base_ptr_val = self.get_val(cfg, *base_ptr).into_pointer_value();
 
-                let base_ty_id = self.program.value_types[base_ptr];
+                let base_ty_id = cfg.values[base_ptr].ty;
                 let inner_ty_id = self.type_interner.unwrap_ptr(base_ty_id);
                 let inner_ty = self.get_basic_type(inner_ty_id);
 
@@ -568,10 +558,10 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 base_ptr,
                 index,
             } => {
-                let base_ptr_val = self.get_val(*base_ptr).into_pointer_value();
-                let index_val = self.get_val(*index).into_int_value();
+                let base_ptr_val = self.get_val(cfg, *base_ptr).into_pointer_value();
+                let index_val = self.get_val(cfg, *index).into_int_value();
 
-                let base_ty_id = self.program.value_types[base_ptr];
+                let base_ty_id = cfg.values[base_ptr].ty;
                 let inner_ty_id = self.type_interner.unwrap_ptr(base_ty_id);
                 let inner_ty = self.get_basic_type(inner_ty_id);
 
@@ -585,14 +575,14 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
         }
     }
 
-    fn emit_call(&mut self, instr: &CallInstr) {
-        let func_ty_id = self.program.value_types[&instr.func];
+    fn emit_call(&mut self, cfg: &FunctionCFG, instr: &CallInstr) {
+        let func_ty_id = cfg.values[&instr.func].ty;
         let func_ty = self.type_interner.resolve(func_ty_id);
 
         let args: Vec<_> = instr
             .args
             .iter()
-            .map(|arg| self.get_val(*arg).into())
+            .map(|arg| self.get_val(cfg, *arg).into())
             .collect();
 
         let call_site = match func_ty {
@@ -604,7 +594,7 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
                 params,
                 return_type,
             }) => {
-                let func_ptr = self.get_val(instr.func).into_pointer_value();
+                let func_ptr = self.get_val(cfg, instr.func).into_pointer_value();
 
                 let ret_ty = self.get_any_type(return_type.id);
                 let mut param_types = Vec::new();
@@ -633,10 +623,10 @@ impl<'ctx, 'a> CodeGenerator<'ctx, 'a> {
         }
     }
 
-    fn emit_select(&mut self, instr: &SelectInstr) {
-        let cond = self.get_val(instr.cond).into_int_value();
-        let true_val = self.get_val(instr.true_val);
-        let false_val = self.get_val(instr.false_val);
+    fn emit_select(&mut self, cfg: &FunctionCFG, instr: &SelectInstr) {
+        let cond = self.get_val(cfg, instr.cond).into_int_value();
+        let true_val = self.get_val(cfg, instr.true_val);
+        let false_val = self.get_val(cfg, instr.false_val);
 
         let res = self
             .builder

@@ -56,6 +56,8 @@ impl<'a> Builder<'a, InBlock> {
             .declarations
             .insert(decl_id, CheckedDeclaration::Var(checked_var_decl));
 
+        self.own_declarations.insert(decl_id);
+
         self.current_scope
             .map_name_to_symbol(identifier.name, SymbolId::Concrete(decl_id));
 

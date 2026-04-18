@@ -1,7 +1,7 @@
 from "std/io" { print }
 
 
-fn bar<T>(arg: T) {
+fn bar<T extends string>(arg: T) {
     print(arg);
 }
 

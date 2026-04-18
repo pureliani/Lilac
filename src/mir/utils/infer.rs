@@ -216,9 +216,16 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
                             .unwrap()
                             .clone();
 
-                        if let GenericDeclaration::TypeAlias { decl, decl_scope } =
-                            generic_decl
+                        if let GenericDeclaration::TypeAlias {
+                            decl,
+                            decl_scope,
+                            has_errors,
+                        } = generic_decl
                         {
+                            if has_errors {
+                                return Ok(());
+                            }
+
                             if decl.generic_params.len() == args.len() {
                                 let caller_scope = self.current_scope.clone();
                                 self.current_scope = decl_scope.enter(

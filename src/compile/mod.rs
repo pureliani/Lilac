@@ -224,12 +224,12 @@ impl Compiler {
         let mut incomplete_fact_merges = HashMap::new();
         let mut condition_facts = HashMap::new();
         let mut aliases = HashMap::new();
+        let mut own_declarations = HashSet::new();
 
         let mut program = Program {
             entry_path: Some(canonical_main.clone()),
             declarations: BTreeMap::new(),
             modules: BTreeMap::new(),
-            value_types: BTreeMap::new(),
             foreign_links: HashSet::new(),
             target_ptr_size,
             target_ptr_align,
@@ -249,6 +249,7 @@ impl Compiler {
             condition_facts: &mut condition_facts,
             aliases: &mut aliases,
             types: &self.types,
+            own_declarations: &mut own_declarations,
         };
 
         program_builder.build(modules_to_compile);

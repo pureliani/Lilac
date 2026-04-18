@@ -21,17 +21,18 @@ impl Parser {
             let args_result = self.comma_separated(
                 |p| {
                     let identifier = p.consume_identifier()?;
-                    let constraint = if p
-                        .match_token(0, TokenKind::Punctuation(PunctuationKind::Col))
-                    {
-                        p.advance();
-                        Some(p.parse_type_annotation(0)?)
-                    } else {
-                        None
-                    };
+
+                    let extends =
+                        if p.match_token(0, TokenKind::Keyword(KeywordKind::Extends)) {
+                            p.advance();
+                            Some(p.parse_type_annotation(0)?)
+                        } else {
+                            None
+                        };
+
                     Ok(GenericParam {
                         identifier,
-                        constraint,
+                        extends,
                     })
                 },
                 |p| p.match_token(0, TokenKind::Punctuation(PunctuationKind::Gt)),

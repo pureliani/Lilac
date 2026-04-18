@@ -3,11 +3,11 @@ use std::collections::{BTreeMap, HashSet};
 use crate::{
     ast::{decl::FnDecl, Span},
     compile::interner::GenericSubstitutions,
-    globals::{next_block_id, next_declaration_id, STRING_INTERNER},
+    globals::{next_declaration_id, STRING_INTERNER},
     mir::{
         builders::{
-            BasicBlock, Builder, ExpectBody, FunctionBodyKind, FunctionCFG, InBlock,
-            InModule, ValueId,
+            BasicBlock, BasicBlockId, Builder, ExpectBody, FunctionBodyKind, FunctionCFG,
+            InBlock, InModule, ValueId,
         },
         errors::{SemanticError, SemanticErrorKind},
         instructions::Terminator,
@@ -83,15 +83,17 @@ impl<'a> Builder<'a, InModule> {
             }
         }
 
-        let entry_block_id = next_block_id();
+        let entry_block_id = BasicBlockId(0);
 
         if let Some(CheckedDeclaration::Function(func)) =
             self.program.declarations.get_mut(&decl_id)
         {
             let cfg = FunctionCFG {
                 entry_block: entry_block_id,
+                next_block_id: 1,
+                next_value_id: 0,
                 blocks: BTreeMap::new(),
-                value_definitions: BTreeMap::new(),
+                values: BTreeMap::new(),
                 effects: FunctionEffects::default(),
             };
             func.body = FunctionBodyKind::Internal(cfg);
@@ -115,6 +117,7 @@ impl<'a> Builder<'a, InModule> {
             incomplete_fact_merges: self.incomplete_fact_merges,
             aliases: self.aliases,
             types: self.types,
+            own_declarations: self.own_declarations,
         };
 
         let entry_bb = BasicBlock {
@@ -126,7 +129,7 @@ impl<'a> Builder<'a, InModule> {
         };
 
         fn_builder
-            .get_fn()
+            .get_fn_mut()
             .expect_body()
             .blocks
             .insert(entry_block_id, entry_bb);
@@ -140,10 +143,10 @@ impl<'a> Builder<'a, InModule> {
             };
 
             let val_id = fn_builder.new_value_id(param_ty.id);
-            let var_decl_id = next_declaration_id();
+            let param_decl_id = next_declaration_id();
 
             fn_builder.declare_variable(
-                var_decl_id,
+                param_decl_id,
                 param_ident,
                 param_ty.id,
                 val_id,
@@ -151,8 +154,8 @@ impl<'a> Builder<'a, InModule> {
                 None,
             );
 
-            let param = &mut fn_builder.get_fn().params[i];
-            param.decl_id = Some(var_decl_id);
+            let param = &mut fn_builder.get_fn_mut().params[i];
+            param.decl_id = Some(param_decl_id);
             param.value_id = Some(val_id);
         }
 
@@ -166,7 +169,8 @@ impl<'a> Builder<'a, InModule> {
         }
 
         let effects = fn_builder.compute_effects(&identifier.span);
-        fn_builder.get_fn().expect_body().effects = effects;
+
+        fn_builder.get_fn_mut().expect_body().effects = effects;
 
         Ok(())
     }

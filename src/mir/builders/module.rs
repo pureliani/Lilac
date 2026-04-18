@@ -12,6 +12,7 @@ impl<'a> Builder<'a, InModule> {
             incomplete_fact_merges: self.incomplete_fact_merges,
             aliases: self.aliases,
             types: self.types,
+            own_declarations: self.own_declarations,
         }
     }
 

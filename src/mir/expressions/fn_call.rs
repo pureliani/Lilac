@@ -140,7 +140,11 @@ impl<'a> Builder<'a, InBlock> {
             .clone();
 
         let (fn_decl, decl_scope) = match generic_decl {
-            GenericDeclaration::Function { decl, decl_scope } => (decl, decl_scope),
+            GenericDeclaration::Function {
+                decl,
+                decl_scope,
+                has_errors: _,
+            } => (decl, decl_scope),
             _ => {
                 return self.report_error_and_get_poison(SemanticError {
                     span: ident.span.clone(),
@@ -212,7 +216,10 @@ impl<'a> Builder<'a, InBlock> {
         }
 
         let concrete_func_id =
-            self.monomorphize_function(gen_id, type_args, span.clone());
+            match self.monomorphize_function(gen_id, type_args, span.clone()) {
+                Ok(id) => id,
+                Err(()) => return self.new_value_id(self.types.unknown()),
+            };
 
         let concrete_decl = self.program.declarations.get(&concrete_func_id).unwrap();
         let (concrete_params, return_type_id) =
@@ -258,6 +265,11 @@ impl<'a> Builder<'a, InBlock> {
 
         if let Some(decl_id) = callee_decl_id {
             self.apply_callee_effects(decl_id, arg_exprs);
+        }
+
+        if return_type == self.types.never() {
+            self.emit_unreachable();
+            return self.new_value_id(self.types.unknown());
         }
 
         self.check_expected(result, span, expected_type)

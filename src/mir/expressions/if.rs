@@ -14,9 +14,7 @@ use crate::{
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum IfContext {
-    /// The `if` is used to produce a value
     Expression,
-    /// The `if` is used for control flow, its value is discarded
     Statement,
 }
 
@@ -24,7 +22,7 @@ impl<'a> Builder<'a, InBlock> {
     pub fn build_if(
         &mut self,
         branches: Vec<(Box<Expr>, BlockContents)>,
-        else_branch: Option<BlockContents>,
+        mut else_branch: Option<BlockContents>,
         context: IfContext,
         expected_type: Option<&SpannedType>,
         substitutions: &GenericSubstitutions,
@@ -46,26 +44,49 @@ impl<'a> Builder<'a, InBlock> {
             self.use_basic_block(current_cond_block_id);
 
             let condition_span = condition.span.clone();
-            let expected_condition_type = Some(SpannedType {
-                id: self.types.bool(None),
-                span: condition_span.clone(),
-            });
 
-            let cond_id = self.build_expr(
-                *condition,
-                expected_condition_type.as_ref(),
-                substitutions,
-            );
+            let cond_id = self.build_expr(*condition, None, substitutions);
             let cond_ty = self.get_value_type(cond_id);
 
             if cond_ty == self.types.unknown() {
                 return self.new_value_id(self.types.unknown());
             }
 
+            let is_statically_true = cond_ty == self.types.bool(Some(true));
+            let is_statically_false = cond_ty == self.types.bool(Some(false));
+
+            if is_statically_false {
+                continue;
+            }
+
             let then_block_id = self.as_fn().new_bb();
+
+            if is_statically_true {
+                self.emit_jmp(then_block_id);
+                self.seal_block(then_block_id);
+                self.use_basic_block(then_block_id);
+
+                let (then_val, then_val_span) =
+                    self.build_codeblock_expr(body, expected_type, substitutions);
+
+                if self.bb().terminator.is_none() {
+                    branch_results.push((self.context.block_id, then_val, then_val_span));
+                }
+
+                else_branch = None;
+                break;
+            }
+
             let next_cond_block_id = self.as_fn().new_bb();
 
-            self.emit_cond_jmp(cond_id, then_block_id, next_cond_block_id);
+            let expected = SpannedType {
+                id: self.types.bool(None),
+                span: condition_span.clone(),
+            };
+            let runtime_cond_id =
+                self.check_expected(cond_id, condition_span, Some(&expected));
+
+            self.emit_cond_jmp(runtime_cond_id, then_block_id, next_cond_block_id);
 
             self.seal_block(then_block_id);
             self.use_basic_block(then_block_id);
@@ -143,10 +164,11 @@ impl<'a> Builder<'a, InBlock> {
             let result_ptr = self.new_value_id(ptr_ty);
             let entry_block = self.get_fn().expect_body().entry_block;
 
-            self.get_fn()
+            self.get_fn_mut()
                 .expect_body()
-                .value_definitions
-                .insert(result_ptr, entry_block);
+                .values
+                .entry(result_ptr)
+                .and_modify(|v| v.defined_in = entry_block);
 
             self.get_bb_mut(entry_block).instructions.insert(
                 0,

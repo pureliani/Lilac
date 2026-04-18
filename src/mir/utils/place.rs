@@ -242,9 +242,7 @@ impl<'a> Builder<'a, InBlock> {
                     "INTERNAL COMPILER ERROR: Expected Place::Field to have a type",
                 )
             }
-            Place::Temporary(val_id) => *self.program.value_types.get(val_id).expect(
-                "INTERNAL COMPILER ERROR: Expected Place::Temporary to have a type",
-            ),
+            Place::Temporary(val_id) => self.get_value_type(*val_id),
         }
     }
 

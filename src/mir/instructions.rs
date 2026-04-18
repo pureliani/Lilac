@@ -255,4 +255,5 @@ pub enum Terminator {
     Return {
         value: ValueId,
     },
+    Unreachable,
 }

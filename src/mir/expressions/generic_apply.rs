@@ -67,11 +67,14 @@ impl<'a> Builder<'a, InBlock> {
                             .push(self.check_type_annotation(&arg, substitutions).id);
                     }
 
-                    let concrete_id = self.monomorphize_function(
+                    let concrete_id = match self.monomorphize_function(
                         gen_id,
                         checked_type_args,
                         span.clone(),
-                    );
+                    ) {
+                        Ok(id) => id,
+                        Err(()) => return self.new_value_id(self.types.unknown()),
+                    };
 
                     let result = self.emit_const_fn(concrete_id);
                     self.check_expected(result, span, expected_type)

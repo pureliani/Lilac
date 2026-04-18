@@ -8,7 +8,7 @@ use super::{expr::Expr, type_annotation::TypeAnnotation};
 #[derive(Clone, Debug, PartialEq)]
 pub struct GenericParam {
     pub identifier: IdentifierNode,
-    pub constraint: Option<TypeAnnotation>,
+    pub extends: Option<TypeAnnotation>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

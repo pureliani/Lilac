@@ -3,7 +3,8 @@ use crate::{
     globals::STRING_INTERNER,
     mir::{
         builders::{
-            BasicBlockId, ExpectBody, CheckedFunctionDecl, FunctionBodyKind, Program, ValueId,
+            BasicBlockId, CheckedFunctionDecl, ExpectBody, FunctionBodyKind, FunctionCFG,
+            Program, ValueId,
         },
         instructions::{
             BinaryInstr, CallInstr, CastInstr, CompInstr, Instruction, MemoryInstr,
@@ -14,8 +15,8 @@ use crate::{
 };
 use std::fmt::Write;
 
-fn get_vt(p: &Program, vid: &ValueId, interner: &TypeInterner) -> String {
-    interner.to_string(p.value_types[vid])
+fn get_vt(cfg: &FunctionCFG, vid: &ValueId, interner: &TypeInterner) -> String {
+    interner.to_string(cfg.values[vid].ty)
 }
 
 pub fn dump_program(program: &Program, interner: &TypeInterner) {
@@ -23,17 +24,18 @@ pub fn dump_program(program: &Program, interner: &TypeInterner) {
     writeln!(out, "========== HIR DUMP START ==========").unwrap();
     for (_, decl) in program.declarations.iter() {
         if let CheckedDeclaration::Function(f) = decl {
-            dump_function(f, program, interner, &mut out);
+            dump_function(f, interner, &mut out);
         }
     }
     writeln!(out, "====================================").unwrap();
     println!("{}", out);
 }
 
-fn dump_function(f: &CheckedFunctionDecl, p: &Program, interner: &TypeInterner, out: &mut String) {
+fn dump_function(f: &CheckedFunctionDecl, interner: &TypeInterner, out: &mut String) {
     let fn_name = STRING_INTERNER.resolve(f.identifier.name);
     let return_type = interner.to_string(f.return_type.id);
     writeln!(out, "fn {fn_name} -> {return_type}:").unwrap();
+
     let block_ids = if let FunctionBodyKind::Internal(cfg) = &f.body {
         cfg.blocks.keys().cloned().collect()
     } else {
@@ -41,18 +43,18 @@ fn dump_function(f: &CheckedFunctionDecl, p: &Program, interner: &TypeInterner, 
     };
 
     for bid in block_ids {
-        dump_block(&bid, f, p, interner, out);
+        dump_block(&bid, f, interner, out);
     }
 }
 
 pub fn dump_block(
     block_id: &BasicBlockId,
     f: &CheckedFunctionDecl,
-    p: &Program,
     interner: &TypeInterner,
     out: &mut String,
 ) {
-    let bb = f.expect_body().blocks.get(block_id).unwrap();
+    let cfg = f.expect_body();
+    let bb = cfg.blocks.get(block_id).unwrap();
     writeln!(out, "  block_{}:", bb.id.0).unwrap();
 
     writeln!(out, "    predecessors {{ ").unwrap();
@@ -63,7 +65,7 @@ pub fn dump_block(
 
     writeln!(out).unwrap();
 
-    dump_instructions(&bb.instructions, p, interner, out);
+    dump_instructions(&bb.instructions, cfg, interner, out);
 
     if let Some(term) = bb.terminator.clone() {
         match term {
@@ -85,13 +87,16 @@ pub fn dump_block(
             Terminator::Return { value } => {
                 writeln!(out, "    ret v{}\n", value.0).unwrap();
             }
+            Terminator::Unreachable => {
+                writeln!(out, "    unreachable\n").unwrap();
+            }
         }
     }
 }
 
 pub fn dump_instructions(
     instrs: &[Instruction],
-    p: &Program,
+    cfg: &FunctionCFG,
     interner: &TypeInterner,
     out: &mut String,
 ) {
@@ -138,7 +143,7 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = -v{};",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         src.0
                     )
                     .unwrap();
@@ -148,7 +153,7 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = !v{};",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         src.0
                     )
                     .unwrap();
@@ -171,7 +176,7 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = v{} {} v{};",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         lhs.0,
                         get_binary_sign(kind),
                         rhs.0
@@ -200,7 +205,7 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = v{} {} v{};",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         lhs.0,
                         get_comp_sign(kind),
                         rhs.0
@@ -218,7 +223,7 @@ pub fn dump_instructions(
                     out,
                     "v{}: {} = v{} ? v{} : v{};",
                     dest.0,
-                    get_vt(p, dest, interner),
+                    get_vt(cfg, dest, interner),
                     cond.0,
                     true_val.0,
                     false_val.0
@@ -236,7 +241,7 @@ pub fn dump_instructions(
                     out,
                     "v{}: {} = call v{}({});",
                     dest.0,
-                    get_vt(p, dest, interner),
+                    get_vt(cfg, dest, interner),
                     func.0,
                     args
                 )
@@ -245,7 +250,7 @@ pub fn dump_instructions(
 
             Instruction::Memory(kind) => match kind {
                 MemoryInstr::StackAlloc { dest, count } => {
-                    let inner_ty = match interner.resolve(p.value_types[dest]) {
+                    let inner_ty = match interner.resolve(cfg.values[dest].ty) {
                         Type::Pointer(to) => interner.to_string(to),
                         _ => "unknown".to_string(),
                     };
@@ -253,14 +258,14 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = stackAlloc({} x {});",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         count,
                         inner_ty
                     )
                     .unwrap();
                 }
                 MemoryInstr::HeapAlloc { dest, count } => {
-                    let inner_ty = match interner.resolve(p.value_types[dest]) {
+                    let inner_ty = match interner.resolve(cfg.values[dest].ty) {
                         Type::Pointer(to) => interner.to_string(to),
                         _ => "unknown".to_string(),
                     };
@@ -268,7 +273,7 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = heapAlloc(v{} x {});",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         count.0,
                         inner_ty
                     )
@@ -285,7 +290,7 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = *v{};",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         ptr.0
                     )
                     .unwrap();
@@ -303,7 +308,7 @@ pub fn dump_instructions(
                     base_ptr,
                     field_index,
                 } => {
-                    let base_ty = p.value_types[base_ptr];
+                    let base_ty = cfg.values[base_ptr].ty;
                     let field_name = match interner.resolve(base_ty) {
                         Type::Pointer(to) => match interner.resolve(to) {
                             Type::Struct(s) => STRING_INTERNER
@@ -317,7 +322,7 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = &v{}.{};",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         base_ptr.0,
                         field_name
                     )
@@ -332,7 +337,7 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = {} + v{};",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         base_ptr.0,
                         index.0
                     )
@@ -354,7 +359,7 @@ pub fn dump_instructions(
                         out,
                         "v{}: {} = {}(v{})",
                         dest.0,
-                        get_vt(p, dest, interner),
+                        get_vt(cfg, dest, interner),
                         get_cast_name(kind),
                         src.0
                     )
@@ -366,7 +371,7 @@ pub fn dump_instructions(
                     out,
                     "v{}: {} = materialize {};",
                     mat.dest.0,
-                    get_vt(p, &mat.dest, interner),
+                    get_vt(cfg, &mat.dest, interner),
                     interner.to_string(interner.intern(&Type::Literal(mat.literal_type)))
                 )
                 .unwrap();

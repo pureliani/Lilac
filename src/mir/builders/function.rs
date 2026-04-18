@@ -1,16 +1,37 @@
 use std::collections::HashSet;
 
-use crate::{
-    globals::next_block_id,
-    mir::{
-        builders::{BasicBlock, BasicBlockId, Builder, ExpectBody, InFunction},
-        types::checked_declaration::CheckedDeclaration,
+use crate::mir::{
+    builders::{
+        BasicBlock, BasicBlockId, Builder, CheckedFunctionDecl, ExpectBody, InFunction,
     },
+    types::checked_declaration::CheckedDeclaration,
 };
 
 impl<'a> Builder<'a, InFunction> {
+    pub fn get_fn(&self) -> &CheckedFunctionDecl {
+        let func_id = self.context.func_id;
+
+        match self.program.declarations.get(&func_id).unwrap() {
+            CheckedDeclaration::Function(f) => f,
+            _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
+        }
+    }
+
+    pub fn get_fn_mut(&mut self) -> &mut CheckedFunctionDecl {
+        let func_id = self.context.func_id;
+
+        match self.program.declarations.get_mut(&func_id).unwrap() {
+            CheckedDeclaration::Function(f) => f,
+            _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
+        }
+    }
+
     pub fn new_bb(&mut self) -> BasicBlockId {
-        let id = next_block_id();
+        let func = self.get_fn_mut().expect_body();
+
+        let id_num = func.next_block_id;
+        func.next_block_id += 1;
+        let id = BasicBlockId(id_num);
 
         let bb = BasicBlock {
             id,
@@ -20,24 +41,7 @@ impl<'a> Builder<'a, InFunction> {
             predecessors: HashSet::new(),
         };
 
-        let decl = self
-            .program
-            .declarations
-            .get_mut(&self.context.func_id)
-            .unwrap_or_else(|| {
-                panic!(
-                    "INTERNAL COMPILER ERROR: Expected function with DeclarationId({}) \
-                     to exist.",
-                    self.context.func_id.0
-                )
-            });
-
-        let func = match decl {
-            CheckedDeclaration::Function(f) => f,
-            _ => panic!("INTERNAL COMPILER ERROR: Declaration is not a function"),
-        };
-
-        func.expect_body().blocks.insert(id, bb);
+        func.blocks.insert(id, bb);
 
         id
     }

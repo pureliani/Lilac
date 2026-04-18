@@ -1,5 +1,5 @@
 use crate::{
-    ast::{DeclarationId, Span},
+    ast::{DeclarationId, IdentifierNode, Span},
     compile::interner::{StringId, TypeId, TypeInterner},
     globals::COMMON_IDENTIFIERS,
     mir::types::{
@@ -104,6 +104,10 @@ pub enum Type {
     TaglessUnion(BTreeSet<TypeId>),
     IndirectFn(FnType),
     Literal(LiteralType),
+    GenericParam {
+        identifier: IdentifierNode,
+        extends: Option<TypeId>,
+    },
 }
 
 #[derive(Clone, Debug)]

@@ -1,4 +1,5 @@
 use std::io::ErrorKind;
+use std::path::PathBuf;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::term::termcolor::{ColorChoice, NoColor, StandardStream};
@@ -17,7 +18,7 @@ use crate::{
 /// Generates a sort key: (Rank, Path, Offset)
 /// Rank 0 = Spanned errors (come first)
 /// Rank 1 = Global/IO errors (come last)
-fn get_err_sort_key(err: &CompilerErrorKind) -> (u8, std::path::PathBuf, usize) {
+fn get_err_sort_key(err: &CompilerErrorKind) -> (u8, PathBuf, usize) {
     match err {
         CompilerErrorKind::Tokenization(e) => {
             (0, e.span.path.0.to_path_buf(), e.span.start.byte_offset)

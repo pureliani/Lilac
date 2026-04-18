@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     ast::{
@@ -8,16 +8,60 @@ use crate::{
         ModulePath, Position, SymbolId,
     },
     compile::ParallelParseResult,
-    globals::next_generic_declaration_id,
+    globals::{next_declaration_id, next_generic_declaration_id},
     mir::{
         builders::{
-            Builder, CheckedFunctionDecl, FunctionBodyKind, FunctionParam,
-            GenericDeclaration, InGlobal, InModule, Module,
+            Builder, BuilderContext, CheckedFunctionDecl, FunctionBodyKind,
+            FunctionParam, GenericDeclaration, InGlobal, InModule, Module,
         },
-        types::checked_declaration::CheckedDeclaration,
-        utils::scope::ScopeKind,
+        errors::SemanticError,
+        types::{checked_declaration::CheckedDeclaration, checked_type::Type},
+        utils::scope::{Scope, ScopeKind},
     },
 };
+
+impl<'a, C: BuilderContext> Builder<'a, C> {
+    /// Creates an isolated dummy builder which guarantees that
+    /// all declarations created by it are cleaned up afterwards.
+    /// returns any semantic errors caught during the dummy build
+    pub fn with_dummy_builder<NewC: BuilderContext, F>(
+        &mut self,
+        context: NewC,
+        scope: Scope,
+        f: F,
+    ) -> Vec<SemanticError>
+    where
+        F: FnOnce(&mut Builder<'_, NewC>),
+    {
+        let mut temp_errors = Vec::new();
+        let mut temp_current_facts = HashMap::new();
+        let mut temp_incomplete_fact_merges = HashMap::new();
+        let mut temp_condition_facts = HashMap::new();
+        let mut temp_aliases = HashMap::new();
+        let mut temp_own_declarations = HashSet::new();
+
+        let mut dummy_builder = Builder {
+            context,
+            program: self.program,
+            types: self.types,
+            errors: &mut temp_errors,
+            current_scope: scope,
+            current_facts: &mut temp_current_facts,
+            incomplete_fact_merges: &mut temp_incomplete_fact_merges,
+            condition_facts: &mut temp_condition_facts,
+            aliases: &mut temp_aliases,
+            own_declarations: &mut temp_own_declarations,
+        };
+
+        f(&mut dummy_builder);
+
+        for id in temp_own_declarations {
+            self.program.declarations.remove(&id);
+        }
+
+        temp_errors
+    }
+}
 
 impl<'a> Builder<'a, InGlobal> {
     pub fn build(&mut self, mut modules: Vec<ParallelParseResult>) {
@@ -72,6 +116,8 @@ impl<'a> Builder<'a, InGlobal> {
                                 {
                                     module_builder.errors.push(e);
                                 };
+                            } else {
+                                module_builder.early_check_generic_fn(*f);
                             }
                         }
                     }
@@ -92,6 +138,7 @@ impl<'a> Builder<'a, InGlobal> {
             current_facts: self.current_facts,
             incomplete_fact_merges: self.incomplete_fact_merges,
             aliases: self.aliases,
+            own_declarations: self.own_declarations,
             types: self.types,
         }
     }
@@ -109,6 +156,7 @@ impl<'a> Builder<'a, InModule> {
                 GenericDeclaration::Function {
                     decl: f.clone(),
                     decl_scope: self.current_scope.clone(),
+                    has_errors: false,
                 },
             );
 
@@ -146,7 +194,92 @@ impl<'a> Builder<'a, InModule> {
             .declarations
             .insert(decl_id, CheckedDeclaration::Function(function));
 
+        self.own_declarations.insert(decl_id);
+
         self.current_scope
             .map_name_to_symbol(decl_name, SymbolId::Concrete(decl_id));
+    }
+
+    fn early_check_generic_fn(&mut self, f: FnDecl) {
+        let mut generic_subs = HashMap::new();
+
+        for param in &f.generic_params {
+            let constraint_ty = param.extends.as_ref().map(|constraint_ast| {
+                self.check_type_annotation(constraint_ast, &generic_subs).id
+            });
+
+            let gen_ty = self.types.intern(&Type::GenericParam {
+                identifier: param.identifier.clone(),
+                extends: constraint_ty,
+            });
+            generic_subs.insert(param.identifier.name, gen_ty);
+        }
+
+        let check_scope = self
+            .current_scope
+            .enter(ScopeKind::GenericParams, f.identifier.span.start);
+        for param in &f.generic_params {
+            check_scope.map_name_to_symbol(
+                param.identifier.name,
+                SymbolId::GenericParameter(param.identifier.name),
+            );
+        }
+
+        let context = InModule {
+            path: self.context.path.clone(),
+        };
+
+        let temp_errors = self.with_dummy_builder(context, check_scope, |temp_builder| {
+            let dummy_decl_id = next_declaration_id();
+            let checked_params = temp_builder.check_params(&f.params, &generic_subs);
+            let checked_return_type =
+                temp_builder.check_type_annotation(&f.return_type, &generic_subs);
+
+            let function_params = checked_params
+                .into_iter()
+                .map(|p| FunctionParam {
+                    identifier: p.identifier,
+                    ty: p.ty,
+                    decl_id: None,
+                    value_id: None,
+                })
+                .collect();
+
+            let dummy_func = CheckedFunctionDecl {
+                id: dummy_decl_id,
+                identifier: f.identifier.clone(),
+                params: function_params,
+                return_type: checked_return_type,
+                is_exported: false,
+                body: FunctionBodyKind::NotBuilt,
+            };
+
+            temp_builder
+                .program
+                .declarations
+                .insert(dummy_decl_id, CheckedDeclaration::Function(dummy_func));
+            temp_builder.own_declarations.insert(dummy_decl_id);
+
+            let mut ast_clone = f.clone();
+            ast_clone.id = dummy_decl_id;
+
+            if let Err(e) = temp_builder.build_fn_body(ast_clone, &generic_subs) {
+                temp_builder.errors.push(e);
+            }
+        });
+
+        if !temp_errors.is_empty() {
+            self.errors.extend(temp_errors);
+
+            if let Some(SymbolId::Generic(gen_id)) =
+                self.current_scope.lookup(f.identifier.name)
+            {
+                if let Some(GenericDeclaration::Function { has_errors, .. }) =
+                    self.program.generic_declarations.get_mut(&gen_id)
+                {
+                    *has_errors = true;
+                }
+            }
+        }
     }
 }

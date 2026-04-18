@@ -47,7 +47,6 @@ pub struct LoopJumpTargets {
 
 pub struct Program {
     pub modules: BTreeMap<ModulePath, Module>,
-    pub value_types: BTreeMap<ValueId, TypeId>,
     pub declarations: BTreeMap<DeclarationId, CheckedDeclaration>,
     pub generic_declarations: BTreeMap<GenericDeclarationId, GenericDeclaration>,
 
@@ -73,11 +72,20 @@ pub struct FunctionParam {
 }
 
 #[derive(Debug, Clone)]
+pub struct ValueDefinition {
+    pub defined_in: BasicBlockId,
+    pub ty: TypeId,
+}
+
+#[derive(Debug, Clone)]
 pub struct FunctionCFG {
     pub entry_block: BasicBlockId,
     pub blocks: BTreeMap<BasicBlockId, BasicBlock>,
+    pub values: BTreeMap<ValueId, ValueDefinition>,
 
-    pub value_definitions: BTreeMap<ValueId, BasicBlockId>,
+    pub next_value_id: usize,
+    pub next_block_id: usize,
+
     pub effects: FunctionEffects,
 }
 
@@ -159,6 +167,9 @@ pub struct Builder<'a, C: BuilderContext> {
     pub condition_facts: &'a mut HashMap<ValueId, Vec<ConditionFact>>,
 
     pub aliases: &'a mut HashMap<DeclarationId, Place>,
+
+    // Tracks declarations created by this specific builder
+    pub own_declarations: &'a mut HashSet<DeclarationId>,
 }
 
 pub struct InGlobal;

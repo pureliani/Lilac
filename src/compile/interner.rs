@@ -543,6 +543,21 @@ impl TypeInterner {
             Type::TaglessUnion(variants) => {
                 self.union_variants_to_string(&variants, visited_set, false)
             }
+            Type::GenericParam {
+                identifier,
+                extends,
+            } => {
+                let name_str = STRING_INTERNER.resolve(identifier.name);
+                if let Some(c) = extends {
+                    format!(
+                        "GenericParam({} extends {})",
+                        name_str,
+                        self.to_string_recursive(c, visited_set)
+                    )
+                } else {
+                    name_str
+                }
+            }
         };
 
         visited_set.remove(&target);

@@ -82,10 +82,12 @@ pub enum GenericDeclaration {
     TypeAlias {
         decl: TypeAliasDecl,
         decl_scope: Scope,
+        has_errors: bool,
     },
     Function {
         decl: FnDecl,
         decl_scope: Scope,
+        has_errors: bool,
     },
 }
 

@@ -65,6 +65,7 @@ pub fn get_layout_of(
                 .collect();
             calculate_fields_layout(&types, interner, ptr_size, ptr_align)
         }
+        Type::GenericParam { .. } => Layout::new(0, 1),
     }
 }
 

@@ -1,3 +1,4 @@
+#![allow(clippy::result_unit_err)]
 use std::collections::HashMap;
 
 use crate::{
@@ -8,24 +9,23 @@ use crate::{
         builders::{
             Builder, CheckedFunctionDecl, FunctionBodyKind, FunctionParam, InBlock,
         },
+        errors::{SemanticError, SemanticErrorKind},
         types::checked_declaration::{CheckedDeclaration, GenericDeclaration},
         utils::scope::ScopeKind,
     },
 };
 
 impl<'a> Builder<'a, InBlock> {
-    /// Takes a generic function template and a list of concrete type arguments,
-    /// and generates a fully monomorphized concrete function (or returns a cached one)
     pub fn monomorphize_function(
         &mut self,
         gen_id: GenericDeclarationId,
         type_args: Vec<TypeId>,
         span: Span,
-    ) -> DeclarationId {
+    ) -> Result<DeclarationId, ()> {
         let cache_key = (gen_id, type_args.clone());
 
         if let Some(&concrete_id) = self.program.monomorphizations.get(&cache_key) {
-            return concrete_id;
+            return Ok(concrete_id);
         }
 
         let generic_decl = self
@@ -34,14 +34,40 @@ impl<'a> Builder<'a, InBlock> {
             .get(&gen_id)
             .unwrap()
             .clone();
-        let (fn_decl, decl_scope) = match generic_decl {
-            GenericDeclaration::Function { decl, decl_scope } => (decl, decl_scope),
+
+        let (fn_decl, decl_scope, has_errors) = match generic_decl {
+            GenericDeclaration::Function {
+                decl,
+                decl_scope,
+                has_errors,
+            } => (decl, decl_scope, has_errors),
             _ => panic!("INTERNAL COMPILER ERROR: Expected GenericDeclaration::Function"),
         };
+
+        if has_errors {
+            return Err(());
+        }
 
         let mut inner_substitutions = HashMap::new();
         for (param, arg_ty) in fn_decl.generic_params.iter().zip(type_args.iter()) {
             inner_substitutions.insert(param.identifier.name, *arg_ty);
+
+            if let Some(bound_ast) = &param.extends {
+                let bound_ty = self
+                    .check_type_annotation(bound_ast, &inner_substitutions)
+                    .id;
+
+                if !self.satisfies_extends_bound(*arg_ty, bound_ty) {
+                    self.errors.push(SemanticError {
+                        span: span.clone(),
+                        kind: SemanticErrorKind::TypeMismatch {
+                            expected: bound_ty,
+                            received: *arg_ty,
+                        },
+                    });
+                    return Err(());
+                }
+            }
         }
 
         let new_decl_id = next_declaration_id();
@@ -85,6 +111,8 @@ impl<'a> Builder<'a, InBlock> {
             .declarations
             .insert(new_decl_id, CheckedDeclaration::Function(concrete_func));
 
+        self.own_declarations.insert(new_decl_id);
+
         let mut concrete_ast = fn_decl.clone();
         concrete_ast.id = new_decl_id;
 
@@ -97,6 +125,6 @@ impl<'a> Builder<'a, InBlock> {
 
         self.current_scope = caller_scope;
 
-        new_decl_id
+        Ok(new_decl_id)
     }
 }
