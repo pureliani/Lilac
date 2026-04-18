@@ -101,9 +101,11 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_fadd(lhs, rhs)
-        } else if self.types.is_integer(lhs_ty) {
+        } else if self.types.is_integer(effective_ty) {
             self.emit_iadd(lhs, rhs)
         } else {
             panic!(
@@ -123,9 +125,11 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_fsub(lhs, rhs)
-        } else if self.types.is_integer(lhs_ty) {
+        } else if self.types.is_integer(effective_ty) {
             self.emit_isub(lhs, rhs)
         } else {
             panic!(
@@ -146,9 +150,11 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_fmul(lhs, rhs)
-        } else if self.types.is_integer(lhs_ty) {
+        } else if self.types.is_integer(effective_ty) {
             self.emit_imul(lhs, rhs)
         } else {
             panic!(
@@ -169,11 +175,13 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_fdiv(lhs, rhs)
-        } else if self.types.is_signed(lhs_ty) {
+        } else if self.types.is_signed(effective_ty) {
             self.emit_sdiv(lhs, rhs)
-        } else if !self.types.is_signed(lhs_ty) {
+        } else if !self.types.is_signed(effective_ty) {
             self.emit_udiv(lhs, rhs)
         } else {
             panic!(
@@ -193,11 +201,13 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_frem(lhs, rhs)
-        } else if self.types.is_signed(lhs_ty) {
+        } else if self.types.is_signed(effective_ty) {
             self.emit_srem(lhs, rhs)
-        } else if !self.types.is_signed(lhs_ty) {
+        } else if !self.types.is_signed(effective_ty) {
             self.emit_urem(lhs, rhs)
         } else {
             panic!(

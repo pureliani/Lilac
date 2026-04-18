@@ -4,7 +4,7 @@ use crate::{
     ast::{
         decl::Param,
         type_annotation::{TypeAnnotation, TypeAnnotationKind},
-        IdentifierNode, SymbolId,
+        IdentifierNode, Span, SymbolId,
     },
     compile::interner::{StringId, TypeId},
     globals::STRING_INTERNER,
@@ -185,6 +185,134 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
         }
     }
 
+    fn check_generic_apply_type_annotation(
+        &mut self,
+        left: &TypeAnnotation,
+        args: &[TypeAnnotation],
+        span: &Span,
+        substitutions: &HashMap<StringId, TypeId>,
+    ) -> TypeId {
+        let id = match &left.kind {
+            TypeAnnotationKind::Identifier(id) => id,
+            _ => {
+                self.errors.push(SemanticError {
+                    span: left.span.clone(),
+                    kind: SemanticErrorKind::CannotApplyTypeArguments,
+                });
+                return self.types.unknown();
+            }
+        };
+
+        let symbol = match self.current_scope.lookup(id.name) {
+            Some(sym) => sym,
+            None => {
+                self.errors.push(SemanticError {
+                    span: id.span.clone(),
+                    kind: SemanticErrorKind::UndeclaredType(id.clone()),
+                });
+                return self.types.unknown();
+            }
+        };
+
+        let gen_id = match symbol {
+            SymbolId::Generic(gen_id) => gen_id,
+            SymbolId::Concrete(_) | SymbolId::GenericParameter(_) => {
+                self.errors.push(SemanticError {
+                    span: left.span.clone(),
+                    kind: SemanticErrorKind::CannotApplyTypeArguments,
+                });
+                return self.types.unknown();
+            }
+        };
+
+        let generic_decl = self
+            .program
+            .generic_declarations
+            .get(&gen_id)
+            .unwrap()
+            .clone();
+
+        let (decl, decl_scope, has_errors) = match generic_decl {
+            GenericDeclaration::TypeAlias {
+                decl,
+                decl_scope,
+                has_errors,
+            } => (decl, decl_scope, has_errors),
+            GenericDeclaration::Function { .. } => {
+                self.errors.push(SemanticError {
+                    span: id.span.clone(),
+                    kind: SemanticErrorKind::IdentifierIsNotAType(id.clone()),
+                });
+                return self.types.unknown();
+            }
+        };
+
+        if has_errors {
+            return self.types.unknown();
+        }
+
+        if decl.generic_params.len() != args.len() {
+            self.errors.push(SemanticError {
+                span: span.clone(),
+                kind: SemanticErrorKind::GenericArgumentCountMismatch {
+                    expected: decl.generic_params.len(),
+                    received: args.len(),
+                },
+            });
+            return self.types.unknown();
+        }
+
+        let mut evaluated_args = Vec::with_capacity(args.len());
+        for arg in args {
+            evaluated_args.push(self.check_type_annotation(arg, substitutions).id);
+        }
+
+        let mut inner_substitutions = HashMap::new();
+        let mut bounds_failed = false;
+
+        for (param, &arg_ty) in decl.generic_params.iter().zip(evaluated_args.iter()) {
+            inner_substitutions.insert(param.identifier.name, arg_ty);
+
+            if let Some(bound_ast) = &param.extends {
+                let bound_ty = self
+                    .check_type_annotation(bound_ast, &inner_substitutions)
+                    .id;
+
+                if !self.satisfies_extends_bound(arg_ty, bound_ty) {
+                    self.errors.push(SemanticError {
+                        span: span.clone(),
+                        kind: SemanticErrorKind::TypeMismatch {
+                            expected: bound_ty,
+                            received: arg_ty,
+                        },
+                    });
+                    bounds_failed = true;
+                }
+            }
+        }
+
+        if bounds_failed {
+            return self.types.unknown();
+        }
+
+        let caller_scope = self.current_scope.clone();
+        self.current_scope = decl_scope.enter(ScopeKind::GenericParams, span.start);
+        for param in &decl.generic_params {
+            self.current_scope.map_name_to_symbol(
+                param.identifier.name,
+                SymbolId::GenericParameter(param.identifier.name),
+            );
+        }
+
+        let result_id = self
+            .check_type_annotation(&decl.value, &inner_substitutions)
+            .id;
+
+        self.current_scope = caller_scope;
+
+        result_id
+    }
+
     pub fn check_type_annotation(
         &mut self,
         annotation: &TypeAnnotation,
@@ -233,127 +361,13 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
 
                 self.types.make_union(checked_variants)
             }
-            TypeAnnotationKind::GenericApply { left, args } => {
-                if let TypeAnnotationKind::Identifier(id) = &left.kind {
-                    match self.current_scope.lookup(id.name) {
-                        Some(SymbolId::Generic(gen_id)) => {
-                            let generic_decl = self
-                                .program
-                                .generic_declarations
-                                .get(&gen_id)
-                                .unwrap()
-                                .clone();
-
-                            match generic_decl {
-                                GenericDeclaration::TypeAlias {
-                                    decl,
-                                    decl_scope,
-                                    has_errors,
-                                } => {
-                                    if has_errors {
-                                        self.types.unknown()
-                                    } else {
-                                        let expected_arg_count =
-                                            decl.generic_params.len();
-                                        let received_arg_count = args.len();
-
-                                        if expected_arg_count != received_arg_count {
-                                            self.errors.push(SemanticError {
-                                                span: annotation.span.clone(),
-                                                kind: SemanticErrorKind::GenericArgumentCountMismatch {
-                                                    expected: expected_arg_count,
-                                                    received: received_arg_count,
-                                                },
-                                            });
-                                            self.types.unknown()
-                                        } else {
-                                            let mut evaluated_args = Vec::new();
-                                            for arg in args {
-                                                evaluated_args.push(
-                                                    self.check_type_annotation(
-                                                        arg,
-                                                        substitutions,
-                                                    )
-                                                    .id,
-                                                );
-                                            }
-
-                                            let mut inner_substitutions = HashMap::new();
-                                            for (param, arg_ty) in decl
-                                                .generic_params
-                                                .iter()
-                                                .zip(evaluated_args)
-                                            {
-                                                inner_substitutions.insert(
-                                                    param.identifier.name,
-                                                    arg_ty,
-                                                );
-                                            }
-
-                                            let caller_scope = self.current_scope.clone();
-
-                                            self.current_scope = decl_scope.enter(
-                                                ScopeKind::GenericParams,
-                                                annotation.span.start,
-                                            );
-
-                                            for param in &decl.generic_params {
-                                                self.current_scope.map_name_to_symbol(
-                                                    param.identifier.name,
-                                                    SymbolId::GenericParameter(
-                                                        param.identifier.name,
-                                                    ),
-                                                );
-                                            }
-
-                                            let result_id = self
-                                                .check_type_annotation(
-                                                    &decl.value,
-                                                    &inner_substitutions,
-                                                )
-                                                .id;
-
-                                            self.current_scope = caller_scope;
-
-                                            result_id
-                                        }
-                                    }
-                                }
-                                GenericDeclaration::Function { .. } => {
-                                    self.errors.push(SemanticError {
-                                        span: id.span.clone(),
-                                        kind: SemanticErrorKind::IdentifierIsNotAType(
-                                            id.clone(),
-                                        ),
-                                    });
-                                    self.types.unknown()
-                                }
-                            }
-                        }
-                        Some(SymbolId::Concrete(_))
-                        | Some(SymbolId::GenericParameter(_)) => {
-                            self.errors.push(SemanticError {
-                                span: left.span.clone(),
-                                kind: SemanticErrorKind::CannotApplyTypeArguments,
-                            });
-                            self.types.unknown()
-                        }
-                        None => {
-                            self.errors.push(SemanticError {
-                                span: id.span.clone(),
-                                kind: SemanticErrorKind::UndeclaredType(id.clone()),
-                            });
-                            self.types.unknown()
-                        }
-                    }
-                } else {
-                    self.errors.push(SemanticError {
-                        span: left.span.clone(),
-                        kind: SemanticErrorKind::CannotApplyTypeArguments,
-                    });
-                    self.types.unknown()
-                }
-            }
+            TypeAnnotationKind::GenericApply { left, args } => self
+                .check_generic_apply_type_annotation(
+                    left,
+                    args,
+                    &annotation.span,
+                    substitutions,
+                ),
 
             TypeAnnotationKind::List(item_type) => {
                 let checked_item_type =

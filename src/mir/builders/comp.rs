@@ -166,9 +166,11 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_feq(lhs, rhs)
-        } else if self.types.is_integer(lhs_ty) {
+        } else if self.types.is_integer(effective_ty) {
             self.emit_ieq(lhs, rhs)
         } else {
             panic!(
@@ -189,9 +191,11 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_fneq(lhs, rhs)
-        } else if self.types.is_integer(lhs_ty) {
+        } else if self.types.is_integer(effective_ty) {
             self.emit_ineq(lhs, rhs)
         } else {
             panic!(
@@ -212,11 +216,13 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_flt(lhs, rhs)
-        } else if self.types.is_signed(lhs_ty) {
+        } else if self.types.is_signed(effective_ty) {
             self.emit_slt(lhs, rhs)
-        } else if !self.types.is_signed(lhs_ty) {
+        } else if !self.types.is_signed(effective_ty) {
             self.emit_ult(lhs, rhs)
         } else {
             panic!(
@@ -237,11 +243,13 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_flte(lhs, rhs)
-        } else if self.types.is_signed(lhs_ty) {
+        } else if self.types.is_signed(effective_ty) {
             self.emit_slte(lhs, rhs)
-        } else if !self.types.is_signed(lhs_ty) {
+        } else if !self.types.is_signed(effective_ty) {
             self.emit_ulte(lhs, rhs)
         } else {
             panic!(
@@ -262,11 +270,13 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_fgt(lhs, rhs)
-        } else if self.types.is_signed(lhs_ty) {
+        } else if self.types.is_signed(effective_ty) {
             self.emit_sgt(lhs, rhs)
-        } else if !self.types.is_signed(lhs_ty) {
+        } else if !self.types.is_signed(effective_ty) {
             self.emit_ugt(lhs, rhs)
         } else {
             panic!(
@@ -287,11 +297,13 @@ impl<'a> Builder<'a, InBlock> {
             "INTERNAL COMPILER ERROR: Expected lhs and rhs types to match"
         );
 
-        if self.types.is_float(lhs_ty) {
+        let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if self.types.is_float(effective_ty) {
             self.emit_fgte(lhs, rhs)
-        } else if self.types.is_signed(lhs_ty) {
+        } else if self.types.is_signed(effective_ty) {
             self.emit_sgte(lhs, rhs)
-        } else if !self.types.is_signed(lhs_ty) {
+        } else if !self.types.is_signed(effective_ty) {
             self.emit_ugte(lhs, rhs)
         } else {
             panic!(

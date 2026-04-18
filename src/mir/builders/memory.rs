@@ -159,10 +159,12 @@ impl<'a> Builder<'a, InBlock> {
         field: &IdentifierNode,
         is_internal_access: bool,
     ) -> Result<ValueId, SemanticError> {
-        let ptr_ty = self.get_value_type(base_ptr);
-        let pointee_ty = self.types.unwrap_ptr(ptr_ty);
+        let base_ptr_ty = self.get_value_type(base_ptr);
+        let actual_base_ptr_ty = self.types.unwrap_generic_bound(base_ptr_ty);
+        let pointee_ty = self.types.unwrap_ptr(actual_base_ptr_ty);
+        let actual_pointee_ty = self.types.unwrap_generic_bound(pointee_ty);
 
-        let struct_kind = match self.types.resolve(pointee_ty) {
+        let struct_kind = match self.types.resolve(actual_pointee_ty) {
             Type::Struct(s) => {
                 if is_internal_access {
                     s

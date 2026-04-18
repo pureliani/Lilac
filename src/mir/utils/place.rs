@@ -135,9 +135,16 @@ impl<'a> Builder<'a, InBlock> {
         struct_ty: TypeId,
         field: &IdentifierNode,
     ) -> Result<(), SemanticError> {
-        let struct_kind = match self.types.resolve(struct_ty) {
+        let actual_struct_ty = self.types.unwrap_generic_bound(struct_ty);
+
+        let struct_kind = match self.types.resolve(actual_struct_ty) {
             Type::Struct(s) => s,
-            _ => return Ok(()),
+            _ => {
+                return Err(SemanticError {
+                    span: field.span.clone(),
+                    kind: SemanticErrorKind::CannotAccess(struct_ty),
+                })
+            }
         };
 
         match struct_kind {
@@ -247,7 +254,9 @@ impl<'a> Builder<'a, InBlock> {
     }
 
     fn type_of_field(&self, struct_ty: TypeId, field: StringId) -> Option<TypeId> {
-        let struct_kind = match self.types.resolve(struct_ty) {
+        let actual_struct_ty = self.types.unwrap_generic_bound(struct_ty);
+
+        let struct_kind = match self.types.resolve(actual_struct_ty) {
             Type::Struct(s) => s,
             _ => return None,
         };

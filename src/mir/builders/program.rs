@@ -108,6 +108,11 @@ impl<'a> Builder<'a, InGlobal> {
                     StmtKind::From { path, items } => {
                         module_builder.build_from_stmt(path, items, stmt.span);
                     }
+                    StmtKind::TypeAliasDecl(decl) => {
+                        if !decl.generic_params.is_empty() {
+                            module_builder.early_check_generic_type_alias(decl);
+                        }
+                    }
                     StmtKind::Expression(expr) => {
                         if let ExprKind::Fn(f) = expr.kind {
                             if f.generic_params.is_empty() {

@@ -46,14 +46,39 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             return Ok(Adjustment::Identity);
         };
 
-        if let Type::Literal(lt) = self.types.resolve(source) {
+        let src_ty = self.types.resolve(source);
+        let tgt_ty = self.types.resolve(target);
+
+        if let Type::GenericParam {
+            identifier: t_id, ..
+        } = tgt_ty
+        {
+            if let Type::GenericParam {
+                identifier: s_id, ..
+            } = src_ty
+            {
+                if s_id.name == t_id.name {
+                    return Ok(Adjustment::Identity);
+                }
+            }
+            return Err(AdjustmentError::Incompatible);
+        }
+
+        if let Type::GenericParam {
+            extends: Some(c), ..
+        } = src_ty
+        {
+            return self.compute_type_adjustment(c, target, is_explicit);
+        }
+
+        if let Type::Literal(lt) = src_ty {
             if target == self.types.widen_literal(lt) {
                 return Ok(Adjustment::Materialize);
             }
         }
 
-        if let Type::Literal(LiteralType::Fn(decl_id)) = self.types.resolve(source) {
-            if let Type::IndirectFn(target_sig) = self.types.resolve(target) {
+        if let Type::Literal(LiteralType::Fn(decl_id)) = src_ty {
+            if let Type::IndirectFn(ref target_sig) = tgt_ty {
                 let source_decl = self.program.declarations.get(&decl_id).unwrap();
                 if let CheckedDeclaration::Function(f) = source_decl {
                     if f.return_type.id == target_sig.return_type.id
@@ -105,7 +130,7 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
         }
 
         if self.types.is_integer(source) && self.types.is_float(target) {
-            let (src, tgt) = (self.types.resolve(source), self.types.resolve(target));
+            let (src, tgt) = (src_ty, tgt_ty);
             let is_lossless = matches!(
                 (src, tgt),
                 (
@@ -159,7 +184,7 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
         if let (
             Type::Struct(StructKind::UserDefined(s_fields)),
             Type::Struct(StructKind::UserDefined(t_fields)),
-        ) = (self.types.resolve(source), self.types.resolve(target))
+        ) = (src_ty, tgt_ty)
         {
             if s_fields.len() == t_fields.len() {
                 let mut field_adjustments = Vec::new();
@@ -213,8 +238,13 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             path: left_span.path.clone(),
         };
 
-        let left_type = if self.types.is_float(left) || self.types.is_integer(left) {
-            left
+        let effective_left = self.types.unwrap_generic_bound(left);
+        let effective_right = self.types.unwrap_generic_bound(right);
+
+        let left_type = if self.types.is_float(effective_left)
+            || self.types.is_integer(effective_left)
+        {
+            effective_left
         } else {
             return Err(SemanticError {
                 kind: SemanticErrorKind::ExpectedANumericOperand,
@@ -222,8 +252,10 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             });
         };
 
-        let right_type = if self.types.is_float(right) || self.types.is_integer(right) {
-            right
+        let right_type = if self.types.is_float(effective_right)
+            || self.types.is_integer(effective_right)
+        {
+            effective_right
         } else {
             return Err(SemanticError {
                 kind: SemanticErrorKind::ExpectedANumericOperand,

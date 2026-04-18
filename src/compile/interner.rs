@@ -263,6 +263,16 @@ impl TypeInterner {
 }
 
 impl TypeInterner {
+    pub fn unwrap_generic_bound(&self, ty: TypeId) -> TypeId {
+        match self.resolve(ty) {
+            Type::GenericParam {
+                extends: Some(bound),
+                ..
+            } => self.unwrap_generic_bound(bound),
+            _ => ty,
+        }
+    }
+
     pub fn unwrap_ptr(&self, ptr: TypeId) -> TypeId {
         if let Type::Pointer(to) = self.resolve(ptr) {
             return to;
@@ -550,7 +560,7 @@ impl TypeInterner {
                 let name_str = STRING_INTERNER.resolve(identifier.name);
                 if let Some(c) = extends {
                     format!(
-                        "GenericParam({} extends {})",
+                        "{} extends {}",
                         name_str,
                         self.to_string_recursive(c, visited_set)
                     )

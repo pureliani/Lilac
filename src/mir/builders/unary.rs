@@ -22,10 +22,11 @@ impl<'a> Builder<'a, InBlock> {
 impl<'a> Builder<'a, InBlock> {
     pub fn neg(&mut self, value: ValueId) -> ValueId {
         let value_type = self.get_value_type(value);
+        let actual_value_type = self.types.unwrap_generic_bound(value_type);
 
-        if self.types.is_float(value_type) {
+        if self.types.is_float(actual_value_type) {
             self.emit_fneg(value)
-        } else if self.types.is_signed(value_type) {
+        } else if self.types.is_signed(actual_value_type) {
             self.emit_ineg(value)
         } else {
             panic!(
@@ -37,8 +38,9 @@ impl<'a> Builder<'a, InBlock> {
 
     pub fn not(&mut self, src: ValueId) -> ValueId {
         let value_type = self.get_value_type(src);
+        let actual_value_type = self.types.unwrap_generic_bound(value_type);
 
-        if !self.types.is_bool(value_type) {
+        if !self.types.is_bool(actual_value_type) {
             panic!(
                 "INTERNAL COMPILER ERROR: Cannot apply unary not `!` operator to this \
                  type"
