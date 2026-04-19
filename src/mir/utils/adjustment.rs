@@ -29,6 +29,8 @@ pub enum Adjustment {
     WrapInUnion,
     UnwrapUnion,
 
+    Chain(Vec<(Adjustment, TypeId)>),
+
     CoerceStruct {
         field_adjustments: Vec<(StringId, Adjustment)>,
     },
@@ -42,7 +44,10 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
         target: TypeId,
         is_explicit: bool,
     ) -> Result<Adjustment, AdjustmentError> {
-        if source == target {
+        if source == target
+            || source == self.types.unknown()
+            || target == self.types.unknown()
+        {
             return Ok(Adjustment::Identity);
         };
 
@@ -173,6 +178,15 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             if target_variants.contains(&source) {
                 return Ok(Adjustment::WrapInUnion);
             }
+            if let Type::Literal(lt) = src_ty {
+                let widened_ty = self.types.widen_literal(lt);
+                if target_variants.contains(&widened_ty) {
+                    return Ok(Adjustment::Chain(vec![
+                        (Adjustment::Materialize, widened_ty),
+                        (Adjustment::WrapInUnion, target),
+                    ]));
+                }
+            }
         }
 
         if let Some(source_variants) = self.types.get_union_variants(source) {
@@ -237,6 +251,10 @@ impl<'a, C: BuilderContext> Builder<'a, C> {
             end: right_span.end,
             path: left_span.path.clone(),
         };
+
+        if left == self.types.unknown() || right == self.types.unknown() {
+            return Ok(self.types.unknown());
+        }
 
         let effective_left = self.types.unwrap_generic_bound(left);
         let effective_right = self.types.unwrap_generic_bound(right);
@@ -341,6 +359,13 @@ impl<'a> Builder<'a, InBlock> {
                 self.emit_wrap_in_union(source, &target_variants)
             }
             Adjustment::UnwrapUnion => self.emit_unwrap_from_union(source, target_type),
+            Adjustment::Chain(adjustments) => {
+                let mut current = source;
+                for (adj, ty) in adjustments {
+                    current = self.apply_adjustment(current, adj, ty, _span.clone());
+                }
+                current
+            }
             Adjustment::CoerceStruct {
                 field_adjustments: _,
             } => {
