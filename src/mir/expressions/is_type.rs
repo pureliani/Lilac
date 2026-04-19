@@ -89,7 +89,8 @@ impl<'a> Builder<'a, InBlock> {
 
         let target_type = self.check_type_annotation(&ty, substitutions);
 
-        let source_variants = match self.types.get_union_variants(current_ty) {
+        let actual_current_ty = self.types.unwrap_generic_bound(current_ty);
+        let source_variants = match self.types.get_union_variants(actual_current_ty) {
             Some(v) => v,
             None => {
                 let is_match = current_ty == target_type.id;

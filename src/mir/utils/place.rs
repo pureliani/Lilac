@@ -111,8 +111,9 @@ impl<'a> Builder<'a, InBlock> {
             ExprKind::Access { left, field } => {
                 let base_place = self.resolve_place(*left, substitutions)?;
                 let base_ty = self.type_of_place(&base_place);
+                let actual_base_ty = self.types.unwrap_generic_bound(base_ty);
 
-                let derefed_place = if self.types.is_pointer(base_ty) {
+                let derefed_place = if self.types.is_pointer(actual_base_ty) {
                     Place::Deref(Box::new(base_place))
                 } else {
                     base_place
@@ -195,6 +196,7 @@ impl<'a> Builder<'a, InBlock> {
 
             if narrowed.variants.len() == 1 {
                 let target_ty = *narrowed.variants.iter().next().unwrap();
+                println!("Narrowing from {:?} to {:?}", current_ty, target_ty);
                 if current_ty != target_ty {
                     return self.emit_unwrap_from_union(val, target_ty);
                 }
@@ -241,7 +243,8 @@ impl<'a> Builder<'a, InBlock> {
             }
             Place::Deref(base) => {
                 let base_ty = self.type_of_place(base);
-                self.types.unwrap_ptr(base_ty)
+                let actual_base_ty = self.types.unwrap_generic_bound(base_ty);
+                self.types.unwrap_ptr(actual_base_ty)
             }
             Place::Field(base, field) => {
                 let base_ty = self.type_of_place(base);
