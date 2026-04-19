@@ -57,6 +57,10 @@ impl<'a> Builder<'a, InBlock> {
     ) -> ValueId {
         let union_ty = self.get_value_type(union_val);
 
+        if union_ty == self.types.unknown() || variant_type == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
+
         assert!(
             !self.types.is_pointer(union_ty),
             "INTERNAL COMPILER ERROR: emit_unwrap_from_union expected union to be \
@@ -95,6 +99,10 @@ impl<'a> Builder<'a, InBlock> {
         variant_type: TypeId,
     ) -> ValueId {
         let union_ty = self.get_value_type(union_val);
+
+        if union_ty == self.types.unknown() || variant_type == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
 
         assert!(
             !self.types.is_pointer(union_ty),

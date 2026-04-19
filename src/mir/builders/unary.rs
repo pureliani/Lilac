@@ -24,6 +24,10 @@ impl<'a> Builder<'a, InBlock> {
         let value_type = self.get_value_type(value);
         let actual_value_type = self.types.unwrap_generic_bound(value_type);
 
+        if actual_value_type == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
+
         if self.types.is_float(actual_value_type) {
             self.emit_fneg(value)
         } else if self.types.is_signed(actual_value_type) {
@@ -39,6 +43,10 @@ impl<'a> Builder<'a, InBlock> {
     pub fn not(&mut self, src: ValueId) -> ValueId {
         let value_type = self.get_value_type(src);
         let actual_value_type = self.types.unwrap_generic_bound(value_type);
+
+        if actual_value_type == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
 
         if !self.types.is_bool(actual_value_type) {
             panic!(

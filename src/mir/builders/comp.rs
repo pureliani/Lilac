@@ -137,6 +137,12 @@ impl<'a> Builder<'a, InBlock> {
         let true_value_type = self.get_value_type(true_value);
         let false_value_type = self.get_value_type(false_value);
 
+        if true_value_type == self.types.unknown()
+            || false_value_type == self.types.unknown()
+        {
+            return self.new_value_id(self.types.unknown());
+        }
+
         if true_value_type != false_value_type {
             panic!(
                 "INTERNAL COMPILER ERROR: Select instruction expected both operands to \
@@ -168,6 +174,10 @@ impl<'a> Builder<'a, InBlock> {
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
 
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
+
         if self.types.is_float(effective_ty) {
             self.emit_feq(lhs, rhs)
         } else if self.types.is_integer(effective_ty) {
@@ -193,6 +203,10 @@ impl<'a> Builder<'a, InBlock> {
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
 
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
+
         if self.types.is_float(effective_ty) {
             self.emit_fneq(lhs, rhs)
         } else if self.types.is_integer(effective_ty) {
@@ -217,6 +231,10 @@ impl<'a> Builder<'a, InBlock> {
         );
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
 
         if self.types.is_float(effective_ty) {
             self.emit_flt(lhs, rhs)
@@ -245,6 +263,10 @@ impl<'a> Builder<'a, InBlock> {
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
 
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
+
         if self.types.is_float(effective_ty) {
             self.emit_flte(lhs, rhs)
         } else if self.types.is_signed(effective_ty) {
@@ -272,6 +294,10 @@ impl<'a> Builder<'a, InBlock> {
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
 
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
+
         if self.types.is_float(effective_ty) {
             self.emit_fgt(lhs, rhs)
         } else if self.types.is_signed(effective_ty) {
@@ -298,6 +324,10 @@ impl<'a> Builder<'a, InBlock> {
         );
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
 
         if self.types.is_float(effective_ty) {
             self.emit_fgte(lhs, rhs)

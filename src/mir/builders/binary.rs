@@ -103,6 +103,10 @@ impl<'a> Builder<'a, InBlock> {
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
 
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
+
         if self.types.is_float(effective_ty) {
             self.emit_fadd(lhs, rhs)
         } else if self.types.is_integer(effective_ty) {
@@ -126,6 +130,10 @@ impl<'a> Builder<'a, InBlock> {
         );
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
 
         if self.types.is_float(effective_ty) {
             self.emit_fsub(lhs, rhs)
@@ -152,6 +160,10 @@ impl<'a> Builder<'a, InBlock> {
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
 
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
+
         if self.types.is_float(effective_ty) {
             self.emit_fmul(lhs, rhs)
         } else if self.types.is_integer(effective_ty) {
@@ -176,6 +188,10 @@ impl<'a> Builder<'a, InBlock> {
         );
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
 
         if self.types.is_float(effective_ty) {
             self.emit_fdiv(lhs, rhs)
@@ -202,6 +218,10 @@ impl<'a> Builder<'a, InBlock> {
         );
 
         let effective_ty = self.types.unwrap_generic_bound(lhs_ty);
+
+        if effective_ty == self.types.unknown() {
+            return self.new_value_id(self.types.unknown());
+        }
 
         if self.types.is_float(effective_ty) {
             self.emit_frem(lhs, rhs)
